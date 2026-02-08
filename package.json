@@ -11,6 +11,7 @@
     "test": "turbo run test",
     "format": "biome format --write .",
     "check": "biome check .",
+    "smoke-test": "turbo run smoke-test",
     "build:contracts": "bun run --cwd packages/contracts build"
   },
   "devDependencies": {

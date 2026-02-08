@@ -21,6 +21,11 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "smoke-test": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
     }
   }
 }

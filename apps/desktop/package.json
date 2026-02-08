@@ -12,7 +12,8 @@
     "postinstall": "electron-rebuild",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke-test": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
     "@acme/contracts": "workspace:*",
