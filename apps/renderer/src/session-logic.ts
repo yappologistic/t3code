@@ -72,6 +72,20 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
 }
 
+export type TimelineEntry =
+  | {
+      id: string;
+      kind: "message";
+      createdAt: string;
+      message: ChatMessage;
+    }
+  | {
+      id: string;
+      kind: "work";
+      createdAt: string;
+      entry: WorkLogEntry;
+    };
+
 function truncateLine(value: string, limit = 140): string {
   if (value.length <= limit) return value;
   return `${value.slice(0, limit - 1)}…`;
@@ -275,6 +289,75 @@ export function deriveWorkLogEntries(
   }
 
   return entries;
+}
+
+function toTimestamp(isoDate: string): number {
+  const parsed = Date.parse(isoDate);
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+}
+
+export function deriveTimelineEntries(
+  messages: ChatMessage[],
+  workEntries: WorkLogEntry[],
+): TimelineEntry[] {
+  const timeline: TimelineEntry[] = [];
+  let messageIndex = 0;
+  let workIndex = 0;
+
+  while (messageIndex < messages.length || workIndex < workEntries.length) {
+    const message = messages[messageIndex];
+    const workEntry = workEntries[workIndex];
+
+    if (!message && workEntry) {
+      timeline.push({
+        id: `work:${workEntry.id}`,
+        kind: "work",
+        createdAt: workEntry.createdAt,
+        entry: workEntry,
+      });
+      workIndex += 1;
+      continue;
+    }
+
+    if (!workEntry && message) {
+      timeline.push({
+        id: `message:${message.id}`,
+        kind: "message",
+        createdAt: message.createdAt,
+        message,
+      });
+      messageIndex += 1;
+      continue;
+    }
+
+    if (!message || !workEntry) {
+      break;
+    }
+
+    const messageAt = toTimestamp(message.createdAt);
+    const workAt = toTimestamp(workEntry.createdAt);
+
+    if (workAt <= messageAt) {
+      timeline.push({
+        id: `work:${workEntry.id}`,
+        kind: "work",
+        createdAt: workEntry.createdAt,
+        entry: workEntry,
+      });
+      workIndex += 1;
+      continue;
+    }
+
+    timeline.push({
+      id: `message:${message.id}`,
+      kind: "message",
+      createdAt: message.createdAt,
+      message,
+    });
+    messageIndex += 1;
+  }
+
+  return timeline;
 }
 
 export function derivePhase(session: ProviderSession | null): SessionPhase {

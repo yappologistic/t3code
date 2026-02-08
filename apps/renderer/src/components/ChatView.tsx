@@ -16,6 +16,7 @@ import {
 } from "../model-logic";
 import {
   derivePhase,
+  deriveTimelineEntries,
   deriveWorkLogEntries,
   formatElapsed,
   formatTimestamp,
@@ -83,11 +84,18 @@ export default function ChatView() {
     }
     return map;
   }, [activeThread?.events]);
-  const recentWorkLogEntries = workLogEntries.slice(-12);
+  const timelineEntries = useMemo(
+    () =>
+      deriveTimelineEntries(
+        activeThread?.messages ?? [],
+        isWorking ? workLogEntries : [],
+      ),
+    [activeThread?.messages, isWorking, workLogEntries],
+  );
 
   // Auto-scroll on new messages
   const messageCount = activeThread?.messages.length ?? 0;
-  const workLogCount = recentWorkLogEntries.length;
+  const workLogCount = workLogEntries.length;
   // biome-ignore lint/correctness/useExhaustiveDependencies: trigger on message count change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -341,73 +349,85 @@ export default function ChatView() {
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
-            {activeThread.messages.map((msg) => (
-              <div key={msg.id}>
-                {msg.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/[0.08] bg-white/[0.05] px-4 py-3">
-                      <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-[#e0e0e0]">
-                        {msg.text}
-                      </pre>
-                      <p className="mt-1.5 text-right text-[10px] text-[#a0a0a0]/30">
-                        {formatTimestamp(msg.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="border-l-2 border-white/[0.15] pl-4">
-                    <ChatMarkdown
-                      text={
-                        msg.text || (msg.streaming ? "" : "(empty response)")
-                      }
-                    />
-                    {msg.streaming && (
-                      <div className="pt-1.5">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
-                          <span className="inline-flex gap-1">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:300ms]" />
-                          </span>
-                          <span>Thinking</span>
-                        </span>
-                      </div>
-                    )}
-                    <p className="mt-1.5 text-[10px] text-[#a0a0a0]/30">
-                      {formatMessageMeta(
-                        msg.createdAt,
-                        msg.streaming
-                          ? formatElapsed(msg.createdAt, nowIso)
-                          : formatElapsed(
-                              msg.createdAt,
-                              assistantCompletionByItemId.get(msg.id),
-                            ),
-                      )}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-            {/* Inline activity feed */}
-            {isWorking && (
-              <div className="border-l-2 border-white/[0.05] pl-4 py-1">
-                {recentWorkLogEntries.map((entry) => (
+            {timelineEntries.map((timelineEntry) =>
+              timelineEntry.kind === "work" ? (
+                <div
+                  key={timelineEntry.id}
+                  className="border-l-2 border-white/[0.05] pl-4 py-1"
+                >
                   <p
-                    key={entry.id}
-                    className={`py-[2px] text-[12px] leading-relaxed ${workToneClass(entry.tone)}`}
+                    className={`py-[2px] text-[12px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
                   >
-                    {entry.detail ? (
+                    {timelineEntry.entry.detail ? (
                       <>
-                        {entry.label}
+                        {timelineEntry.entry.label}
                         <span className="ml-1.5 font-mono text-[11px] opacity-60">
-                          {entry.detail}
+                          {timelineEntry.entry.detail}
                         </span>
                       </>
                     ) : (
-                      entry.label
+                      timelineEntry.entry.label
                     )}
                   </p>
-                ))}
+                </div>
+              ) : (
+                <div key={timelineEntry.id}>
+                  {timelineEntry.message.role === "user" ? (
+                    <div className="flex justify-end">
+                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/[0.08] bg-white/[0.05] px-4 py-3">
+                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-[#e0e0e0]">
+                          {timelineEntry.message.text}
+                        </pre>
+                        <p className="mt-1.5 text-right text-[10px] text-[#a0a0a0]/30">
+                          {formatTimestamp(timelineEntry.message.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border-l-2 border-white/[0.15] pl-4">
+                      <ChatMarkdown
+                        text={
+                          timelineEntry.message.text ||
+                          (timelineEntry.message.streaming
+                            ? ""
+                            : "(empty response)")
+                        }
+                      />
+                      {timelineEntry.message.streaming && (
+                        <div className="pt-1.5">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
+                            <span className="inline-flex gap-1">
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:300ms]" />
+                            </span>
+                            <span>Thinking</span>
+                          </span>
+                        </div>
+                      )}
+                      <p className="mt-1.5 text-[10px] text-[#a0a0a0]/30">
+                        {formatMessageMeta(
+                          timelineEntry.message.createdAt,
+                          timelineEntry.message.streaming
+                            ? formatElapsed(
+                                timelineEntry.message.createdAt,
+                                nowIso,
+                              )
+                            : formatElapsed(
+                                timelineEntry.message.createdAt,
+                                assistantCompletionByItemId.get(
+                                  timelineEntry.message.id,
+                                ),
+                              ),
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ),
+            )}
+            {isWorking && (
+              <div className="border-l-2 border-white/[0.05] pl-4 py-1">
                 <div className="flex items-center pt-1">
                   <span className="inline-flex items-center gap-[3px]">
                     <span className="h-1 w-1 rounded-full bg-white/20 animate-pulse" />
