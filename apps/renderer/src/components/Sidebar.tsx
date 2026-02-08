@@ -53,8 +53,10 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-white/[0.08] bg-[#141414]">
+      {/* Drag region / traffic light space */}
+      <div className="drag-region h-[52px] shrink-0" />
       {/* Branding */}
-      <div className="flex items-center gap-2 px-4 pt-5 pb-4">
+      <div className="flex items-center gap-2 px-4 pb-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-xs font-bold text-[#0c0c0c]">
           CT
         </div>

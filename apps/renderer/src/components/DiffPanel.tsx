@@ -6,7 +6,7 @@ export default function DiffPanel() {
   return (
     <aside className="flex h-full w-[400px] shrink-0 flex-col border-l border-white/[0.08] bg-[#141414]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
+      <div className="drag-region flex items-center justify-between border-b border-white/[0.08] px-4 pt-[28px] pb-3">
         <h3 className="text-xs font-medium text-[#e0e0e0]">
           Uncommitted changes
         </h3>

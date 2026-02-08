@@ -135,12 +135,14 @@ export default function ChatView() {
   // Empty state: no active thread
   if (!activeThread) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-[#0c0c0c] text-[#a0a0a0]/40">
-        <div className="text-center">
-          <div className="mb-3 text-4xl">&#x2728;</div>
-          <p className="text-sm">
-            Select a thread or create a new one to get started.
-          </p>
+      <div className="flex flex-1 flex-col bg-[#0c0c0c] text-[#a0a0a0]/40">
+        <div className="drag-region h-[52px] shrink-0" />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <p className="text-sm">
+              Select a thread or create a new one to get started.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -149,7 +151,7 @@ export default function ChatView() {
   return (
     <div className="flex flex-1 flex-col bg-[#0c0c0c]">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-white/[0.08] px-5 py-3">
+      <header className="drag-region flex items-center justify-between border-b border-white/[0.08] px-5 pt-[28px] pb-3">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-[#e0e0e0]">
             {activeThread.title}

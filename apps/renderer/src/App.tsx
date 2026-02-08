@@ -31,8 +31,9 @@ function Layout() {
 
   if (!api) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0c0c0c] text-[#e0e0e0]">
-        <div className="text-center">
+      <div className="flex h-screen flex-col bg-[#0c0c0c] text-[#e0e0e0]">
+        <div className="drag-region h-[52px] shrink-0" />
+        <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-[#a0a0a0]/60">
             Native bridge unavailable. Launch through Electron.
           </p>
