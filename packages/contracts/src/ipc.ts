@@ -1,4 +1,5 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
+import type { TerminalCommandInput, TerminalCommandResult } from "./terminal";
 import type { NewTodoInput, Todo } from "./todo";
 
 export const IPC_CHANNELS = {
@@ -6,6 +7,7 @@ export const IPC_CHANNELS = {
   todosAdd: "todos:add",
   todosToggle: "todos:toggle",
   todosRemove: "todos:remove",
+  terminalRun: "terminal:run",
   agentSpawn: "agent:spawn",
   agentKill: "agent:kill",
   agentWrite: "agent:write",
@@ -19,6 +21,9 @@ export interface NativeApi {
     add: (input: NewTodoInput) => Promise<Todo[]>;
     toggle: (id: string) => Promise<Todo[]>;
     remove: (id: string) => Promise<Todo[]>;
+  };
+  terminal: {
+    run: (input: TerminalCommandInput) => Promise<TerminalCommandResult>;
   };
   agent: {
     spawn: (config: AgentConfig) => Promise<string>;

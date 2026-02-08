@@ -9,6 +9,9 @@ const nativeApi: NativeApi = {
     toggle: (id) => ipcRenderer.invoke(IPC_CHANNELS.todosToggle, id),
     remove: (id) => ipcRenderer.invoke(IPC_CHANNELS.todosRemove, id),
   },
+  terminal: {
+    run: (input) => ipcRenderer.invoke(IPC_CHANNELS.terminalRun, input),
+  },
   agent: {
     spawn: (config) => ipcRenderer.invoke(IPC_CHANNELS.agentSpawn, config),
     kill: (sessionId) => ipcRenderer.invoke(IPC_CHANNELS.agentKill, sessionId),

@@ -2,13 +2,17 @@ import { fixPath } from "./fixPath";
 fixPath();
 
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { BrowserWindow, app, ipcMain, session } from "electron";
 
 import {
   IPC_CHANNELS,
+  type TerminalCommandInput,
+  type TerminalCommandResult,
   agentConfigSchema,
   agentSessionIdSchema,
   newTodoInputSchema,
+  terminalCommandInputSchema,
   todoIdSchema,
 } from "@acme/contracts";
 import { ProcessManager } from "./processManager";
@@ -70,6 +74,11 @@ function registerIpcHandlers(): void {
     return todoStore.remove(todoIdSchema.parse(id));
   });
 
+  // Terminal handlers
+  ipcMain.handle(IPC_CHANNELS.terminalRun, async (_event, payload: unknown) => {
+    return runTerminalCommand(terminalCommandInputSchema.parse(payload));
+  });
+
   // Agent handlers
   ipcMain.handle(IPC_CHANNELS.agentSpawn, async (_event, config: unknown) => {
     return processManager.spawn(agentConfigSchema.parse(config));
@@ -85,6 +94,66 @@ function registerIpcHandlers(): void {
       processManager.write(agentSessionIdSchema.parse(sessionId), String(data));
     },
   );
+}
+
+async function runTerminalCommand(
+  input: TerminalCommandInput,
+): Promise<TerminalCommandResult> {
+  const shellPath =
+    process.platform === "win32"
+      ? process.env.ComSpec ?? "cmd.exe"
+      : process.env.SHELL ?? "/bin/sh";
+
+  const args =
+    process.platform === "win32"
+      ? ["/d", "/s", "/c", input.command]
+      : ["-lc", input.command];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(shellPath, args, {
+      cwd: input.cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 1_000).unref();
+    }, input.timeoutMs ?? 30_000);
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      resolve({
+        stdout,
+        stderr,
+        code: code ?? null,
+        signal: signal ?? null,
+        timedOut,
+      });
+    });
+  });
 }
 
 function setupEventForwarding(window: BrowserWindow): void {

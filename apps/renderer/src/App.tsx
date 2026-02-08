@@ -1,19 +1,19 @@
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type FormEvent, useMemo, useState } from "react";
 
-import type { Todo } from "@acme/contracts";
+import type { TerminalCommandResult } from "@acme/contracts";
 
-function formatCreatedAt(isoDate: string): string {
+interface TerminalEntry {
+  id: string;
+  command: string;
+  result: TerminalCommandResult;
+  createdAt: string;
+}
+
+function formatTimestamp(isoDate: string): string {
   return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
   }).format(new Date(isoDate));
 }
 
@@ -27,102 +27,52 @@ function readNativeApi() {
 
 export default function App() {
   const api = useMemo(() => readNativeApi(), []);
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [title, setTitle] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [command, setCommand] = useState("");
+  const [history, setHistory] = useState<TerminalEntry[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const loadTodos = useCallback(async () => {
-    if (!api) {
-      return;
-    }
-
-    setError(null);
-
-    try {
-      const nextTodos = await api.todos.list();
-      setTodos(nextTodos);
-    } catch (loadError) {
-      const message =
-        loadError instanceof Error
-          ? loadError.message
-          : "Could not fetch todos.";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    void loadTodos();
-  }, [loadTodos]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!api) {
+    if (!api || isRunning) {
       return;
     }
 
-    const trimmed = title.trim();
+    const trimmed = command.trim();
     if (!trimmed) {
       return;
     }
 
     setError(null);
+    setIsRunning(true);
 
     try {
-      const nextTodos = await api.todos.add({ title: trimmed });
-      setTodos(nextTodos);
-      setTitle("");
-    } catch (addError) {
+      const result = await api.terminal.run({ command: trimmed });
+      setHistory((previous) => [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          command: trimmed,
+          result,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      setCommand("");
+    } catch (runError) {
       const message =
-        addError instanceof Error ? addError.message : "Could not add todo.";
+        runError instanceof Error
+          ? runError.message
+          : "Could not execute command.";
       setError(message);
-    }
-  };
-
-  const onToggle = async (id: string) => {
-    if (!api) {
-      return;
-    }
-
-    setError(null);
-
-    try {
-      const nextTodos = await api.todos.toggle(id);
-      setTodos(nextTodos);
-    } catch (toggleError) {
-      const message =
-        toggleError instanceof Error
-          ? toggleError.message
-          : "Could not toggle todo.";
-      setError(message);
-    }
-  };
-
-  const onRemove = async (id: string) => {
-    if (!api) {
-      return;
-    }
-
-    setError(null);
-
-    try {
-      const nextTodos = await api.todos.remove(id);
-      setTodos(nextTodos);
-    } catch (removeError) {
-      const message =
-        removeError instanceof Error
-          ? removeError.message
-          : "Could not remove todo.";
-      setError(message);
+    } finally {
+      setIsRunning(false);
     }
   };
 
   if (!api) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-8">
+      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-8">
         <section className="rounded-3xl border border-amber-200 bg-amber-50 px-6 py-5 text-amber-900 shadow-soft">
           <h1 className="text-lg font-semibold">Native bridge unavailable</h1>
           <p className="mt-2 text-sm">
@@ -134,100 +84,102 @@ export default function App() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 py-12 text-slate-900 sm:px-10">
-      <header className="rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-soft backdrop-blur">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Long-Horizon TODOs
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-10 text-slate-900 sm:px-10">
+      <header className="rounded-3xl border border-slate-800/80 bg-slate-900 p-7 text-slate-100 shadow-soft">
+        <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">
+          Demo Terminal
+        </p>
+        <h1 className="mt-2 font-mono text-3xl font-semibold tracking-tight">
+          Shell Command Runner
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Renderer is isolated. All native access is routed through a typed
-          preload API.
+        <p className="mt-3 text-sm text-slate-300">
+          Runs one command at a time in your shell and prints stdout/stderr.
         </p>
 
         <form className="mt-6 flex gap-3" onSubmit={onSubmit}>
           <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Write a task..."
-            className="h-11 flex-1 rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-500"
-            maxLength={280}
+            value={command}
+            onChange={(event) => setCommand(event.target.value)}
+            placeholder="e.g. ls -la"
+            className="h-11 flex-1 rounded-xl border border-emerald-500/50 bg-slate-950 px-4 font-mono text-sm text-emerald-100 outline-none ring-0 transition focus:border-emerald-300"
+            maxLength={4000}
           />
           <button
             type="submit"
-            className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-medium text-white transition hover:bg-slate-700"
+            className="h-11 rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-800 disabled:text-emerald-300"
+            disabled={isRunning}
           >
-            Add
+            {isRunning ? "Running..." : "Run"}
+          </button>
+          <button
+            type="button"
+            className="h-11 rounded-xl border border-slate-600 px-5 text-sm font-medium text-slate-200 transition hover:border-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={history.length === 0 || isRunning}
+            onClick={() => setHistory([])}
+          >
+            Clear
           </button>
         </form>
       </header>
 
-      <section className="mt-6 rounded-3xl border border-slate-200/70 bg-white/80 p-4 shadow-soft backdrop-blur sm:p-6">
-        {isLoading ? (
-          <p className="text-sm text-slate-500">Loading todos...</p>
-        ) : null}
+      {error ? (
+        <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
 
-        {error ? (
-          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
+      <section className="mt-6 flex-1 space-y-4">
+        {history.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+            No commands run yet.
           </div>
         ) : null}
 
-        {!isLoading && todos.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-            No todos yet. Add one above.
-          </p>
-        ) : null}
+        {history.map((entry) => (
+          <article
+            key={entry.id}
+            className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-soft"
+          >
+            <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3 font-mono text-xs text-slate-300">
+              <p>$ {entry.command}</p>
+              <p>{formatTimestamp(entry.createdAt)}</p>
+            </header>
 
-        <ul className="space-y-3">
-          {todos.map((todo) => (
-            <li
-              key={todo.id}
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  void onToggle(todo.id);
-                }}
-                className="flex flex-1 items-center gap-3 text-left"
-              >
-                <span
-                  className={[
-                    "mt-0.5 inline-block h-5 w-5 rounded-full border transition",
-                    todo.completed
-                      ? "border-emerald-600 bg-emerald-500"
-                      : "border-slate-300 bg-white",
-                  ].join(" ")}
-                />
-                <span>
-                  <p
-                    className={[
-                      "text-sm font-medium",
-                      todo.completed
-                        ? "text-slate-400 line-through"
-                        : "text-slate-800",
-                    ].join(" ")}
-                  >
-                    {todo.title}
+            <div className="space-y-3 px-4 py-4 font-mono text-sm">
+              {entry.result.stdout ? (
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-emerald-300">
+                    stdout
                   </p>
-                  <p className="text-xs text-slate-500">
-                    Created {formatCreatedAt(todo.createdAt)}
-                  </p>
-                </span>
-              </button>
+                  <pre className="whitespace-pre-wrap break-words text-emerald-100">
+                    {entry.result.stdout}
+                  </pre>
+                </div>
+              ) : null}
 
-              <button
-                type="button"
-                onClick={() => {
-                  void onRemove(todo.id);
-                }}
-                className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
+              {entry.result.stderr ? (
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-rose-300">
+                    stderr
+                  </p>
+                  <pre className="whitespace-pre-wrap break-words text-rose-200">
+                    {entry.result.stderr}
+                  </pre>
+                </div>
+              ) : null}
+
+              {!entry.result.stdout && !entry.result.stderr ? (
+                <p className="text-slate-400">(no output)</p>
+              ) : null}
+            </div>
+
+            <footer className="border-t border-slate-800 bg-slate-900/60 px-4 py-2 font-mono text-xs text-slate-400">
+              exit={entry.result.code ?? "null"} signal=
+              {entry.result.signal ?? "null"} timedOut=
+              {entry.result.timedOut ? "yes" : "no"}
+            </footer>
+          </article>
+        ))}
       </section>
     </main>
   );
