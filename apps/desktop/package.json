@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "bun run --parallel dev:bundle dev:electron",
+    "dev": "concurrently -k -n BUNDLE,ELECTRON \"bun run dev:bundle\" \"bun run dev:electron\"",
     "dev:bundle": "tsup --watch",
     "dev:electron": "bun run scripts/dev-electron.mjs",
     "build": "tsup",
@@ -20,6 +20,7 @@
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "@electron/rebuild": "^3.7.0",
     "@types/node": "^22.10.2",
     "electronmon": "^2.0.2",
