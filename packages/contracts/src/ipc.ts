@@ -1,5 +1,6 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
 import type {
+  GitCheckoutInput,
   GitCreateBranchInput,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
@@ -76,6 +77,7 @@ export interface NativeApi {
     createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;
     removeWorktree: (input: GitRemoveWorktreeInput) => Promise<void>;
     createBranch: (input: GitCreateBranchInput) => Promise<void>;
+    checkout: (input: GitCheckoutInput) => Promise<void>;
     init: (input: GitInitInput) => Promise<void>;
   };
 }
