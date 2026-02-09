@@ -649,7 +649,7 @@ export default function ChatView() {
 
       {/* Error banner */}
       {activeThread.error && (
-        <div className="mx-4 mt-3 rounded-lg border border-rose-400/20 bg-rose-900/20 px-3 py-2 text-xs text-rose-200">
+        <div className="mx-4 mt-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {activeThread.error}
         </div>
       )}
