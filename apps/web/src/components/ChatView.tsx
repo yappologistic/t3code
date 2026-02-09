@@ -368,17 +368,19 @@ export default function ChatView() {
       if (e.key === "o" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         if (api && activeProject) {
           e.preventDefault();
-          void api.shell.openInEditor(activeProject.cwd, lastEditor);
+          const cwd = activeThread?.worktreePath ?? activeProject.cwd;
+          void api.shell.openInEditor(cwd, lastEditor);
         }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, activeProject, lastEditor]);
+  }, [api, activeProject, activeThread, lastEditor]);
 
   const openInEditor = (editorId: EditorId) => {
     if (!api || !activeProject) return;
-    void api.shell.openInEditor(activeProject.cwd, editorId);
+    const cwd = activeThread?.worktreePath ?? activeProject.cwd;
+    void api.shell.openInEditor(cwd, editorId);
     setLastEditor(editorId);
     localStorage.setItem(LAST_EDITOR_KEY, editorId);
     setIsEditorMenuOpen(false);
