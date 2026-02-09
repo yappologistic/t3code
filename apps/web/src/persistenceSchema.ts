@@ -34,6 +34,8 @@ const persistedThreadSchema = z.object({
   model: z.string().min(1),
   messages: z.array(persistedMessageSchema),
   createdAt: z.string().min(1),
+  branch: z.string().min(1).nullable().optional(),
+  worktreePath: z.string().min(1).nullable().optional(),
 });
 
 const persistedStateBodySchema = z.object({
@@ -112,6 +114,8 @@ function hydrateThread(
     events: [],
     error: null,
     createdAt: thread.createdAt,
+    branch: thread.branch ?? null,
+    worktreePath: thread.worktreePath ?? null,
   };
 }
 
@@ -170,6 +174,8 @@ export function toPersistedState(
       model: thread.model,
       messages: thread.messages,
       createdAt: thread.createdAt,
+      branch: thread.branch,
+      worktreePath: thread.worktreePath,
     })),
     activeThreadId: state.activeThreadId,
     runtimeMode: state.runtimeMode,
