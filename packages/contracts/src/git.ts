@@ -17,6 +17,11 @@ export const gitRemoveWorktreeInputSchema = z.object({
   path: z.string().min(1),
 });
 
+export const gitCreateBranchInputSchema = z.object({
+  cwd: z.string().min(1),
+  branch: z.string().min(1),
+});
+
 export const gitInitInputSchema = z.object({
   cwd: z.string().min(1),
 });
@@ -44,6 +49,7 @@ export type GitWorktree = z.infer<typeof gitWorktreeSchema>;
 export type GitRemoveWorktreeInput = z.infer<
   typeof gitRemoveWorktreeInputSchema
 >;
+export type GitCreateBranchInput = z.infer<typeof gitCreateBranchInputSchema>;
 export type GitInitInput = z.infer<typeof gitInitInputSchema>;
 
 export interface GitListBranchesResult {
