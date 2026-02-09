@@ -163,6 +163,8 @@ describe("toPersistedState", () => {
       model: "gpt-5.3-codex",
       messages: thread.messages,
       createdAt: thread.createdAt,
+      branch: null,
+      worktreePath: null,
     });
     const persistedThread = persisted.threads[0];
     expect(persistedThread).toBeDefined();
