@@ -36,6 +36,7 @@ export const gitInitInputSchema = z.object({
 export const gitBranchSchema = z.object({
   name: z.string().min(1),
   current: z.boolean(),
+  isDefault: z.boolean(),
 });
 
 export const gitWorktreeSchema = z.object({

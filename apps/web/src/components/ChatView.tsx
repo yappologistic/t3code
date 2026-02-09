@@ -582,6 +582,17 @@ export default function ChatView() {
           <h2 className="text-sm font-medium text-foreground">
             {activeThread.title}
           </h2>
+          {activeProject && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] text-muted-foreground/50">
+              {activeProject.name}
+            </span>
+          )}
+          {activeThread.branch && (
+            <span className="rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] text-muted-foreground/50">
+              {activeThread.branch}
+              {activeThread.worktreePath ? " (worktree)" : ""}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
