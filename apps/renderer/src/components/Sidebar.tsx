@@ -14,6 +14,14 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function threadStatusLabel(
+  status: "connecting" | "ready" | "running" | "error" | "closed" | undefined,
+): "Working" | "Connecting" | null {
+  if (status === "running") return "Working";
+  if (status === "connecting") return "Connecting";
+  return null;
+}
+
 export default function Sidebar() {
   const { state, dispatch } = useStore();
   const api = useMemo(() => readNativeApi(), []);
@@ -107,9 +115,15 @@ export default function Sidebar() {
       {/* Project list */}
       <nav className="flex-1 overflow-y-auto px-2">
         {state.projects.map((project) => {
-          const threads = state.threads.filter(
-            (t) => t.projectId === project.id,
-          );
+          const threads = state.threads
+            .filter((t) => t.projectId === project.id)
+            .sort((a, b) => {
+              const byDate =
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime();
+              if (byDate !== 0) return byDate;
+              return b.id.localeCompare(a.id);
+            });
           return (
             <div key={project.id} className="mb-1">
               {/* Project header */}
@@ -136,6 +150,9 @@ export default function Sidebar() {
                 <div className="ml-2 border-l border-white/[0.06] pl-2">
                   {threads.map((thread) => {
                     const isActive = state.activeThreadId === thread.id;
+                    const threadStatus = threadStatusLabel(
+                      thread.session?.status,
+                    );
                     return (
                       <button
                         key={thread.id}
@@ -152,9 +169,19 @@ export default function Sidebar() {
                           })
                         }
                       >
-                        <span className="flex-1 truncate text-xs">
-                          {thread.title}
-                        </span>
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                          {threadStatus && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-[#7ed8ff]/80">
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300/80" />
+                              <span className="hidden xl:inline">
+                                {threadStatus}
+                              </span>
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-xs">
+                            {thread.title}
+                          </span>
+                        </div>
                         <span className="shrink-0 text-[10px] text-[#a0a0a0]/30">
                           {formatRelativeTime(thread.createdAt)}
                         </span>

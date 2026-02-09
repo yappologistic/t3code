@@ -5,6 +5,7 @@ import {
   type WorkLogEntry,
   applyEventToMessages,
   deriveTimelineEntries,
+  deriveWorkLogEntries,
   evolveSession,
 } from "./session-logic";
 import type { ChatMessage } from "./types";
@@ -102,6 +103,63 @@ describe("deriveTimelineEntries", () => {
       "work:w-1",
       "message:m-1",
     ]);
+  });
+});
+
+describe("deriveWorkLogEntries", () => {
+  it("drops preamble/work events from the visible work log", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-1",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+          payload: { item: { type: "preamble", text: "thinking" } },
+        }),
+        makeEvent({
+          id: "evt-2",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:01.000Z",
+          payload: { item: { type: "work", text: "planning" } },
+        }),
+        makeEvent({
+          id: "evt-3",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:02.000Z",
+          payload: { item: { type: "tool_call", command: "ls -la" } },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Tool call");
+  });
+
+  it("logs turn completion with elapsed time", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-start",
+          method: "turn/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+        }),
+        makeEvent({
+          id: "evt-complete",
+          method: "turn/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:10.000Z",
+          payload: { turn: { id: "turn-1", status: "completed" } },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries[0]?.label).toBe("Turn complete in 10s");
   });
 });
 

@@ -11,7 +11,12 @@ import {
 import type { ProviderEvent, ProviderSession } from "@acme/contracts";
 import { resolveModelSlug } from "./model-logic";
 import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
-import { applyEventToMessages, evolveSession } from "./session-logic";
+import {
+  applyEventToMessages,
+  asObject,
+  asString,
+  evolveSession,
+} from "./session-logic";
 import type { Project, Thread } from "./types";
 
 // ── Actions ──────────────────────────────────────────────────────────
@@ -103,6 +108,57 @@ function findThreadBySessionId(
   return threads.find((t) => t.session?.sessionId === sessionId);
 }
 
+function getEventTurnId(event: ProviderEvent): string | undefined {
+  if (event.turnId) return event.turnId;
+  const payload = asObject(event.payload);
+  const turn = asObject(payload?.turn);
+  return asString(turn?.id);
+}
+
+function durationMs(startIso: string, endIso: string): number | undefined {
+  const start = Date.parse(startIso);
+  const end = Date.parse(endIso);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+    return undefined;
+  }
+
+  return end - start;
+}
+
+function updateTurnFields(
+  thread: Thread,
+  event: ProviderEvent,
+): Partial<Thread> {
+  if (event.method === "turn/started") {
+    return {
+      latestTurnId: getEventTurnId(event) ?? thread.latestTurnId,
+      latestTurnStartedAt: event.createdAt,
+      latestTurnCompletedAt: undefined,
+      latestTurnDurationMs: undefined,
+    };
+  }
+
+  if (event.method === "turn/completed") {
+    const completedTurnId = getEventTurnId(event) ?? thread.latestTurnId;
+    const startedAt =
+      completedTurnId && completedTurnId === thread.latestTurnId
+        ? thread.latestTurnStartedAt
+        : undefined;
+    const elapsed =
+      startedAt && startedAt.length > 0
+        ? durationMs(startedAt, event.createdAt)
+        : undefined;
+
+    return {
+      latestTurnId: completedTurnId ?? thread.latestTurnId,
+      latestTurnCompletedAt: event.createdAt,
+      latestTurnDurationMs: elapsed,
+    };
+  }
+
+  return {};
+}
+
 // ── Reducer ──────────────────────────────────────────────────────────
 
 function reducer(state: AppState, action: Action): AppState {
@@ -164,6 +220,7 @@ function reducer(state: AppState, action: Action): AppState {
           events: [event, ...t.events].slice(0, 200),
           error:
             event.kind === "error" && event.message ? event.message : t.error,
+          ...updateTurnFields(t, event),
         })),
       };
     }
@@ -176,6 +233,10 @@ function reducer(state: AppState, action: Action): AppState {
           session: action.session,
           events: [],
           error: null,
+          latestTurnId: undefined,
+          latestTurnStartedAt: undefined,
+          latestTurnCompletedAt: undefined,
+          latestTurnDurationMs: undefined,
         })),
       };
 

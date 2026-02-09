@@ -3,20 +3,43 @@ import { describe, expect, it } from "vitest";
 import { ProviderManager } from "./providerManager";
 
 describe("ProviderManager", () => {
-  it("detaches provider event listener and ends log stream on dispose", () => {
+  it("detaches provider event listener and ends thread log streams on dispose", () => {
     const manager = new ProviderManager();
     const internals = manager as unknown as {
       codex: { listenerCount: (event: string) => number };
-      logStream: { writableEnded: boolean; destroyed: boolean };
+      onCodexEvent: (event: {
+        id: string;
+        kind: "notification";
+        provider: "codex";
+        sessionId: string;
+        createdAt: string;
+        method: string;
+        threadId: string;
+      }) => void;
+      threadLogStreams: Map<
+        string,
+        { writableEnded: boolean; destroyed: boolean }
+      >;
     };
+    internals.onCodexEvent({
+      id: "evt-1",
+      kind: "notification",
+      provider: "codex",
+      sessionId: "sess-1",
+      createdAt: new Date().toISOString(),
+      method: "thread/started",
+      threadId: "thread-1",
+    });
+    const stream = internals.threadLogStreams.get("thread-1");
+    expect(stream).toBeDefined();
+    if (!stream) return;
 
     expect(internals.codex.listenerCount("event")).toBe(1);
     manager.dispose();
 
     expect(internals.codex.listenerCount("event")).toBe(0);
-    expect(
-      internals.logStream.writableEnded || internals.logStream.destroyed,
-    ).toBe(true);
+    expect(stream.writableEnded || stream.destroyed).toBe(true);
+    expect(internals.threadLogStreams.size).toBe(0);
   });
 
   it("allows multiple dispose calls", () => {

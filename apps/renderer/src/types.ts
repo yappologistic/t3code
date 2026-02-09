@@ -28,4 +28,8 @@ export interface Thread {
   events: ProviderEvent[];
   error: string | null;
   createdAt: string;
+  latestTurnId?: string | undefined;
+  latestTurnStartedAt?: string | undefined;
+  latestTurnCompletedAt?: string | undefined;
+  latestTurnDurationMs?: number | undefined;
 }

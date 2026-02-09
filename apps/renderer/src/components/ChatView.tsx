@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  Fragment,
   type KeyboardEvent,
   useEffect,
   useMemo,
@@ -18,6 +19,7 @@ import {
   derivePhase,
   deriveTimelineEntries,
   deriveWorkLogEntries,
+  formatDuration,
   formatElapsed,
   formatTimestamp,
   readNativeApi,
@@ -67,12 +69,13 @@ export default function ChatView() {
   );
   const phase = derivePhase(activeThread?.session ?? null);
   const isWorking = phase === "running" || isSending || isConnecting;
-  const activeTurnId = activeThread?.session?.activeTurnId;
+  const workLogTurnId =
+    activeThread?.latestTurnId ?? activeThread?.session?.activeTurnId;
   const nowIso = new Date(nowTick).toISOString();
   const modelOptions = MODEL_OPTIONS;
   const workLogEntries = useMemo(
-    () => deriveWorkLogEntries(activeThread?.events ?? [], activeTurnId),
-    [activeThread?.events, activeTurnId],
+    () => deriveWorkLogEntries(activeThread?.events ?? [], workLogTurnId),
+    [activeThread?.events, workLogTurnId],
   );
   const assistantCompletionByItemId = useMemo(() => {
     const map = new Map<string, string>();
@@ -85,13 +88,54 @@ export default function ChatView() {
     return map;
   }, [activeThread?.events]);
   const timelineEntries = useMemo(
-    () =>
-      deriveTimelineEntries(
-        activeThread?.messages ?? [],
-        isWorking ? workLogEntries : [],
-      ),
-    [activeThread?.messages, isWorking, workLogEntries],
+    () => deriveTimelineEntries(activeThread?.messages ?? [], workLogEntries),
+    [activeThread?.messages, workLogEntries],
   );
+  const completionSummary = useMemo(() => {
+    if (!activeThread?.latestTurnStartedAt) return null;
+    if (!activeThread.latestTurnCompletedAt) return null;
+    if (workLogEntries.length === 0) return null;
+
+    if (
+      typeof activeThread.latestTurnDurationMs === "number" &&
+      Number.isFinite(activeThread.latestTurnDurationMs) &&
+      activeThread.latestTurnDurationMs >= 0
+    ) {
+      return `Worked for ${formatDuration(activeThread.latestTurnDurationMs)}`;
+    }
+
+    const elapsed = formatElapsed(
+      activeThread.latestTurnStartedAt,
+      activeThread.latestTurnCompletedAt,
+    );
+    return elapsed ? `Worked for ${elapsed}` : null;
+  }, [
+    activeThread?.latestTurnStartedAt,
+    activeThread?.latestTurnCompletedAt,
+    activeThread?.latestTurnDurationMs,
+    workLogEntries.length,
+  ]);
+  const completionDividerBeforeEntryId = useMemo(() => {
+    if (!activeThread?.latestTurnStartedAt) return null;
+    if (!activeThread.latestTurnCompletedAt) return null;
+    if (workLogEntries.length === 0) return null;
+
+    const turnStartedAt = Date.parse(activeThread.latestTurnStartedAt);
+    if (Number.isNaN(turnStartedAt)) return null;
+
+    const entry = timelineEntries.find((timelineEntry) => {
+      if (timelineEntry.kind !== "message") return false;
+      if (timelineEntry.message.role !== "assistant") return false;
+      const messageAt = Date.parse(timelineEntry.message.createdAt);
+      return !Number.isNaN(messageAt) && messageAt >= turnStartedAt;
+    });
+    return entry?.id ?? null;
+  }, [
+    activeThread?.latestTurnStartedAt,
+    activeThread?.latestTurnCompletedAt,
+    timelineEntries,
+    workLogEntries.length,
+  ]);
 
   // Auto-scroll on new messages
   const messageCount = activeThread?.messages.length ?? 0;
@@ -349,85 +393,96 @@ export default function ChatView() {
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
-            {timelineEntries.map((timelineEntry) =>
-              timelineEntry.kind === "work" ? (
-                <div
-                  key={timelineEntry.id}
-                  className="border-l-2 border-white/[0.05] pl-4 py-1"
-                >
-                  <p
-                    className={`py-[2px] text-[12px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
-                  >
-                    {timelineEntry.entry.detail ? (
-                      <>
-                        {timelineEntry.entry.label}
-                        <span className="ml-1.5 font-mono text-[11px] opacity-60">
-                          {timelineEntry.entry.detail}
-                        </span>
-                      </>
-                    ) : (
-                      timelineEntry.entry.label
-                    )}
-                  </p>
-                </div>
-              ) : (
-                <div key={timelineEntry.id}>
-                  {timelineEntry.message.role === "user" ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/[0.08] bg-white/[0.05] px-4 py-3">
-                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-[#e0e0e0]">
-                          {timelineEntry.message.text}
-                        </pre>
-                        <p className="mt-1.5 text-right text-[10px] text-[#a0a0a0]/30">
-                          {formatTimestamp(timelineEntry.message.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="border-l-2 border-white/[0.15] pl-4">
-                      <ChatMarkdown
-                        text={
-                          timelineEntry.message.text ||
-                          (timelineEntry.message.streaming
-                            ? ""
-                            : "(empty response)")
-                        }
-                      />
-                      {timelineEntry.message.streaming && (
-                        <div className="pt-1.5">
-                          <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
-                            <span className="inline-flex gap-1">
-                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
-                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
-                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:300ms]" />
-                            </span>
-                            <span>Thinking</span>
-                          </span>
-                        </div>
-                      )}
-                      <p className="mt-1.5 text-[10px] text-[#a0a0a0]/30">
-                        {formatMessageMeta(
-                          timelineEntry.message.createdAt,
-                          timelineEntry.message.streaming
-                            ? formatElapsed(
-                                timelineEntry.message.createdAt,
-                                nowIso,
-                              )
-                            : formatElapsed(
-                                timelineEntry.message.createdAt,
-                                assistantCompletionByItemId.get(
-                                  timelineEntry.message.id,
-                                ),
-                              ),
-                        )}
-                      </p>
+            {timelineEntries.map((timelineEntry, index) => (
+              <Fragment key={timelineEntry.id}>
+                {timelineEntry.kind === "message" &&
+                  timelineEntry.message.role === "assistant" &&
+                  (completionDividerBeforeEntryId === timelineEntry.id ||
+                    timelineEntries[index - 1]?.kind === "work") && (
+                    <div className="my-3 flex items-center gap-3">
+                      <span className="h-px flex-1 bg-white/[0.1]" />
+                      <span className="rounded-full border border-white/[0.12] bg-[#121212] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#9a9a9a]/80">
+                        {completionSummary
+                          ? `Response • ${completionSummary}`
+                          : "Response"}
+                      </span>
+                      <span className="h-px flex-1 bg-white/[0.1]" />
                     </div>
                   )}
-                </div>
-              ),
-            )}
+                {timelineEntry.kind === "work" ? (
+                  <div className="flex items-start gap-2 py-0.5 pl-1.5">
+                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-white/[0.18]" />
+                    <p
+                      className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
+                    >
+                      {timelineEntry.entry.detail ? (
+                        <>
+                          {timelineEntry.entry.label}
+                          <span className="ml-1.5 font-mono text-[11px] opacity-60">
+                            {timelineEntry.entry.detail}
+                          </span>
+                        </>
+                      ) : (
+                        timelineEntry.entry.label
+                      )}
+                    </p>
+                  </div>
+                ) : timelineEntry.message.role === "user" ? (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/[0.08] bg-white/[0.05] px-4 py-3">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-[#e0e0e0]">
+                        {timelineEntry.message.text}
+                      </pre>
+                      <p className="mt-1.5 text-right text-[10px] text-[#a0a0a0]/30">
+                        {formatTimestamp(timelineEntry.message.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-1 py-0.5">
+                    <ChatMarkdown
+                      text={
+                        timelineEntry.message.text ||
+                        (timelineEntry.message.streaming
+                          ? ""
+                          : "(empty response)")
+                      }
+                    />
+                    {timelineEntry.message.streaming && (
+                      <div className="pt-1.5">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
+                          <span className="inline-flex gap-1">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:300ms]" />
+                          </span>
+                          <span>Thinking</span>
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-1.5 text-[10px] text-[#a0a0a0]/30">
+                      {formatMessageMeta(
+                        timelineEntry.message.createdAt,
+                        timelineEntry.message.streaming
+                          ? formatElapsed(
+                              timelineEntry.message.createdAt,
+                              nowIso,
+                            )
+                          : formatElapsed(
+                              timelineEntry.message.createdAt,
+                              assistantCompletionByItemId.get(
+                                timelineEntry.message.id,
+                              ),
+                            ),
+                      )}
+                    </p>
+                  </div>
+                )}
+              </Fragment>
+            ))}
             {isWorking && (
-              <div className="border-l-2 border-white/[0.05] pl-4 py-1">
+              <div className="flex items-center gap-2 py-0.5 pl-1.5">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/[0.18]" />
                 <div className="flex items-center pt-1">
                   <span className="inline-flex items-center gap-[3px]">
                     <span className="h-1 w-1 rounded-full bg-white/20 animate-pulse" />
