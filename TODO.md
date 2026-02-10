@@ -10,3 +10,5 @@
 - [x] "Response" bar should ONLY appear on work completed
 - [x] "Response" bar should ONLY appear above the FINAL message in a series
 - [x] Reduce noise of tool calls (combine "command run" and "command completed", make tool calls a "box" with limited # of calls shown at a time, etc)
+- [ ] Insta focus input on new thread creation
+- [ ] Disable "streaming" (wait until whole paragraph/step finishes before showing it
