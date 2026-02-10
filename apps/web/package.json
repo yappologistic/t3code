@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/renderer",
+  "name": "@t3tools/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",

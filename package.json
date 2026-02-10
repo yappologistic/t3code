@@ -6,14 +6,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "T3CODE_LOG_WS_EVENTS=1 VITE_WS_URL=ws://localhost:3773 turbo run dev --ui=tui --filter=@t3tools/contracts --filter=@t3tools/renderer --filter=t3 --parallel",
+    "dev": "T3CODE_LOG_WS_EVENTS=1 VITE_WS_URL=ws://localhost:3773 turbo run dev --ui=tui --filter=@t3tools/contracts --filter=@t3tools/web --filter=t3 --parallel",
     "dev:server": "bun run build:contracts && bun run --cwd apps/server dev",
-    "dev:web": "VITE_WS_URL=ws://localhost:3773 bun run --cwd apps/renderer dev",
+    "dev:web": "VITE_WS_URL=ws://localhost:3773 bun run --cwd apps/web dev",
     "dev:desktop": "bun run --cwd apps/desktop dev",
     "start": "node apps/server/dist/index.js",
     "start:desktop": "bun run --cwd apps/desktop start",
     "build": "turbo run build",
-    "build:desktop": "bun run build:contracts && bun run --cwd apps/renderer build && bun run --cwd apps/server build && bun run --cwd apps/desktop build",
+    "build:desktop": "bun run build:contracts && bun run --cwd apps/web build && bun run --cwd apps/server build && bun run --cwd apps/desktop build",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint --report-unused-disable-directives",
     "test": "turbo run test",

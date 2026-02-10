@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "bun run --cwd ../server build && concurrently -k -n BUNDLE,RENDERER,ELECTRON \"bun run dev:bundle\" \"bun run --cwd ../renderer dev\" \"bun run dev:electron\"",
+    "dev": "bun run --cwd ../server build && concurrently -k -n BUNDLE,WEB,ELECTRON \"bun run dev:bundle\" \"bun run --cwd ../web dev\" \"bun run dev:electron\"",
     "dev:bundle": "tsup --watch",
     "dev:electron": "bun run scripts/dev-electron.mjs",
     "build": "tsup",

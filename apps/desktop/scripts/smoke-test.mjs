@@ -8,7 +8,7 @@ const rootDir = resolve(__dirname, "../../..");
 const electronBin = resolve(desktopDir, "node_modules/.bin/electron");
 const mainJs = resolve(desktopDir, "dist-electron/main.js");
 
-console.log("Building contracts + renderer + server + desktop...");
+console.log("Building contracts + web + server + desktop...");
 execSync("bun run build", { cwd: rootDir, stdio: "inherit" });
 
 console.log("\nLaunching Electron smoke test...");

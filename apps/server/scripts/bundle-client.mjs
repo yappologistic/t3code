@@ -1,5 +1,5 @@
 /**
- * Copies the built renderer into dist/client/ so the published npm package
+ * Copies the built web app into dist/client/ so the published npm package
  * includes the web UI. This runs as a post-build step.
  */
 import fs from "node:fs";
@@ -7,15 +7,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rendererDist = path.resolve(__dirname, "../../renderer/dist");
+const webDist = path.resolve(__dirname, "../../web/dist");
 const target = path.resolve(__dirname, "../dist/client");
 
-if (!fs.existsSync(rendererDist)) {
+if (!fs.existsSync(webDist)) {
   console.log(
-    "⚠ Renderer dist not found — skipping client bundle. Run `bun run --cwd apps/renderer build` first.",
+    "⚠ Web dist not found — skipping client bundle. Run `bun run --cwd apps/web build` first.",
   );
   process.exit(0);
 }
 
-fs.cpSync(rendererDist, target, { recursive: true });
-console.log("✓ Bundled renderer into dist/client");
+fs.cpSync(webDist, target, { recursive: true });
+console.log("✓ Bundled web app into dist/client");

@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@t3tools/contracts": "workspace:*",
-    "@t3tools/renderer": "workspace:*",
+    "@t3tools/web": "workspace:*",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
     "tsup": "^8.3.5",

@@ -29,9 +29,9 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 
 ## Workspace layout
 
-- `/apps/server`: Node.js WebSocket server. Wraps Codex app-server, serves the built renderer, and opens the browser on start.
-- `/apps/renderer`: React + Vite UI. Session control, conversation, and provider event rendering. Connects to the server via WebSocket.
-- `/apps/desktop`: Electron shell. Spawns a desktop-scoped `t3` backend process and loads the shared renderer.
+- `/apps/server`: Node.js WebSocket server. Wraps Codex app-server, serves the built web app, and opens the browser on start.
+- `/apps/web`: React + Vite UI. Session control, conversation, and provider event rendering. Connects to the server via WebSocket.
+- `/apps/desktop`: Electron shell. Spawns a desktop-scoped `t3` backend process and loads the shared web app.
 - `/packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types.
 
 ## Codex prerequisites
@@ -61,9 +61,9 @@ npx t3
 
 - `bun run dev` — Starts contracts, server, and web dev tasks via Turborepo's parallel task runner.
 - `bun run dev:server` — Starts just the WebSocket server (uses tsx for TS execution).
-- `bun run dev:web` — Starts just the Vite dev server for the renderer.
-- `bun run start` — Runs the production server (serves built renderer as static files).
-- `bun run build` — Builds contracts, renderer, and server through Turbo.
+- `bun run dev:web` — Starts just the Vite dev server for the web app.
+- `bun run start` — Runs the production server (serves built web app as static files).
+- `bun run build` — Builds contracts, web app, and server through Turbo.
 - `bun run typecheck` — Strict TypeScript checks for all packages.
 - `bun run test` — Runs workspace tests.
 
@@ -76,7 +76,7 @@ T3 Code has a global runtime mode switch in the chat toolbar:
 
 ## Provider architecture
 
-The renderer communicates with the server via WebSocket using a simple JSON-RPC-style protocol:
+The web app communicates with the server via WebSocket using a simple JSON-RPC-style protocol:
 
 - **Request/Response**: `{ id, method, params }` → `{ id, result }` or `{ id, error }`
 - **Push events**: `{ type: "push", channel, data }` for streaming provider events

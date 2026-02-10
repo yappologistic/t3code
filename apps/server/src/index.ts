@@ -84,8 +84,8 @@ function resolveStaticDir(): string | undefined {
     // Not bundled — check monorepo layout
   }
 
-  // Monorepo layout: apps/server/dist/index.js → apps/renderer/dist/
-  const monorepoClient = path.resolve(__dirname, "../../renderer/dist");
+  // Monorepo layout: apps/server/dist/index.js → apps/web/dist/
+  const monorepoClient = path.resolve(__dirname, "../../web/dist");
   try {
     const stat = fs.statSync(path.join(monorepoClient, "index.html"));
     if (stat.isFile()) return monorepoClient;
@@ -109,8 +109,8 @@ async function main() {
   const staticDir = devUrl ? undefined : resolveStaticDir();
 
   if (!devUrl && !staticDir) {
-    logger.warn("renderer bundle missing and no VITE_DEV_SERVER_URL; web UI unavailable", {
-      hint: "Run `bun run --cwd apps/renderer build` or set VITE_DEV_SERVER_URL for dev mode.",
+    logger.warn("web bundle missing and no VITE_DEV_SERVER_URL; web UI unavailable", {
+      hint: "Run `bun run --cwd apps/web build` or set VITE_DEV_SERVER_URL for dev mode.",
     });
   }
 

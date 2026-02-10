@@ -28,8 +28,28 @@
         "wait-on": "^8.0.2",
       },
     },
-    "apps/renderer": {
-      "name": "@t3tools/renderer",
+    "apps/server": {
+      "name": "t3",
+      "version": "0.1.0",
+      "bin": {
+        "t3": "./dist/index.js",
+      },
+      "dependencies": {
+        "open": "^10.1.0",
+        "ws": "^8.18.0",
+      },
+      "devDependencies": {
+        "@t3tools/contracts": "workspace:*",
+        "@t3tools/web": "workspace:*",
+        "@types/node": "^22.10.2",
+        "@types/ws": "^8.5.13",
+        "tsup": "^8.3.5",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.3",
+      },
+    },
+    "apps/web": {
+      "name": "@t3tools/web",
       "version": "0.0.0",
       "dependencies": {
         "@t3tools/contracts": "workspace:*",
@@ -51,26 +71,6 @@
         "tailwindcss": "^4.0.0",
         "typescript": "^5.7.3",
         "vite": "^6.0.5",
-      },
-    },
-    "apps/server": {
-      "name": "t3",
-      "version": "0.1.0",
-      "bin": {
-        "t3": "./dist/index.js",
-      },
-      "dependencies": {
-        "open": "^10.1.0",
-        "ws": "^8.18.0",
-      },
-      "devDependencies": {
-        "@t3tools/contracts": "workspace:*",
-        "@t3tools/renderer": "workspace:*",
-        "@types/node": "^22.10.2",
-        "@types/ws": "^8.5.13",
-        "tsup": "^8.3.5",
-        "tsx": "^4.19.0",
-        "typescript": "^5.7.3",
       },
     },
     "packages/contracts": {
@@ -294,7 +294,7 @@
 
     "@t3tools/desktop": ["@t3tools/desktop@workspace:apps/desktop"],
 
-    "@t3tools/renderer": ["@t3tools/renderer@workspace:apps/renderer"],
+    "@t3tools/web": ["@t3tools/web@workspace:apps/web"],
 
     "@tailwindcss/node": ["@tailwindcss/node@4.1.18", "", { "dependencies": { "@jridgewell/remapping": "^2.3.4", "enhanced-resolve": "^5.18.3", "jiti": "^2.6.1", "lightningcss": "1.30.2", "magic-string": "^0.30.21", "source-map-js": "^1.2.1", "tailwindcss": "4.1.18" } }, "sha512-DoR7U1P7iYhw16qJ49fgXUlry1t4CpXeErJHnQ44JgTSKMaZUdf17cfn5mHchfJ4KRBZRFA/Coo+MUF5+gOaCQ=="],
 

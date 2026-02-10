@@ -14,7 +14,7 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 
 ## Package Roles
 - `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
-- `apps/renderer`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
+- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
 - `packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types.
 
 ## Codex App Server (Important)
@@ -24,7 +24,7 @@ How we use it in this codebase:
 - Session startup/resume and turn lifecycle are brokered in `apps/server/src/codexAppServerManager.ts`.
 - Provider dispatch and thread event logging are coordinated in `apps/server/src/providerManager.ts`.
 - WebSocket server routes NativeApi methods in `apps/server/src/wsServer.ts`.
-- Renderer consumes provider event streams via WebSocket push on channel `providers.event`.
+- Web app consumes provider event streams via WebSocket push on channel `providers.event`.
 
 Docs:
 - Codex App Server docs: https://developers.openai.com/codex/sdk/#app-server

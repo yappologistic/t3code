@@ -109,7 +109,7 @@ export function createServer(options: ServerOptions) {
       return;
     }
 
-    // Serve static files from the renderer build
+    // Serve static files from the web app build
     if (!staticDir) {
       res.writeHead(503, { "Content-Type": "text/plain" });
       res.end("No static directory configured and no dev URL set.");
