@@ -167,7 +167,7 @@ export default function BranchToolbar({
   if (!activeThread || !activeProject) return null;
 
   return (
-    <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-2">
+    <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1">
       <div className="flex items-center gap-2">
         {envLocked ? (
           <span className="inline-flex items-center gap-1.5 px-1 text-[12px] text-muted-foreground/55">

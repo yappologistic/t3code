@@ -955,14 +955,8 @@ export default function ChatView() {
         )}
       </div>
 
-      <BranchToolbar
-        envMode={envMode}
-        onEnvModeChange={setEnvMode}
-        envLocked={envLocked}
-      />
-
       {/* Input bar */}
-      <div className="px-5 pb-4 pt-2">
+      <div className="px-5 pb-1 pt-2">
         <form onSubmit={onSend} className="mx-auto max-w-3xl">
           <div className="group rounded-[20px] border border-border bg-card transition-colors duration-200 focus-within:border-ring">
             {/* Textarea area */}
@@ -1231,6 +1225,12 @@ export default function ChatView() {
           </div>
         </form>
       </div>
+
+      <BranchToolbar
+        envMode={envMode}
+        onEnvModeChange={setEnvMode}
+        envLocked={envLocked}
+      />
     </div>
   );
 }

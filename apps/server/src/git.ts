@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 
 import type {
@@ -27,9 +28,7 @@ export async function runTerminalCommand(
       : (process.env.SHELL ?? "/bin/sh");
 
   const args =
-    process.platform === "win32"
-      ? ["/d", "/s", "/c", input.command]
-      : ["-lc", input.command];
+    process.platform === "win32" ? ["/d", "/s", "/c", input.command] : ["-lc", input.command];
 
   return new Promise((resolve, reject) => {
     const child = spawn(shellPath, args, {
@@ -78,9 +77,7 @@ export async function runTerminalCommand(
   });
 }
 
-export async function listGitBranches(
-  input: GitListBranchesInput,
-): Promise<GitListBranchesResult> {
+export async function listGitBranches(input: GitListBranchesInput): Promise<GitListBranchesResult> {
   const result = await runTerminalCommand({
     command: "git branch --no-color",
     cwd: input.cwd,
@@ -102,9 +99,7 @@ export async function listGitBranches(
     timeoutMs: 5_000,
   });
   const defaultBranch =
-    defaultRef.code === 0
-      ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "")
-      : null;
+    defaultRef.code === 0 ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : null;
 
   const branches = result.stdout
     .split("\n")
@@ -130,8 +125,7 @@ export async function createGitWorktree(
   const sanitizedBranch = input.newBranch.replace(/\//g, "-");
   const repoName = path.basename(input.cwd);
   const worktreePath =
-    input.path ??
-    path.join(input.cwd, "..", `${repoName}-worktrees`, sanitizedBranch);
+    input.path ?? path.join(os.homedir(), ".t3", "worktrees", repoName, sanitizedBranch);
 
   // Create a new branch from the base branch in a new worktree
   const result = await runTerminalCommand({
@@ -152,9 +146,7 @@ export async function createGitWorktree(
   };
 }
 
-export async function removeGitWorktree(
-  input: GitRemoveWorktreeInput,
-): Promise<void> {
+export async function removeGitWorktree(input: GitRemoveWorktreeInput): Promise<void> {
   const result = await runTerminalCommand({
     command: `git worktree remove '${escapeSingleQuotes(input.path)}'`,
     cwd: input.cwd,
@@ -166,9 +158,7 @@ export async function removeGitWorktree(
   }
 }
 
-export async function createGitBranch(
-  input: GitCreateBranchInput,
-): Promise<void> {
+export async function createGitBranch(input: GitCreateBranchInput): Promise<void> {
   const result = await runTerminalCommand({
     command: `git branch '${escapeSingleQuotes(input.branch)}'`,
     cwd: input.cwd,
@@ -180,9 +170,7 @@ export async function createGitBranch(
   }
 }
 
-export async function checkoutGitBranch(
-  input: GitCheckoutInput,
-): Promise<void> {
+export async function checkoutGitBranch(input: GitCheckoutInput): Promise<void> {
   const result = await runTerminalCommand({
     command: `git checkout '${escapeSingleQuotes(input.branch)}'`,
     cwd: input.cwd,
