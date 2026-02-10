@@ -93,7 +93,7 @@ describe("store reducer thread continuity", () => {
     expect(next.threads[0]?.codexThreadId).toBe("thr_backfilled");
   });
 
-  it("surfaces thread id mismatches without overwriting stored identity", () => {
+  it("ignores events from a foreign thread within the same session", () => {
     const state = makeState(makeThread({ codexThreadId: "thr_expected" }));
     const next = reducer(state, {
       type: "APPLY_EVENT",
@@ -105,7 +105,30 @@ describe("store reducer thread continuity", () => {
       activeAssistantItemRef: { current: null },
     });
 
-    expect(next.threads[0]?.codexThreadId).toBe("thr_expected");
-    expect(next.threads[0]?.error).toContain("Thread identity mismatch");
+    expect(next).toBe(state);
+  });
+
+  it("rebases thread identity on thread/started during connect", () => {
+    const state = makeState(
+      makeThread({
+        codexThreadId: "thr_old",
+        session: makeSession({
+          status: "connecting",
+          threadId: "thr_old",
+        }),
+      }),
+    );
+    const next = reducer(state, {
+      type: "APPLY_EVENT",
+      event: makeEvent({
+        method: "thread/started",
+        threadId: "thr_new",
+        payload: { thread: { id: "thr_new" } },
+      }),
+      activeAssistantItemRef: { current: null },
+    });
+
+    expect(next.threads[0]?.codexThreadId).toBe("thr_new");
+    expect(next.threads[0]?.session?.threadId).toBe("thr_new");
   });
 });

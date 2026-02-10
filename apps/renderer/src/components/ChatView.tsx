@@ -50,6 +50,7 @@ function editorLabel(editor: (typeof EDITORS)[number]): string {
 }
 
 const LAST_EDITOR_KEY = "codething:last-editor";
+const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -93,7 +94,7 @@ function derivePendingApprovals(
   events: ProviderEvent[],
 ): PendingApprovalCard[] {
   const pending = new Map<string, PendingApprovalCard>();
-  const ordered = [...events].reverse();
+  const ordered = [...events].toReversed();
 
   for (const event of ordered) {
     if (
@@ -150,6 +151,9 @@ export default function ChatView() {
   const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>(
     [],
   );
+  const [expandedWorkGroups, setExpandedWorkGroups] = useState<
+    Record<string, boolean>
+  >({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -168,6 +172,14 @@ export default function ChatView() {
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(activeThread?.events ?? [], undefined),
     [activeThread?.events],
+  );
+  const latestTurnWorkEntries = useMemo(
+    () =>
+      deriveWorkLogEntries(
+        activeThread?.events ?? [],
+        activeThread?.latestTurnId,
+      ),
+    [activeThread?.events, activeThread?.latestTurnId],
   );
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(activeThread?.events ?? []),
@@ -190,7 +202,9 @@ export default function ChatView() {
   const completionSummary = useMemo(() => {
     if (!activeThread?.latestTurnStartedAt) return null;
     if (!activeThread.latestTurnCompletedAt) return null;
-    if (workLogEntries.length === 0) return null;
+    if (!latestTurnWorkEntries.some((entry) => entry.tone === "tool")) {
+      return null;
+    }
 
     if (
       typeof activeThread.latestTurnDurationMs === "number" &&
@@ -209,28 +223,36 @@ export default function ChatView() {
     activeThread?.latestTurnStartedAt,
     activeThread?.latestTurnCompletedAt,
     activeThread?.latestTurnDurationMs,
-    workLogEntries.length,
+    latestTurnWorkEntries,
   ]);
   const completionDividerBeforeEntryId = useMemo(() => {
     if (!activeThread?.latestTurnStartedAt) return null;
     if (!activeThread.latestTurnCompletedAt) return null;
-    if (workLogEntries.length === 0) return null;
+    if (!completionSummary) return null;
 
     const turnStartedAt = Date.parse(activeThread.latestTurnStartedAt);
+    const turnCompletedAt = Date.parse(activeThread.latestTurnCompletedAt);
     if (Number.isNaN(turnStartedAt)) return null;
+    if (Number.isNaN(turnCompletedAt)) return null;
 
-    const entry = timelineEntries.find((timelineEntry) => {
-      if (timelineEntry.kind !== "message") return false;
-      if (timelineEntry.message.role !== "assistant") return false;
+    let inRangeMatch: string | null = null;
+    let fallbackMatch: string | null = null;
+    for (const timelineEntry of timelineEntries) {
+      if (timelineEntry.kind !== "message") continue;
+      if (timelineEntry.message.role !== "assistant") continue;
       const messageAt = Date.parse(timelineEntry.message.createdAt);
-      return !Number.isNaN(messageAt) && messageAt >= turnStartedAt;
-    });
-    return entry?.id ?? null;
+      if (Number.isNaN(messageAt) || messageAt < turnStartedAt) continue;
+      fallbackMatch = timelineEntry.id;
+      if (messageAt <= turnCompletedAt) {
+        inRangeMatch = timelineEntry.id;
+      }
+    }
+    return inRangeMatch ?? fallbackMatch;
   }, [
-    activeThread?.latestTurnStartedAt,
     activeThread?.latestTurnCompletedAt,
+    activeThread?.latestTurnStartedAt,
+    completionSummary,
     timelineEntries,
-    workLogEntries.length,
   ]);
   const runtimeSessionConfig =
     state.runtimeMode === "full-access"
@@ -281,6 +303,10 @@ export default function ChatView() {
     if (phase !== "running") return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [phase, workLogCount]);
+
+  useEffect(() => {
+    setExpandedWorkGroups({});
+  }, [activeThread?.id]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -695,12 +721,123 @@ export default function ChatView() {
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
-            {timelineEntries.map((timelineEntry, index) => (
-              <Fragment key={timelineEntry.id}>
-                {timelineEntry.kind === "message" &&
-                  timelineEntry.message.role === "assistant" &&
-                  (completionDividerBeforeEntryId === timelineEntry.id ||
-                    timelineEntries[index - 1]?.kind === "work") && (
+            {timelineEntries.map((timelineEntry, index) => {
+              if (
+                timelineEntry.kind === "work" &&
+                timelineEntries[index - 1]?.kind === "work"
+              ) {
+                return null;
+              }
+
+              const showCompletionDivider =
+                timelineEntry.kind === "message" &&
+                timelineEntry.message.role === "assistant" &&
+                completionDividerBeforeEntryId === timelineEntry.id;
+
+              if (timelineEntry.kind === "work") {
+                const groupedEntries = [timelineEntry.entry];
+                let cursor = index + 1;
+                while (cursor < timelineEntries.length) {
+                  const nextEntry = timelineEntries[cursor];
+                  if (!nextEntry || nextEntry.kind !== "work") break;
+                  groupedEntries.push(nextEntry.entry);
+                  cursor += 1;
+                }
+
+                const groupId = timelineEntry.id;
+                const isExpanded = expandedWorkGroups[groupId] ?? false;
+                const hasOverflow =
+                  groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+                const visibleEntries =
+                  hasOverflow && !isExpanded
+                    ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+                    : groupedEntries;
+                const hiddenCount = groupedEntries.length - visibleEntries.length;
+                const onlyToolEntries = groupedEntries.every(
+                  (entry) => entry.tone === "tool",
+                );
+                const groupLabel = onlyToolEntries
+                  ? groupedEntries.length === 1
+                    ? "Tool call"
+                    : `Tool calls (${groupedEntries.length})`
+                  : groupedEntries.length === 1
+                    ? "Work event"
+                    : `Work log (${groupedEntries.length})`;
+
+                return (
+                  <Fragment key={timelineEntry.id}>
+                    <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                          {groupLabel}
+                        </p>
+                        {hasOverflow && (
+                          <button
+                            type="button"
+                            className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
+                            onClick={() =>
+                              setExpandedWorkGroups((existing) => ({
+                                ...existing,
+                                [groupId]: !existing[groupId],
+                              }))
+                            }
+                          >
+                            {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {visibleEntries.map((workEntry) => (
+                          <div
+                            key={`work-row:${workEntry.id}`}
+                            className="flex items-start gap-2 py-0.5"
+                          >
+                            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                            <p
+                              className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
+                            >
+                              {workEntry.detail ? (
+                                <>
+                                  {workEntry.label}
+                                  <span
+                                    className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
+                                    title={workEntry.detail}
+                                  >
+                                    {workEntry.detail}
+                                  </span>
+                                </>
+                              ) : (
+                                workEntry.label
+                              )}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </Fragment>
+                );
+              }
+
+              if (timelineEntry.message.role === "user") {
+                return (
+                  <Fragment key={timelineEntry.id}>
+                    <div className="flex justify-end">
+                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-foreground">
+                          {timelineEntry.message.text}
+                        </pre>
+                        <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">
+                          {formatTimestamp(timelineEntry.message.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </Fragment>
+                );
+              }
+
+              return (
+                <Fragment key={timelineEntry.id}>
+                  {showCompletionDivider && (
                     <div className="my-3 flex items-center gap-3">
                       <span className="h-px flex-1 bg-border" />
                       <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
@@ -711,39 +848,6 @@ export default function ChatView() {
                       <span className="h-px flex-1 bg-border" />
                     </div>
                   )}
-                {timelineEntry.kind === "work" ? (
-                  <div className="flex items-start gap-2 py-0.5 pl-1.5">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-                    <p
-                      className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
-                    >
-                      {timelineEntry.entry.detail ? (
-                        <>
-                          {timelineEntry.entry.label}
-                          <span
-                            className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
-                            title={timelineEntry.entry.detail}
-                          >
-                            {timelineEntry.entry.detail}
-                          </span>
-                        </>
-                      ) : (
-                        timelineEntry.entry.label
-                      )}
-                    </p>
-                  </div>
-                ) : timelineEntry.message.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-                      <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-foreground">
-                        {timelineEntry.message.text}
-                      </pre>
-                      <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">
-                        {formatTimestamp(timelineEntry.message.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
                   <div className="px-1 py-0.5">
                     <ChatMarkdown
                       text={
@@ -753,18 +857,6 @@ export default function ChatView() {
                           : "(empty response)")
                       }
                     />
-                    {timelineEntry.message.streaming && (
-                      <div className="pt-1.5">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
-                          <span className="inline-flex gap-1">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:300ms]" />
-                          </span>
-                          <span>Thinking</span>
-                        </span>
-                      </div>
-                    )}
                     <p className="mt-1.5 text-[10px] text-muted-foreground/30">
                       {formatMessageMeta(
                         timelineEntry.message.createdAt,
@@ -782,9 +874,9 @@ export default function ChatView() {
                       )}
                     </p>
                   </div>
-                )}
-              </Fragment>
-            ))}
+                </Fragment>
+              );
+            })}
             {isWorking && (
               <div className="flex items-center gap-2 py-0.5 pl-1.5">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />

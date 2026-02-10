@@ -134,7 +134,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.label).toBe("Tool call");
   });
 
-  it("logs turn completion with elapsed time", () => {
+  it("does not surface successful turn completion as a work-log row", () => {
     const entries = deriveWorkLogEntries(
       [
         makeEvent({
@@ -154,7 +154,38 @@ describe("deriveWorkLogEntries", () => {
       "turn-1",
     );
 
-    expect(entries[0]?.label).toBe("Turn complete in 10s");
+    expect(entries).toHaveLength(0);
+  });
+
+  it("shows failed turn completion in the work log", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-start",
+          method: "turn/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+        }),
+        makeEvent({
+          id: "evt-complete",
+          method: "turn/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:10.000Z",
+          payload: {
+            turn: {
+              id: "turn-1",
+              status: "failed",
+              error: { message: "sandbox denied" },
+            },
+          },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Turn failed");
+    expect(entries[0]?.detail).toBe("sandbox denied");
   });
 
   it("hides reasoning and agent-message noise from the visible work log", () => {
@@ -229,11 +260,45 @@ describe("deriveWorkLogEntries", () => {
       "turn-1",
     );
 
-    expect(entries.map((entry) => entry.label)).toEqual([
-      "Turn complete in 8.0s",
-      "Tool call complete",
-      "Tool call",
-    ]);
+    expect(entries.map((entry) => entry.label)).toEqual(["Tool call"]);
+  });
+
+  it("coalesces command start/completed lifecycle into one entry", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-command-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:01.000Z",
+          payload: {
+            item: {
+              id: "item-command",
+              type: "command_execution",
+              command: "git status --short",
+            },
+          },
+        }),
+        makeEvent({
+          id: "evt-command-complete",
+          method: "item/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:02.000Z",
+          payload: {
+            item: {
+              id: "item-command",
+              type: "command_execution",
+              command: "git status --short",
+            },
+          },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Command run");
+    expect(entries[0]?.detail).toBe("git status --short");
   });
 
   it("preserves full tool-call detail text without data truncation", () => {
@@ -255,6 +320,50 @@ describe("deriveWorkLogEntries", () => {
     );
 
     expect(entries[0]?.detail).toBe(longCommand);
+  });
+
+  it("hides generic tool-call rows that have no identifying detail", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-tool-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:05.000Z",
+          payload: {
+            item: { id: "item-tool", type: "tool_call" },
+          },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(0);
+  });
+
+  it("includes collab tool-call rows with tool name detail", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-collab-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:05.000Z",
+          payload: {
+            item: {
+              id: "item-collab",
+              type: "collabAgentToolCall",
+              tool: "spawnAgent",
+            },
+          },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Tool call");
+    expect(entries[0]?.detail).toBe("spawnAgent");
   });
 
   it("can derive work-log entries across all turns when not scoped", () => {

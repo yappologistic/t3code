@@ -7,6 +7,6 @@
 - [ ] Selecting folder should instantly create project
 - [ ] New projects should go on top
 - [ ] Projects should be sorted by latest thread update
-- [ ] "Response" bar should ONLY appear on work completed
-- [ ] "Response" bar should ONLY appear above the FINAL message in a series
-- [ ] Reduce noise of tool calls (combine "command run" and "command completed", make tool calls a "box" with limited # of calls shown at a time, etc)
+- [x] "Response" bar should ONLY appear on work completed
+- [x] "Response" bar should ONLY appear above the FINAL message in a series
+- [x] Reduce noise of tool calls (combine "command run" and "command completed", make tool calls a "box" with limited # of calls shown at a time, etc)

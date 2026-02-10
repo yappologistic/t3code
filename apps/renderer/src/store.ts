@@ -132,7 +132,37 @@ function getEventTurnId(event: ProviderEvent): string | undefined {
 function getEventThreadId(event: ProviderEvent): string | undefined {
   if (event.threadId) return event.threadId;
   const payload = asObject(event.payload);
-  return asString(payload?.threadId) ?? asString(asObject(payload?.thread)?.id);
+  const payloadThread = asObject(payload?.thread);
+  const payloadMessage = asObject(payload?.msg);
+  return (
+    asString(payload?.threadId) ??
+    asString(payloadThread?.id) ??
+    asString(payload?.conversationId) ??
+    asString(payload?.thread_id) ??
+    asString(payloadMessage?.thread_id)
+  );
+}
+
+function shouldIgnoreForeignThreadEvent(
+  thread: Thread,
+  event: ProviderEvent,
+): boolean {
+  const eventThreadId = getEventThreadId(event);
+  if (!eventThreadId) {
+    return false;
+  }
+
+  const expectedThreadId = thread.session?.threadId ?? thread.codexThreadId;
+  if (!expectedThreadId || eventThreadId === expectedThreadId) {
+    return false;
+  }
+
+  // During connect, accept a thread/started notification as an identity rebind.
+  if (event.method === "thread/started" && thread.session?.status === "connecting") {
+    return false;
+  }
+
+  return true;
 }
 
 function durationMs(startIso: string, endIso: string): number | undefined {
@@ -226,6 +256,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const { event, activeAssistantItemRef } = action;
       const target = findThreadBySessionId(state.threads, event.sessionId);
       if (!target) return state;
+      if (shouldIgnoreForeignThreadEvent(target, event)) return state;
 
       return {
         ...state,
@@ -233,17 +264,14 @@ export function reducer(state: AppState, action: Action): AppState {
           ...t,
           ...(() => {
             const eventThreadId = getEventThreadId(event);
-            const hasThreadMismatch =
-              t.codexThreadId !== null &&
-              eventThreadId !== undefined &&
-              eventThreadId !== t.codexThreadId;
-            const threadMismatchError = hasThreadMismatch
-              ? `Thread identity mismatch: expected ${t.codexThreadId}, received ${eventThreadId}.`
-              : null;
+            const shouldRebindIdentity =
+              event.method === "thread/started" &&
+              t.session?.status === "connecting";
             return {
-              codexThreadId: t.codexThreadId ?? eventThreadId ?? null,
+              codexThreadId: shouldRebindIdentity
+                ? eventThreadId ?? t.codexThreadId
+                : t.codexThreadId ?? eventThreadId ?? null,
               error:
-                threadMismatchError ??
                 (event.kind === "error" && event.message
                   ? event.message
                   : t.error),

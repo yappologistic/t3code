@@ -135,15 +135,28 @@ function itemTypeMeta(type: string): {
   return { label: "Work item", tone: "info" };
 }
 
+interface ItemLifecycleCandidate {
+  id: string;
+  itemId?: string;
+  createdAt: string;
+  label: string;
+  detail?: string;
+  tone: WorkLogEntry["tone"];
+  phase: "started" | "completed";
+}
+
 function extractDetail(
   payload: Record<string, unknown> | undefined,
   item: Record<string, unknown> | undefined,
 ): string | undefined {
   const candidates = [
+    asString(item?.command),
+    asString(item?.tool),
+    asString(item?.name),
     asString(item?.title),
     asString(item?.summary),
     asString(item?.text),
-    asString(item?.command),
+    asString(item?.prompt),
     asString(payload?.message),
     asString(payload?.prompt),
     asString(payload?.command),
@@ -156,7 +169,9 @@ function extractDetail(
   return undefined;
 }
 
-function entryFromItemLifecycle(event: ProviderEvent): WorkLogEntry | null {
+function lifecycleCandidateFromItemEvent(
+  event: ProviderEvent,
+): ItemLifecycleCandidate | null {
   const payload = asObject(event.payload);
   const item = asObject(payload?.item);
   const normalizedType = normalizeItemType(asString(item?.type));
@@ -174,14 +189,16 @@ function entryFromItemLifecycle(event: ProviderEvent): WorkLogEntry | null {
     return null;
   }
 
-  const label = isCompleted ? `${meta.label} complete` : meta.label;
   const detail = extractDetail(payload, item);
+  const itemId = event.itemId ?? asString(item?.id);
   return {
     id: event.id,
+    ...(itemId ? { itemId } : {}),
     createdAt: event.createdAt,
-    label,
+    label: meta.label,
     ...(detail ? { detail } : {}),
     tone: meta.tone,
+    phase: isCompleted ? "completed" : "started",
   };
 }
 
@@ -224,10 +241,7 @@ function entryFromRequest(event: ProviderEvent): WorkLogEntry | null {
   };
 }
 
-function entryFromNotification(
-  event: ProviderEvent,
-  turnStartedAt: number,
-): WorkLogEntry | null {
+function entryFromNotification(event: ProviderEvent): WorkLogEntry | null {
   if (event.kind !== "notification") return null;
   if (shouldDropMethod(event.method)) return null;
   if (event.method === "item/agentMessage/delta") return null;
@@ -240,33 +254,21 @@ function entryFromNotification(
     const payload = asObject(event.payload);
     const turn = asObject(payload?.turn);
     const status = asString(turn?.status);
+    if (status !== "failed") {
+      return null;
+    }
     const turnError = asObject(turn?.error);
     const turnErrorMessage = asString(turnError?.message);
     const turnErrorDetail = normalizeDetail(turnErrorMessage);
-    const eventAt = Date.parse(event.createdAt);
-    const durationMs =
-      Number.isNaN(turnStartedAt) ||
-      Number.isNaN(eventAt) ||
-      eventAt < turnStartedAt
-        ? undefined
-        : eventAt - turnStartedAt;
 
     return {
       id: event.id,
       createdAt: event.createdAt,
-      label:
-        status === "failed"
-          ? "Turn failed"
-          : durationMs !== undefined
-            ? `Turn complete in ${formatDuration(durationMs)}`
-            : "Turn complete",
+      label: "Turn failed",
       ...(turnErrorDetail ? { detail: turnErrorDetail } : {}),
-      tone: status === "failed" ? "error" : "info",
+      tone: "error",
     };
   }
-
-  const lifecycleEntry = entryFromItemLifecycle(event);
-  if (lifecycleEntry) return lifecycleEntry;
 
   if (event.method.startsWith("item/")) return null;
 
@@ -307,19 +309,61 @@ export function deriveWorkLogEntries(
     : undefined;
   const turnStartedAt = turnStartedAtIso ? Date.parse(turnStartedAtIso) : Number.NaN;
 
+  const shouldIncludeEvent = (event: ProviderEvent): boolean => {
+    if (!turnId) return true;
+    const scopedTurnId = eventTurnId(event);
+    if (scopedTurnId && scopedTurnId !== turnId) {
+      return false;
+    }
+
+    if (!scopedTurnId && !Number.isNaN(turnStartedAt)) {
+      const eventAt = Date.parse(event.createdAt);
+      if (!Number.isNaN(eventAt) && eventAt < turnStartedAt) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const completedLifecycleItemIds = new Set<string>();
   for (const event of ordered) {
-    if (turnId) {
-      const scopedTurnId = eventTurnId(event);
-      if (scopedTurnId && scopedTurnId !== turnId) {
+    if (!shouldIncludeEvent(event)) continue;
+    const candidate = lifecycleCandidateFromItemEvent(event);
+    if (candidate?.phase === "completed" && candidate.itemId) {
+      completedLifecycleItemIds.add(candidate.itemId);
+    }
+  }
+
+  for (const event of ordered) {
+    if (!shouldIncludeEvent(event)) continue;
+
+    const lifecycleCandidate = lifecycleCandidateFromItemEvent(event);
+    if (lifecycleCandidate) {
+      if (
+        lifecycleCandidate.phase === "started" &&
+        lifecycleCandidate.itemId &&
+        completedLifecycleItemIds.has(lifecycleCandidate.itemId)
+      ) {
+        continue;
+      }
+      if (
+        lifecycleCandidate.label === "Tool call" &&
+        !lifecycleCandidate.detail
+      ) {
         continue;
       }
 
-      if (!scopedTurnId && !Number.isNaN(turnStartedAt)) {
-        const eventAt = Date.parse(event.createdAt);
-        if (!Number.isNaN(eventAt) && eventAt < turnStartedAt) {
-          continue;
-        }
-      }
+      entries.push({
+        id: lifecycleCandidate.id,
+        createdAt: lifecycleCandidate.createdAt,
+        label: lifecycleCandidate.label,
+        ...(lifecycleCandidate.detail
+          ? { detail: lifecycleCandidate.detail }
+          : {}),
+        tone: lifecycleCandidate.tone,
+      });
+      continue;
     }
 
     const fromRequest = entryFromRequest(event);
@@ -328,7 +372,7 @@ export function deriveWorkLogEntries(
       continue;
     }
 
-    const fromNotification = entryFromNotification(event, turnStartedAt);
+    const fromNotification = entryFromNotification(event);
     if (fromNotification) {
       entries.push(fromNotification);
       continue;
