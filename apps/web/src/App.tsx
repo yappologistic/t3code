@@ -82,6 +82,8 @@ function AutoProjectBootstrap() {
           events: [],
           error: null,
           createdAt: new Date().toISOString(),
+          branch: null,
+          worktreePath: null,
         },
       });
     });

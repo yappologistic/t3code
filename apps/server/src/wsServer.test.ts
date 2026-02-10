@@ -281,6 +281,32 @@ describe("WebSocket Server", () => {
     expect(afterRemove.result).toEqual([]);
   });
 
+  it("supports git methods over websocket", async () => {
+    const repoCwd = makeTempDir("t3code-ws-git-project-");
+
+    server = createTestServer({ cwd: "/test" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const beforeInit = await sendRequest(ws, WS_METHODS.gitListBranches, { cwd: repoCwd });
+    expect(beforeInit.error).toBeUndefined();
+    expect(beforeInit.result).toEqual({ branches: [], isRepo: false });
+
+    const initResponse = await sendRequest(ws, WS_METHODS.gitInit, { cwd: repoCwd });
+    expect(initResponse.error).toBeUndefined();
+
+    const afterInit = await sendRequest(ws, WS_METHODS.gitListBranches, {
+      cwd: repoCwd,
+    });
+    expect(afterInit.error).toBeUndefined();
+    expect((afterInit.result as { isRepo: boolean }).isRepo).toBe(true);
+  });
+
   it("prunes missing projects on startup", async () => {
     const stateDir = makeTempDir("t3code-ws-prune-state-");
     const existing = makeTempDir("t3code-ws-existing-project-");

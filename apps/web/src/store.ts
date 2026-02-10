@@ -33,6 +33,12 @@ type Action =
   | { type: "SET_ERROR"; threadId: string; error: string | null }
   | { type: "SET_THREAD_TITLE"; threadId: string; title: string }
   | { type: "SET_THREAD_MODEL"; threadId: string; model: string }
+  | {
+      type: "SET_THREAD_BRANCH";
+      threadId: string;
+      branch: string | null;
+      worktreePath: string | null;
+    }
   | { type: "SET_RUNTIME_MODE"; mode: RuntimeMode };
 
 // ── State ────────────────────────────────────────────────────────────
@@ -366,6 +372,16 @@ export function reducer(state: AppState, action: Action): AppState {
         threads: updateThread(state.threads, action.threadId, (t) => ({
           ...t,
           model: resolveModelSlug(action.model),
+        })),
+      };
+
+    case "SET_THREAD_BRANCH":
+      return {
+        ...state,
+        threads: updateThread(state.threads, action.threadId, (t) => ({
+          ...t,
+          branch: action.branch,
+          worktreePath: action.worktreePath,
         })),
       };
 

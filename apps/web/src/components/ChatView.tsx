@@ -33,6 +33,7 @@ import {
   readNativeApi,
 } from "../session-logic";
 import { useStore } from "../store";
+import BranchToolbar from "./BranchToolbar";
 import ChatMarkdown from "./ChatMarkdown";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
@@ -148,6 +149,7 @@ export default function ChatView() {
   });
   const [selectedEffort, setSelectedEffort] =
     useState<string>(DEFAULT_REASONING);
+  const [envMode, setEnvMode] = useState<"local" | "worktree">("local");
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
   const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>(
     [],
@@ -265,6 +267,11 @@ export default function ChatView() {
           approvalPolicy: "on-request",
           sandboxMode: "workspace-write",
         } as const);
+  const envLocked = Boolean(
+    activeThread &&
+      (activeThread.messages.length > 0 ||
+        (activeThread.session !== null && activeThread.session.status !== "closed")),
+  );
 
   const handleRuntimeModeChange = async (
     mode: "approval-required" | "full-access",
@@ -308,6 +315,11 @@ export default function ChatView() {
   useEffect(() => {
     setExpandedWorkGroups({});
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    if (!activeThread) return;
+    setEnvMode(activeThread.worktreePath ? "worktree" : "local");
+  }, [activeThread]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -450,6 +462,39 @@ export default function ChatView() {
     if (!api || !activeThread || isSending || isConnecting) return;
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    if (!activeProject) return;
+
+    // On first message: lock in branch + create worktree if needed.
+    let sessionCwd: string | undefined;
+    if (
+      activeThread.messages.length === 0 &&
+      activeThread.branch &&
+      envMode === "worktree" &&
+      !activeThread.worktreePath
+    ) {
+      try {
+        const newBranch = `codething/${crypto.randomUUID().slice(0, 8)}`;
+        const result = await api.git.createWorktree({
+          cwd: activeProject.cwd,
+          branch: activeThread.branch,
+          newBranch,
+        });
+        sessionCwd = result.worktree.path;
+        dispatch({
+          type: "SET_THREAD_BRANCH",
+          threadId: activeThread.id,
+          branch: result.worktree.branch,
+          worktreePath: result.worktree.path,
+        });
+      } catch (err) {
+        dispatch({
+          type: "SET_ERROR",
+          threadId: activeThread.id,
+          error: err instanceof Error ? err.message : "Failed to create worktree",
+        });
+        return;
+      }
+    }
 
     // Auto-title from first message
     if (activeThread.messages.length === 0) {
@@ -475,7 +520,7 @@ export default function ChatView() {
     const previousMessages = activeThread.messages;
     setPrompt("");
 
-    const sessionInfo = await ensureSession(activeThread.worktreePath ?? undefined);
+    const sessionInfo = await ensureSession(sessionCwd);
     if (!sessionInfo) return;
 
     setIsSending(true);
@@ -909,6 +954,12 @@ export default function ChatView() {
           </div>
         )}
       </div>
+
+      <BranchToolbar
+        envMode={envMode}
+        onEnvModeChange={setEnvMode}
+        envLocked={envLocked}
+      />
 
       {/* Input bar */}
       <div className="px-5 pb-4 pt-2">
