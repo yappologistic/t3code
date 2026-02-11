@@ -19,6 +19,14 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { createLogger } from "./logger";
 import { ProjectRegistry } from "./projectRegistry";
 import { ProviderManager } from "./providerManager";
+import {
+  checkoutGitBranch,
+  createGitBranch,
+  createGitWorktree,
+  initGitRepo,
+  listGitBranches,
+  removeGitWorktree,
+} from "./git";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -304,6 +312,24 @@ export function createServer(options: ServerOptions) {
         return undefined;
       }
 
+      case WS_METHODS.gitListBranches:
+        return listGitBranches(request.params as never);
+
+      case WS_METHODS.gitCreateWorktree:
+        return createGitWorktree(request.params as never);
+
+      case WS_METHODS.gitRemoveWorktree:
+        return removeGitWorktree(request.params as never);
+
+      case WS_METHODS.gitCreateBranch:
+        return createGitBranch(request.params as never);
+
+      case WS_METHODS.gitCheckout:
+        return checkoutGitBranch(request.params as never);
+
+      case WS_METHODS.gitInit:
+        return initGitRepo(request.params as never);
+
       case WS_METHODS.serverGetConfig:
         return { cwd };
 
@@ -343,7 +369,10 @@ export function createServer(options: ServerOptions) {
     const isServerNotRunningError = (error: unknown): boolean => {
       if (!(error instanceof Error)) return false;
       const maybeCode = (error as NodeJS.ErrnoException).code;
-      return maybeCode === "ERR_SERVER_NOT_RUNNING" || error.message.toLowerCase().includes("not running");
+      return (
+        maybeCode === "ERR_SERVER_NOT_RUNNING" ||
+        error.message.toLowerCase().includes("not running")
+      );
     };
 
     const closeWebSocketServer = new Promise<void>((resolve, reject) => {

@@ -1,5 +1,15 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
 import type {
+  GitCheckoutInput,
+  GitCreateBranchInput,
+  GitCreateWorktreeInput,
+  GitCreateWorktreeResult,
+  GitInitInput,
+  GitListBranchesInput,
+  GitListBranchesResult,
+  GitRemoveWorktreeInput,
+} from "./git";
+import type {
   ProviderEvent,
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
@@ -61,6 +71,14 @@ export interface NativeApi {
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
+  };
+  git: {
+    listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;
+    createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;
+    removeWorktree: (input: GitRemoveWorktreeInput) => Promise<void>;
+    createBranch: (input: GitCreateBranchInput) => Promise<void>;
+    checkout: (input: GitCheckoutInput) => Promise<void>;
+    init: (input: GitInitInput) => Promise<void>;
   };
   contextMenu: {
     show: <T extends string>(

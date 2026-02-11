@@ -19,6 +19,14 @@ export const WS_METHODS = {
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
+  // Git methods
+  gitListBranches: "git.listBranches",
+  gitCreateWorktree: "git.createWorktree",
+  gitRemoveWorktree: "git.removeWorktree",
+  gitCreateBranch: "git.createBranch",
+  gitCheckout: "git.checkout",
+  gitInit: "git.init",
+
   // Server meta
   serverGetConfig: "server.getConfig",
 } as const;
