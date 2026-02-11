@@ -62,4 +62,10 @@ export interface NativeApi {
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
   };
+  contextMenu: {
+    show: <T extends string>(
+      items: readonly { id: T; label: string }[],
+      position?: { x: number; y: number },
+    ) => Promise<T | null>;
+  };
 }
