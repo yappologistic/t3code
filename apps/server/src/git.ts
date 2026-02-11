@@ -123,19 +123,41 @@ export async function listGitBranches(input: GitListBranchesInput): Promise<GitL
   }
 
   // Resolve the real default branch from the remote
-  const defaultRef = await runGit(["symbolic-ref", "refs/remotes/origin/HEAD"], input.cwd, 5_000);
+  const [defaultRef, worktreeList] = await Promise.all([
+    runGit(["symbolic-ref", "refs/remotes/origin/HEAD"], input.cwd, 5_000),
+    runGit(["worktree", "list", "--porcelain"], input.cwd, 5_000),
+  ]);
   const defaultBranch =
     defaultRef.code === 0 ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : null;
+
+  // Build branch-name → worktree-path map from porcelain output.
+  const worktreeMap = new Map<string, string>();
+  if (worktreeList.code === 0) {
+    let currentPath: string | null = null;
+    for (const line of worktreeList.stdout.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        currentPath = line.slice("worktree ".length);
+      } else if (line.startsWith("branch refs/heads/") && currentPath) {
+        worktreeMap.set(line.slice("branch refs/heads/".length), currentPath);
+      } else if (line === "") {
+        currentPath = null;
+      }
+    }
+  }
 
   const branches = result.stdout
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line) => ({
-      name: line.replace(/^[*+]\s+/, ""),
-      current: line.startsWith("* "),
-      isDefault: line.replace(/^[*+]\s+/, "") === defaultBranch,
-    }))
+    .map((line) => {
+      const name = line.replace(/^[*+]\s+/, "");
+      return {
+        name,
+        current: line.startsWith("* "),
+        isDefault: name === defaultBranch,
+        worktreePath: worktreeMap.get(name) ?? null,
+      };
+    })
     .toSorted((a, b) => {
       if (a.current !== b.current) return a.current ? -1 : 1;
       if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;

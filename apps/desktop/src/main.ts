@@ -186,6 +186,7 @@ function createWindow(): BrowserWindow {
 
   if (isDevelopment) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL as string);
+    window.webContents.openDevTools({ mode: "detach" });
   } else {
     if (!fs.existsSync(WEB_ENTRY)) {
       throw new Error(`Web bundle missing at ${WEB_ENTRY}`);

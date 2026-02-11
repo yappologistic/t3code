@@ -40,6 +40,7 @@ export const gitBranchSchema = z.object({
   name: z.string().min(1),
   current: z.boolean(),
   isDefault: z.boolean(),
+  worktreePath: z.string().min(1).nullable(),
 });
 
 export const gitWorktreeSchema = z.object({

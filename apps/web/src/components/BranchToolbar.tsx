@@ -122,6 +122,17 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
       return;
     }
 
+    // If the branch already lives in a secondary worktree, point the thread
+    // there instead of trying to checkout (which git would reject).
+    // Ignore the main worktree (project cwd) — that's just a normal local checkout.
+    const isSecondaryWorktree = branch.worktreePath && branch.worktreePath !== activeProject?.cwd;
+    if (isSecondaryWorktree) {
+      setThreadError(null);
+      setThreadBranch(branch.name, branch.worktreePath);
+      setIsBranchMenuOpen(false);
+      return;
+    }
+
     checkoutMutation.mutate(branch.name, {
       onSuccess: () => {
         setThreadError(null);
@@ -150,9 +161,9 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1">
       <div className="flex items-center gap-2">
-        {envLocked ? (
+        {envLocked || activeWorktreePath ? (
           <span className="inline-flex items-center gap-1.5 px-1 text-[12px] text-muted-foreground/55">
-            {activeThread.worktreePath ? "Worktree" : "Local"}
+            {activeWorktreePath ? "Worktree" : "Local"}
           </span>
         ) : (
           <button
@@ -188,7 +199,7 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
           >
             <span className="max-w-[240px] truncate font-mono">
               {activeThread.branch
-                ? envMode === "worktree" && !envLocked
+                ? envMode === "worktree" && !activeWorktreePath
                   ? `From ${activeThread.branch}`
                   : activeThread.branch
                 : "Select branch"}
@@ -218,6 +229,8 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
               <div className="max-h-64 overflow-y-auto">
                 {branches.map((branch) => {
                   const isSelected = branch.name === activeThread.branch;
+                  const hasSecondaryWorktree =
+                    branch.worktreePath && branch.worktreePath !== activeProject.cwd;
                   return (
                     <button
                       key={branch.name}
@@ -230,9 +243,9 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
                       onClick={() => selectBranch(branch)}
                     >
                       <span className="truncate">{branch.name}</span>
-                      {(branch.current || branch.isDefault) && (
+                      {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
                         <span className="shrink-0 text-[10px] text-muted-foreground/45">
-                          {branch.current ? "current" : "default"}
+                          {branch.current ? "current" : hasSecondaryWorktree ? "worktree" : "default"}
                         </span>
                       )}
                     </button>
