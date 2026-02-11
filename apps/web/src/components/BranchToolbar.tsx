@@ -37,7 +37,9 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   });
 
   const branches = branchesQuery.data?.branches ?? [];
-  const isRepo = branchesQuery.data?.isRepo ?? false;
+  // Default to true while loading — showing "Initialize git" during a fetch is wrong,
+  // and worktrees are inherently git repos.
+  const isRepo = branchesQuery.data?.isRepo ?? !branchesQuery.isLoading;
 
   // ── Mutations ─────────────────────────────────────────────────────────
 
