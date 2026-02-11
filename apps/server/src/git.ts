@@ -15,8 +15,46 @@ import type {
   TerminalCommandResult,
 } from "@t3tools/contracts";
 
-function escapeSingleQuotes(value: string): string {
-  return value.replace(/'/g, "'\\''");
+/** Spawn git directly with an argv array — no shell, no quoting needed. */
+function runGit(
+  args: string[],
+  cwd: string,
+  timeoutMs = 30_000,
+): Promise<TerminalCommandResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, 1_000).unref();
+    }, timeoutMs);
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ stdout, stderr, code: code ?? null, signal: signal ?? null, timedOut });
+    });
+  });
 }
 
 export async function runTerminalCommand(
@@ -78,11 +116,7 @@ export async function runTerminalCommand(
 }
 
 export async function listGitBranches(input: GitListBranchesInput): Promise<GitListBranchesResult> {
-  const result = await runTerminalCommand({
-    command: "git branch --no-color",
-    cwd: input.cwd,
-    timeoutMs: 10_000,
-  });
+  const result = await runGit(["branch", "--no-color"], input.cwd, 10_000);
 
   if (result.code !== 0) {
     const stderr = result.stderr.trim();
@@ -93,11 +127,11 @@ export async function listGitBranches(input: GitListBranchesInput): Promise<GitL
   }
 
   // Resolve the real default branch from the remote
-  const defaultRef = await runTerminalCommand({
-    command: "git symbolic-ref refs/remotes/origin/HEAD",
-    cwd: input.cwd,
-    timeoutMs: 5_000,
-  });
+  const defaultRef = await runGit(
+    ["symbolic-ref", "refs/remotes/origin/HEAD"],
+    input.cwd,
+    5_000,
+  );
   const defaultBranch =
     defaultRef.code === 0 ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : null;
 
@@ -128,11 +162,10 @@ export async function createGitWorktree(
     input.path ?? path.join(os.homedir(), ".t3", "worktrees", repoName, sanitizedBranch);
 
   // Create a new branch from the base branch in a new worktree
-  const result = await runTerminalCommand({
-    command: `git worktree add -b '${escapeSingleQuotes(input.newBranch)}' '${escapeSingleQuotes(worktreePath)}' '${escapeSingleQuotes(input.branch)}'`,
-    cwd: input.cwd,
-    timeoutMs: 30_000,
-  });
+  const result = await runGit(
+    ["worktree", "add", "-b", input.newBranch, worktreePath, input.branch],
+    input.cwd,
+  );
 
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "git worktree add failed");
@@ -147,11 +180,7 @@ export async function createGitWorktree(
 }
 
 export async function removeGitWorktree(input: GitRemoveWorktreeInput): Promise<void> {
-  const result = await runTerminalCommand({
-    command: `git worktree remove '${escapeSingleQuotes(input.path)}'`,
-    cwd: input.cwd,
-    timeoutMs: 15_000,
-  });
+  const result = await runGit(["worktree", "remove", input.path], input.cwd, 15_000);
 
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "git worktree remove failed");
@@ -159,11 +188,7 @@ export async function removeGitWorktree(input: GitRemoveWorktreeInput): Promise<
 }
 
 export async function createGitBranch(input: GitCreateBranchInput): Promise<void> {
-  const result = await runTerminalCommand({
-    command: `git branch '${escapeSingleQuotes(input.branch)}'`,
-    cwd: input.cwd,
-    timeoutMs: 10_000,
-  });
+  const result = await runGit(["branch", input.branch], input.cwd, 10_000);
 
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "git branch create failed");
@@ -171,11 +196,7 @@ export async function createGitBranch(input: GitCreateBranchInput): Promise<void
 }
 
 export async function checkoutGitBranch(input: GitCheckoutInput): Promise<void> {
-  const result = await runTerminalCommand({
-    command: `git checkout '${escapeSingleQuotes(input.branch)}'`,
-    cwd: input.cwd,
-    timeoutMs: 10_000,
-  });
+  const result = await runGit(["checkout", input.branch], input.cwd, 10_000);
 
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "git checkout failed");
@@ -183,11 +204,7 @@ export async function checkoutGitBranch(input: GitCheckoutInput): Promise<void> 
 }
 
 export async function initGitRepo(input: GitInitInput): Promise<void> {
-  const result = await runTerminalCommand({
-    command: "git init",
-    cwd: input.cwd,
-    timeoutMs: 10_000,
-  });
+  const result = await runGit(["init"], input.cwd, 10_000);
 
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "git init failed");

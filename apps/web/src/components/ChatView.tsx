@@ -319,7 +319,7 @@ export default function ChatView() {
   useEffect(() => {
     if (!activeThread) return;
     setEnvMode(activeThread.worktreePath ? "worktree" : "local");
-  }, [activeThread]);
+  }, [activeThread?.id, activeThread?.worktreePath]);
 
   // Auto-resize textarea
   useEffect(() => {
