@@ -128,13 +128,14 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
       return;
     }
 
-    // If the branch already lives in a secondary worktree, point the thread
-    // there instead of trying to checkout (which git would reject).
-    // Ignore the main worktree (project cwd) — that's just a normal local checkout.
-    const isSecondaryWorktree = branch.worktreePath && branch.worktreePath !== activeProject?.cwd;
-    if (isSecondaryWorktree) {
+    // If the branch already lives in a worktree, redirect there instead of
+    // trying to checkout (which git would reject with "already used by worktree").
+    if (branch.worktreePath) {
+      const isMainWorktree = branch.worktreePath === activeProject?.cwd;
       setThreadError(null);
-      setThreadBranch(branch.name, branch.worktreePath);
+      // Main worktree → switch back to local (project cwd, worktreePath=null).
+      // Secondary worktree → point the thread at that worktree path.
+      setThreadBranch(branch.name, isMainWorktree ? null : branch.worktreePath);
       setIsBranchMenuOpen(false);
       return;
     }
