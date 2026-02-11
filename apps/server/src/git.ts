@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -131,12 +132,14 @@ export async function listGitBranches(input: GitListBranchesInput): Promise<GitL
     defaultRef.code === 0 ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : null;
 
   // Build branch-name → worktree-path map from porcelain output.
+  // Only include worktrees whose directories still exist on disk (skip prunable/stale ones).
   const worktreeMap = new Map<string, string>();
   if (worktreeList.code === 0) {
     let currentPath: string | null = null;
     for (const line of worktreeList.stdout.split("\n")) {
       if (line.startsWith("worktree ")) {
         currentPath = line.slice("worktree ".length);
+        if (!fs.existsSync(currentPath)) currentPath = null;
       } else if (line.startsWith("branch refs/heads/") && currentPath) {
         worktreeMap.set(line.slice("branch refs/heads/".length), currentPath);
       } else if (line === "") {
