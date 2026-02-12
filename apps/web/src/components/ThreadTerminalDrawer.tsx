@@ -152,6 +152,20 @@ export default function ThreadTerminalDrawer({
     [],
   );
 
+  const fitAndResizeTerminal = useCallback(() => {
+    const activeTerminal = terminalRef.current;
+    const activeFitAddon = fitAddonRef.current;
+    if (!activeTerminal || !activeFitAddon) return;
+    activeFitAddon.fit();
+    void api.terminal
+      .resize({
+        threadId,
+        cols: activeTerminal.cols,
+        rows: activeTerminal.rows,
+      })
+      .catch(() => undefined);
+  }, [api, threadId]);
+
   useEffect(() => {
     const clampedHeight = clampDrawerHeight(height);
     setDrawerHeight(clampedHeight);
@@ -201,8 +215,11 @@ export default function ThreadTerminalDrawer({
   useEffect(() => {
     const onWindowResize = () => {
       const clampedHeight = clampDrawerHeight(drawerHeightRef.current);
-      if (clampedHeight !== drawerHeightRef.current) {
+      const changed = clampedHeight !== drawerHeightRef.current;
+      if (changed) {
         setDrawerHeight(clampedHeight);
+      } else {
+        fitAndResizeTerminal();
       }
       if (!resizeStateRef.current) {
         syncHeight(clampedHeight);
@@ -212,7 +229,7 @@ export default function ThreadTerminalDrawer({
     return () => {
       window.removeEventListener("resize", onWindowResize);
     };
-  }, [syncHeight]);
+  }, [fitAndResizeTerminal, syncHeight]);
 
   useEffect(() => {
     return () => {
@@ -263,20 +280,6 @@ export default function ThreadTerminalDrawer({
       void sendClearShortcut();
       return false;
     });
-
-    const resizeAndSync = () => {
-      const activeTerminal = terminalRef.current;
-      const activeFitAddon = fitAddonRef.current;
-      if (!activeTerminal || !activeFitAddon) return;
-      activeFitAddon.fit();
-      void api.terminal
-        .resize({
-          threadId,
-          cols: activeTerminal.cols,
-          rows: activeTerminal.rows,
-        })
-        .catch(() => undefined);
-    };
 
     const inputDisposable = terminal.onData((data) => {
       void api.terminal
@@ -363,14 +366,12 @@ export default function ThreadTerminalDrawer({
       }
     });
 
-    window.addEventListener("resize", resizeAndSync);
-    const fitTimer = window.setTimeout(resizeAndSync, 30);
+    const fitTimer = window.setTimeout(fitAndResizeTerminal, 30);
     void openTerminal();
 
     return () => {
       disposed = true;
       window.clearTimeout(fitTimer);
-      window.removeEventListener("resize", resizeAndSync);
       unsubscribe();
       inputDisposable.dispose();
       themeObserver.disconnect();
@@ -378,7 +379,7 @@ export default function ThreadTerminalDrawer({
       fitAddonRef.current = null;
       terminal.dispose();
     };
-  }, [api, cwd, threadId]);
+  }, [api, cwd, fitAndResizeTerminal, threadId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -408,7 +409,7 @@ export default function ThreadTerminalDrawer({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [api, drawerHeight, threadId]);
+  }, [api, cwd, drawerHeight, threadId]);
 
   return (
     <aside

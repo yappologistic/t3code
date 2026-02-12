@@ -1208,7 +1208,6 @@ export default function ChatView() {
       </div>
 
       <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />
-      <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />
 
       {activeThread.terminalOpen && api && activeProject && (
         <ThreadTerminalDrawer

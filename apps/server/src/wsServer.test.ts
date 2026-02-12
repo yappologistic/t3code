@@ -382,6 +382,22 @@ describe("WebSocket Server", () => {
     expect((push.data as TerminalEvent).type).toBe("output");
   });
 
+  it("detaches terminal event listener on stop for injected manager", async () => {
+    const terminalManager = new MockTerminalManager();
+    server = createTestServer({
+      cwd: "/test",
+      terminalManager: terminalManager as unknown as TerminalManager,
+    });
+    await server.start();
+
+    expect(terminalManager.listenerCount("event")).toBe(1);
+
+    await server.stop();
+    server = null;
+
+    expect(terminalManager.listenerCount("event")).toBe(0);
+  });
+
   it("returns validation errors for invalid terminal open params", async () => {
     server = createTestServer({ cwd: "/test" });
     await server.start();

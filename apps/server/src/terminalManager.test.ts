@@ -100,6 +100,14 @@ function openInput(overrides: Partial<TerminalOpenInput> = {}): TerminalOpenInpu
   };
 }
 
+function historyLogName(threadId: string): string {
+  return `terminal_${Buffer.from(threadId, "utf8").toString("base64url")}.log`;
+}
+
+function historyLogPath(logsDir: string, threadId = "thread-1"): string {
+  return path.join(logsDir, historyLogName(threadId));
+}
+
 describe("TerminalManager", () => {
   const tempDirs: string[] = [];
 
@@ -124,11 +132,12 @@ describe("TerminalManager", () => {
 
   it("spawns lazily and reuses running terminal per thread", async () => {
     const { manager, ptyAdapter } = makeManager();
-    const first = await manager.open(openInput());
-    const second = await manager.open(openInput());
+    const [first, second] = await Promise.all([manager.open(openInput()), manager.open(openInput())]);
+    const third = await manager.open(openInput());
 
     expect(first.threadId).toBe("thread-1");
     expect(second.threadId).toBe("thread-1");
+    expect(third.threadId).toBe("thread-1");
     expect(ptyAdapter.spawnInputs).toHaveLength(1);
 
     manager.dispose();
@@ -162,9 +171,9 @@ describe("TerminalManager", () => {
     if (!process) return;
 
     process.emitData("hello\n");
-    await waitFor(() => fs.existsSync(path.join(logsDir, "thread-1.log")));
+    await waitFor(() => fs.existsSync(historyLogPath(logsDir)));
     await manager.clear({ threadId: "thread-1" });
-    await waitFor(() => fs.readFileSync(path.join(logsDir, "thread-1.log"), "utf8") === "");
+    await waitFor(() => fs.readFileSync(historyLogPath(logsDir), "utf8") === "");
 
     expect(events.some((event) => event.type === "cleared")).toBe(true);
 
@@ -178,13 +187,13 @@ describe("TerminalManager", () => {
     expect(firstProcess).toBeDefined();
     if (!firstProcess) return;
     firstProcess.emitData("before restart\n");
-    await waitFor(() => fs.existsSync(path.join(logsDir, "thread-1.log")));
+    await waitFor(() => fs.existsSync(historyLogPath(logsDir)));
 
     const snapshot = await manager.restart(openInput());
     expect(snapshot.history).toBe("");
     expect(snapshot.status).toBe("running");
     expect(ptyAdapter.spawnInputs).toHaveLength(2);
-    await waitFor(() => fs.readFileSync(path.join(logsDir, "thread-1.log"), "utf8") === "");
+    await waitFor(() => fs.readFileSync(historyLogPath(logsDir), "utf8") === "");
 
     manager.dispose();
   });
@@ -200,7 +209,7 @@ describe("TerminalManager", () => {
     expect(process).toBeDefined();
     if (!process) return;
     process.emitData("old data\n");
-    await waitFor(() => fs.existsSync(path.join(logsDir, "thread-1.log")));
+    await waitFor(() => fs.existsSync(historyLogPath(logsDir)));
     process.emitExit({ exitCode: 0, signal: 0 });
 
     await waitFor(() => events.some((event) => event.type === "exited"));
@@ -208,7 +217,7 @@ describe("TerminalManager", () => {
 
     expect(reopened.history).toBe("");
     expect(ptyAdapter.spawnInputs).toHaveLength(2);
-    expect(fs.readFileSync(path.join(logsDir, "thread-1.log"), "utf8")).toBe("");
+    expect(fs.readFileSync(historyLogPath(logsDir), "utf8")).toBe("");
 
     manager.dispose();
   });
@@ -237,10 +246,23 @@ describe("TerminalManager", () => {
     expect(process).toBeDefined();
     if (!process) return;
     process.emitData("bye\n");
-    await waitFor(() => fs.existsSync(path.join(logsDir, "thread-1.log")));
+    await waitFor(() => fs.existsSync(historyLogPath(logsDir)));
 
     await manager.close({ threadId: "thread-1", deleteHistory: true });
-    expect(fs.existsSync(path.join(logsDir, "thread-1.log"))).toBe(false);
+    expect(fs.existsSync(historyLogPath(logsDir))).toBe(false);
+
+    manager.dispose();
+  });
+
+  it("loads existing legacy transcript filenames and keeps new naming for writes", async () => {
+    const { manager, logsDir } = makeManager();
+    const legacyPath = path.join(logsDir, "thread-1.log");
+    fs.writeFileSync(legacyPath, "legacy-line\n", "utf8");
+
+    const snapshot = await manager.open(openInput());
+
+    expect(snapshot.history).toBe("legacy-line\n");
+    expect(fs.existsSync(legacyPath)).toBe(true);
 
     manager.dispose();
   });

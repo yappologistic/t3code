@@ -9,6 +9,7 @@ import {
   EDITORS,
   WS_CHANNELS,
   WS_METHODS,
+  type TerminalEvent,
   type WsPush,
   type WsRequest,
   type WsResponse,
@@ -112,7 +113,7 @@ export function createServer(options: ServerOptions) {
     logOutgoingPush(push, recipients);
   });
 
-  terminalManager.on("event", (event) => {
+  const onTerminalEvent = (event: TerminalEvent) => {
     const push: WsPush = {
       type: "push",
       channel: WS_CHANNELS.terminalEvent,
@@ -127,7 +128,8 @@ export function createServer(options: ServerOptions) {
       }
     }
     logOutgoingPush(push, recipients);
-  });
+  };
+  terminalManager.on("event", onTerminalEvent);
 
   // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
@@ -401,6 +403,7 @@ export function createServer(options: ServerOptions) {
   }
 
   async function stop(): Promise<void> {
+    terminalManager.off("event", onTerminalEvent);
     providerManager.stopAll();
     providerManager.dispose();
     terminalManager.dispose();
