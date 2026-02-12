@@ -13,7 +13,7 @@ import { resolveModelSlug } from "./model-logic";
 import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
 import { applyEventToMessages, asObject, asString, evolveSession } from "./session-logic";
 import {
-  type ChatImageAttachment,
+  type ChatAttachment,
   DEFAULT_RUNTIME_MODE,
   type Project,
   type RuntimeMode,
@@ -43,7 +43,7 @@ type Action =
       threadId: string;
       id: string;
       text: string;
-      images?: ChatImageAttachment[];
+      attachments?: ChatAttachment[];
     }
   | { type: "SET_ERROR"; threadId: string; error: string | null }
   | { type: "SET_THREAD_TITLE"; threadId: string; title: string }
@@ -387,7 +387,9 @@ export function reducer(state: AppState, action: Action): AppState {
               id: action.id,
               role: "user" as const,
               text: action.text,
-              ...(action.images && action.images.length > 0 ? { images: action.images } : {}),
+              ...(action.attachments && action.attachments.length > 0
+                ? { attachments: action.attachments }
+                : {}),
               createdAt: new Date().toISOString(),
               streaming: false,
             },

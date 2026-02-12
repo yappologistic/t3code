@@ -548,6 +548,7 @@ export default function ChatView() {
 
       const previewUrl = URL.createObjectURL(file);
       nextImages.push({
+        type: "image",
         id: crypto.randomUUID(),
         name: file.name || "image",
         mimeType: file.type,
@@ -749,7 +750,8 @@ export default function ChatView() {
     }
 
     setThreadError(activeThread.id, null);
-    const messageImages: ChatImageAttachment[] = composerImagesSnapshot.map((image) => ({
+    const messageAttachments: ChatImageAttachment[] = composerImagesSnapshot.map((image) => ({
+      type: "image",
       id: image.id,
       name: image.name,
       mimeType: image.mimeType,
@@ -761,7 +763,7 @@ export default function ChatView() {
       threadId: activeThread.id,
       id: crypto.randomUUID(),
       text: trimmed,
-      ...(messageImages.length > 0 ? { images: messageImages } : {}),
+      ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
     });
     const previousMessages = activeThread.messages;
     setPrompt("");
@@ -1106,7 +1108,7 @@ export default function ChatView() {
               }
 
               if (timelineEntry.message.role === "user") {
-                const userImages = timelineEntry.message.images ?? [];
+                const userImages = timelineEntry.message.attachments ?? [];
                 return (
                   <Fragment key={timelineEntry.id}>
                     <div className="flex justify-end">

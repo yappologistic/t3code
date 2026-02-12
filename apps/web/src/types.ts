@@ -6,6 +6,7 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;
 
 export interface ChatImageAttachment {
+  type: "image";
   id: string;
   name: string;
   mimeType: string;
@@ -13,11 +14,13 @@ export interface ChatImageAttachment {
   previewUrl?: string;
 }
 
+export type ChatAttachment = ChatImageAttachment;
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
-  images?: ChatImageAttachment[];
+  attachments?: ChatAttachment[];
   createdAt: string;
   streaming: boolean;
 }

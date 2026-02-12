@@ -200,8 +200,9 @@ describe("toPersistedState", () => {
           id: "m-1",
           role: "user",
           text: "Hi",
-          images: [
+          attachments: [
             {
+              type: "image",
               id: "img-1",
               name: "diagram.png",
               mimeType: "image/png",
@@ -250,8 +251,9 @@ describe("toPersistedState", () => {
           id: "m-1",
           role: "user",
           text: "Hi",
-          images: [
+          attachments: [
             {
+              type: "image",
               id: "img-1",
               name: "diagram.png",
               mimeType: "image/png",

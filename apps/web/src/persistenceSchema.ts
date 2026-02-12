@@ -23,9 +23,10 @@ const persistedMessageSchema = z.object({
   id: z.string().min(1),
   role: z.enum(["user", "assistant"]),
   text: z.string(),
-  images: z
+  attachments: z
     .array(
       z.object({
+        type: z.literal("image"),
         id: z.string().min(1),
         name: z.string().min(1),
         mimeType: z.string().min(1),
@@ -137,14 +138,14 @@ function hydrateThread(
     terminalHeight: thread.terminalHeight ?? DEFAULT_THREAD_TERMINAL_HEIGHT,
     session: null,
     messages: thread.messages.map((message) => {
-      const hydratedImages = message.images?.map((image) => ({
-        ...image,
-      }));
+      const hydratedAttachments = message.attachments?.map((attachment) => ({ ...attachment }));
       return {
         id: message.id,
         role: message.role,
         text: message.text,
-        ...(hydratedImages && hydratedImages.length > 0 ? { images: hydratedImages } : {}),
+        ...(hydratedAttachments && hydratedAttachments.length > 0
+          ? { attachments: hydratedAttachments }
+          : {}),
         createdAt: message.createdAt,
         streaming: false,
       };
@@ -212,13 +213,14 @@ export function toPersistedState(
         id: message.id,
         role: message.role,
         text: message.text,
-        ...(message.images && message.images.length > 0
+        ...(message.attachments && message.attachments.length > 0
           ? {
-              images: message.images.map((image) => ({
-                id: image.id,
-                name: image.name,
-                mimeType: image.mimeType,
-                sizeBytes: image.sizeBytes,
+              attachments: message.attachments.map((attachment) => ({
+                type: attachment.type,
+                id: attachment.id,
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                sizeBytes: attachment.sizeBytes,
               })),
             }
           : {}),

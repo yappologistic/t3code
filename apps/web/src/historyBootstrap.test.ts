@@ -99,8 +99,9 @@ describe("buildBootstrapInput", () => {
           id: "u-image",
           role: "user",
           text: "",
-          images: [
+          attachments: [
             {
+              type: "image",
               id: "img-1",
               name: "screenshot.png",
               mimeType: "image/png",
