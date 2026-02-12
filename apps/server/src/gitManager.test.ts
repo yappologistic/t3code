@@ -248,6 +248,40 @@ describe("GitManager", () => {
     );
   });
 
+  it("uses custom commit message when provided", async () => {
+    const repoDir = makeTempDir("t3code-git-manager-");
+    await initRepo(repoDir);
+    fs.writeFileSync(path.join(repoDir, "README.md"), "hello\ncustom\n");
+    let generatedCount = 0;
+
+    const manager = new GitManager({
+      textGenerator: createTextGenerator({
+        generateCommitMessage: async () => {
+          generatedCount += 1;
+          return {
+            subject: "this should not be used",
+            body: "",
+          };
+        },
+      }),
+    });
+    const result = await manager.runStackedAction({
+      cwd: repoDir,
+      action: "commit",
+      commitMessage: "feat: custom summary line\n\n- details from user",
+    });
+
+    expect(result.commit.status).toBe("created");
+    expect(result.commit.subject).toBe("feat: custom summary line");
+    expect(generatedCount).toBe(0);
+    expect(await runGitStdout(repoDir, ["log", "-1", "--pretty=%s"])).toBe(
+      "feat: custom summary line",
+    );
+    expect(await runGitStdout(repoDir, ["log", "-1", "--pretty=%b"])).toContain(
+      "- details from user",
+    );
+  });
+
   it("skips commit when there are no uncommitted changes", async () => {
     const repoDir = makeTempDir("t3code-git-manager-");
     await initRepo(repoDir);

@@ -106,6 +106,7 @@ const gitPrStepStatusSchema = z.enum([
 export const gitRunStackedActionInputSchema = z.object({
   cwd: z.string().trim().min(1),
   action: gitStackedActionSchema,
+  commitMessage: z.string().trim().min(1).max(10_000).optional(),
 });
 
 export const gitRunStackedActionResultSchema = z.object({

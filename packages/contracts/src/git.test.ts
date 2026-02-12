@@ -43,6 +43,15 @@ describe("git contracts", () => {
     expect(parsed.action).toBe("commit_push");
   });
 
+  it("accepts custom commit message input", () => {
+    const parsed = gitRunStackedActionInputSchema.parse({
+      cwd: "/tmp/repo",
+      action: "commit",
+      commitMessage: "  chore: update git action modal  ",
+    });
+    expect(parsed.commitMessage).toBe("chore: update git action modal");
+  });
+
   it("parses stacked action result with metadata", () => {
     const parsed = gitRunStackedActionResultSchema.parse({
       action: "commit_push_pr",

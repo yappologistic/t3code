@@ -106,6 +106,24 @@ function sanitizeCommitMessage(
   };
 }
 
+function parseCustomCommitMessage(raw: string): CommitMessageGenerationResult | null {
+  const normalized = raw.replace(/\r\n/g, "\n").trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const [firstLine, ...rest] = normalized.split("\n");
+  const subject = firstLine?.trim() ?? "";
+  if (subject.length === 0) {
+    return null;
+  }
+
+  return {
+    subject,
+    body: rest.join("\n").trim(),
+  };
+}
+
 function extractBranchFromRef(ref: string): string {
   const normalized = ref.trim();
 
@@ -222,7 +240,11 @@ export class GitManager {
       throw new Error("Cannot create a pull request from detached HEAD.");
     }
 
-    const commit = await this.runCommitStep(input.cwd, initialStatus.branch);
+    const commit = await this.runCommitStep(
+      input.cwd,
+      initialStatus.branch,
+      input.commitMessage,
+    );
 
     const push = wantsPush
       ? await this.gitCore.pushCurrentBranch(input.cwd, initialStatus.branch)
@@ -243,6 +265,7 @@ export class GitManager {
   private async runCommitStep(
     cwd: string,
     branch: string | null,
+    commitMessage?: string,
   ): Promise<{
     status: "created" | "skipped_no_changes";
     commitSha?: string | undefined;
@@ -253,18 +276,23 @@ export class GitManager {
       return { status: "skipped_no_changes" };
     }
 
-    let generated: CommitMessageGenerationResult;
-    try {
-      generated = sanitizeCommitMessage(
-        await this.textGenerator.generateCommitMessage({
-          cwd,
-          branch,
-          stagedSummary: limitContext(context.stagedSummary, 8_000),
-          stagedPatch: limitContext(context.stagedPatch, 50_000),
-        }),
-      );
-    } catch (error) {
-      throw asCommandNotFound("codex", error) ?? error;
+    let generated: CommitMessageGenerationResult | null = parseCustomCommitMessage(
+      commitMessage ?? "",
+    );
+
+    if (!generated) {
+      try {
+        generated = sanitizeCommitMessage(
+          await this.textGenerator.generateCommitMessage({
+            cwd,
+            branch,
+            stagedSummary: limitContext(context.stagedSummary, 8_000),
+            stagedPatch: limitContext(context.stagedPatch, 50_000),
+          }),
+        );
+      } catch (error) {
+        throw asCommandNotFound("codex", error) ?? error;
+      }
     }
 
     const { commitSha } = await this.gitCore.commit(cwd, generated.subject, generated.body);
