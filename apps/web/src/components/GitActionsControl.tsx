@@ -746,10 +746,6 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                   gitModalSteps.map((step, index) => {
                     const borderClass =
                       index < gitModalSteps.length - 1 ? "border-b border-border/70" : "";
-                    const statusTextClass =
-                      step.status === "failed"
-                        ? "text-rose-500 dark:text-rose-300"
-                        : "text-muted-foreground/70";
 
                     return (
                       <div
@@ -771,8 +767,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                         </span>
                         <div className="min-w-0">
                           <p className="text-sm text-foreground">{step.label}</p>
-                          {step.detail && (
-                            <p className={`mt-0.5 text-xs ${statusTextClass}`}>{step.detail}</p>
+                          {step.status === "failed" && step.detail && (
+                            <p className="mt-0.5 text-xs text-rose-500 dark:text-rose-300">
+                              {step.detail}
+                            </p>
                           )}
                         </div>
                       </div>
