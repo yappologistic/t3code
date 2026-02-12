@@ -291,6 +291,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     [gitModalActionOptions, gitModalSelectedAction],
   );
   const visibleGitActionError = gitActionError ?? gitStatusError?.message;
+  const gitModalOpenPrUrl = gitModalResult?.pr.url ?? gitStatus?.openPr?.url ?? null;
   const gitModalHasProgress = gitModalProgress.length > 0;
   const gitModalSelectionMode = !gitModalHasProgress && gitModalResult === null;
   const gitModalSteps = gitModalProgress;
@@ -348,19 +349,19 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     });
   }, [api, gitStatus?.openPr?.url]);
 
-  const openPrFromResult = useCallback(() => {
+  const openPrFromModal = useCallback(() => {
     if (!api) {
       setGitModalError("Link opening is unavailable.");
       return;
     }
 
-    const prUrl = gitModalResult?.pr.url ?? null;
+    const prUrl = gitModalOpenPrUrl;
     if (!prUrl) return;
 
     void api.shell.openExternal(prUrl).catch((error) => {
       setGitModalError(error instanceof Error ? error.message : "Unable to open PR link.");
     });
-  }, [api, gitModalResult?.pr.url]);
+  }, [api, gitModalOpenPrUrl]);
 
   const runGitAction = useCallback(async () => {
     if (!api || !gitCwd || !isGitModalOpen) return;
@@ -784,25 +785,12 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                 {gitModalError ?? visibleGitActionError}
               </div>
             )}
-            {gitModalResult?.pr.url && (
-              <div className="mt-4 rounded-lg border border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground/80">
-                PR:{" "}
-                <a
-                  href={gitModalResult.pr.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-foreground underline underline-offset-2"
-                >
-                  {gitModalResult.pr.url}
-                </a>
-              </div>
-            )}
             <div className="mt-6 flex justify-end gap-2">
-              {gitModalResult?.pr.url && (
+              {gitModalResult && gitModalOpenPrUrl && (
                 <button
                   type="button"
                   className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={openPrFromResult}
+                  onClick={openPrFromModal}
                   disabled={isGitActionRunning}
                 >
                   Open PR

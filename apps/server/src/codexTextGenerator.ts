@@ -10,7 +10,20 @@ import type {
   PrContentGenerationResult,
   TextGenerationService,
 } from "./coreServices";
-import { runProcess } from "./processRunner";
+import {
+  type ProcessRunOptions,
+  type ProcessRunResult,
+  runProcess,
+} from "./processRunner";
+
+type ProcessRunner = (
+  command: string,
+  args: readonly string[],
+  options?: ProcessRunOptions,
+) => Promise<ProcessRunResult>;
+
+const CODEX_MODEL = "gpt-5.3-codex-spark";
+const CODEX_REASONING_EFFORT = "medium";
 
 const COMMIT_OUTPUT_SCHEMA_JSON = {
   type: "object",
@@ -107,11 +120,13 @@ async function runCodexJson<T>({
   prompt,
   outputSchemaJson,
   parse,
+  run,
 }: {
   cwd: string;
   prompt: string;
   outputSchemaJson: object;
   parse: (raw: unknown) => T;
+  run: ProcessRunner;
 }): Promise<T> {
   const schemaPath = await writeTempFile(
     "codex-schema",
@@ -121,14 +136,17 @@ async function runCodexJson<T>({
 
   try {
     outputPath = await writeTempFile("codex-output", "");
-
-    await runProcess(
+    await run(
       "codex",
       [
         "exec",
         "--ephemeral",
         "-s",
         "read-only",
+        "--model",
+        CODEX_MODEL,
+        "--config",
+        `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
         "--output-schema",
         schemaPath,
         "--output-last-message",
@@ -163,7 +181,17 @@ async function runCodexJson<T>({
   }
 }
 
+interface CodexTextGeneratorDeps {
+  runProcess?: ProcessRunner;
+}
+
 export class CodexTextGenerator implements TextGenerationService {
+  private readonly run: ProcessRunner;
+
+  constructor(deps: CodexTextGeneratorDeps = {}) {
+    this.run = deps.runProcess ?? runProcess;
+  }
+
   async generateCommitMessage(
     input: CommitMessageGenerationInput,
   ): Promise<CommitMessageGenerationResult> {
@@ -189,6 +217,7 @@ export class CodexTextGenerator implements TextGenerationService {
       prompt,
       outputSchemaJson: COMMIT_OUTPUT_SCHEMA_JSON,
       parse: (raw) => parseCommitOutput(raw),
+      run: this.run,
     });
 
     return {
@@ -227,6 +256,7 @@ export class CodexTextGenerator implements TextGenerationService {
       prompt,
       outputSchemaJson: PR_OUTPUT_SCHEMA_JSON,
       parse: (raw) => parsePrOutput(raw),
+      run: this.run,
     });
 
     return {
