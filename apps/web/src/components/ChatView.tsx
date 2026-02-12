@@ -57,14 +57,12 @@ function editorLabel(editor: (typeof EDITORS)[number]): string {
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
-const GIT_ACTION_ITEMS: Array<{
+
+interface GitActionMenuItem {
   id: GitStackedAction;
   label: string;
-}> = [
-  { id: "commit", label: "Commit" },
-  { id: "commit_push", label: "Commit & Push" },
-  { id: "commit_push_pr", label: "Commit, Push & Create PR" },
-];
+  disabled: boolean;
+}
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -299,9 +297,74 @@ export default function ChatView() {
           sandboxMode: "workspace-write",
         } as const);
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
-  const gitActionsDisabled =
+  const gitBaseDisabled =
     !api || !gitCwd || !gitStatus || isGitActionRunning;
-  const pushActionDisabled = gitActionsDisabled || gitStatus.branch === null;
+  const gitActionMenuItems = useMemo<GitActionMenuItem[]>(() => {
+    if (!gitStatus) return [];
+
+    const hasBranch = gitStatus.branch !== null;
+    const canCommit = !gitBaseDisabled && gitStatus.hasWorkingTreeChanges;
+    const canPushOrPr = !gitBaseDisabled && hasBranch;
+
+    if (!hasBranch) {
+      return [
+        {
+          id: "commit",
+          label: "Commit",
+          disabled: !canCommit,
+        },
+      ];
+    }
+
+    if (gitStatus.hasWorkingTreeChanges) {
+      return [
+        {
+          id: "commit",
+          label: "Commit",
+          disabled: !canCommit,
+        },
+        {
+          id: "commit_push",
+          label: "Commit & Push",
+          disabled: !canPushOrPr,
+        },
+        {
+          id: "commit_push_pr",
+          label: "Commit, Push & Create PR",
+          disabled: !canPushOrPr,
+        },
+      ];
+    }
+
+    if (gitStatus.aheadCount > 0) {
+      return [
+        {
+          id: "commit",
+          label: "Commit",
+          disabled: true,
+        },
+        {
+          id: "commit_push",
+          label: "Commit & Push",
+          disabled: !canPushOrPr,
+        },
+        {
+          id: "commit_push_pr",
+          label: "Commit, Push & Create PR",
+          disabled: !canPushOrPr,
+        },
+      ];
+    }
+
+    const openPrDisabled = !canPushOrPr || gitStatus.behindCount > 0;
+    return [
+      {
+        id: "commit_push_pr",
+        label: "Open PR",
+        disabled: openPrDisabled,
+      },
+    ];
+  }, [gitBaseDisabled, gitStatus]);
 
   useEffect(() => {
     latestGitCwdRef.current = gitCwd;
@@ -809,15 +872,13 @@ export default function ChatView() {
                   <p className="px-2 pb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60">
                     Git actions
                   </p>
-                  {GIT_ACTION_ITEMS.map((item) => {
-                    const disabled =
-                      item.id === "commit" ? gitActionsDisabled : pushActionDisabled;
+                  {gitActionMenuItems.map((item) => {
                     return (
                       <button
                         key={item.id}
                         type="button"
                         className="mb-1 flex w-full items-center rounded-lg px-2 py-2 text-left text-[11px] text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={disabled}
+                        disabled={item.disabled}
                         onClick={() => {
                           void runGitAction(item.id);
                         }}
@@ -831,6 +892,15 @@ export default function ChatView() {
                       Detached HEAD: push and PR actions are unavailable.
                     </p>
                   )}
+                  {gitStatus &&
+                    gitStatus.branch !== null &&
+                    !gitStatus.hasWorkingTreeChanges &&
+                    gitStatus.aheadCount === 0 &&
+                    gitStatus.behindCount > 0 && (
+                      <p className="px-2 pt-1 text-[10px] text-amber-500 dark:text-amber-300">
+                        Branch is behind upstream. Pull/rebase before opening a PR.
+                      </p>
+                    )}
                 </div>
               )}
             </div>
@@ -858,13 +928,13 @@ export default function ChatView() {
       )}
 
       {gitActionError && (
-        <div className="mx-4 mt-3 rounded-lg border border-rose-400/20 bg-rose-900/20 px-3 py-2 text-xs text-rose-200">
+        <div className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-400/20 dark:bg-rose-900/20 dark:text-rose-200">
           {gitActionError}
         </div>
       )}
 
       {gitActionNotice && (
-        <div className="mx-4 mt-3 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-2 text-xs text-emerald-100">
+        <div className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/[0.08] dark:text-emerald-100">
           {gitActionNotice}
         </div>
       )}
