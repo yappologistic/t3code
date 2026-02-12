@@ -863,7 +863,11 @@ export default function ChatView() {
   if (!activeThread) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-background text-muted-foreground/40">
-        {isElectron && <div className="drag-region h-[52px] shrink-0" />}
+        {isElectron && (
+          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
+            <span className="text-xs text-muted-foreground/50">No active thread</span>
+          </div>
+        )}
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <p className="text-sm">Select a thread or create a new one to get started.</p>
@@ -877,7 +881,7 @@ export default function ChatView() {
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       {/* Top bar */}
       <header
-        className={`flex items-center justify-between border-b border-border px-5 pb-3 ${isElectron ? "drag-region pt-[28px]" : "pt-3"}`}
+        className={`flex items-center justify-between border-b border-border px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
       >
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-foreground">{activeThread.title}</h2>
