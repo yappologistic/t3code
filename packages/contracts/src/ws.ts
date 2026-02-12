@@ -20,6 +20,8 @@ export const WS_METHODS = {
   shellOpenInEditor: "shell.openInEditor",
 
   // Git methods
+  gitStatus: "git.status",
+  gitRunStackedAction: "git.runStackedAction",
   gitListBranches: "git.listBranches",
   gitCreateWorktree: "git.createWorktree",
   gitRemoveWorktree: "git.removeWorktree",

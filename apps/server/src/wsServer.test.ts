@@ -180,6 +180,10 @@ describe("WebSocket Server", () => {
       devUrl?: string;
       authToken?: string;
       stateDir?: string;
+      gitManager?: {
+        status: (input: { cwd: string }) => Promise<unknown>;
+        runStackedAction: (input: { cwd: string; action: string }) => Promise<unknown>;
+      };
       terminalManager?: TerminalManager;
     } = {},
   ): ReturnType<typeof createServer> {
@@ -190,6 +194,7 @@ describe("WebSocket Server", () => {
       ...(options.devUrl ? { devUrl: options.devUrl } : {}),
       ...(options.authToken ? { authToken: options.authToken } : {}),
       projectRegistry: new ProjectRegistry(stateDir),
+      ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
       ...(options.terminalManager
         ? { terminalManager: options.terminalManager }
         : {}),
@@ -509,6 +514,72 @@ describe("WebSocket Server", () => {
     });
     expect(afterInit.error).toBeUndefined();
     expect((afterInit.result as { isRepo: boolean }).isRepo).toBe(true);
+  });
+
+  it("responds to git.status via the git manager", async () => {
+    const gitManager = {
+      status: vi.fn().mockResolvedValue({
+        branch: "feature/test",
+        hasWorkingTreeChanges: true,
+        hasUpstream: false,
+        aheadCount: 0,
+        behindCount: 0,
+        openPr: null,
+      }),
+      runStackedAction: vi.fn(),
+    };
+
+    server = createTestServer({ cwd: "/test", gitManager });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.gitStatus, {
+      cwd: "/test",
+    });
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      branch: "feature/test",
+      hasWorkingTreeChanges: true,
+      hasUpstream: false,
+      aheadCount: 0,
+      behindCount: 0,
+      openPr: null,
+    });
+    expect(gitManager.status).toHaveBeenCalledWith({ cwd: "/test" });
+  });
+
+  it("returns errors from git.runStackedAction", async () => {
+    const gitManager = {
+      status: vi.fn(),
+      runStackedAction: vi
+        .fn()
+        .mockRejectedValue(new Error("Cannot push from detached HEAD.")),
+    };
+
+    server = createTestServer({ cwd: "/test", gitManager });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.gitRunStackedAction, {
+      cwd: "/test",
+      action: "commit_push",
+    });
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("detached HEAD");
+    expect(gitManager.runStackedAction).toHaveBeenCalledWith({
+      cwd: "/test",
+      action: "commit_push",
+    });
   });
 
   it("prunes missing projects on startup", async () => {

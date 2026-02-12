@@ -1,18 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import ChatView from "./components/ChatView";
 import DiffPanel from "./components/DiffPanel";
 import Sidebar from "./components/Sidebar";
 import { isElectron } from "./env";
 import { DEFAULT_MODEL } from "./model-logic";
-import { readNativeApi } from "./session-logic";
 import { StoreProvider, useStore } from "./store";
 import { DEFAULT_THREAD_TERMINAL_HEIGHT } from "./types";
 import { onServerWelcome } from "./wsNativeApi";
+import { useNativeApi } from "./hooks/useNativeApi";
 
 function EventRouter() {
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const { dispatch } = useStore();
   const activeAssistantItemRef = useRef<string | null>(null);
 
@@ -109,7 +109,7 @@ function AutoProjectBootstrap() {
 }
 
 function DesktopProjectBootstrap() {
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const { dispatch } = useStore();
   const bootstrappedRef = useRef(false);
 
@@ -159,7 +159,7 @@ function DesktopProjectBootstrap() {
 }
 
 function Layout() {
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const { state } = useStore();
 
   if (!api) {

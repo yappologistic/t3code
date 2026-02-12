@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  GitCoreService,
   checkoutGitBranch,
   createGitBranch,
   createGitWorktree,
@@ -433,6 +434,87 @@ describe("git integration", () => {
       // Current branch should still be the initial one
       const result = await listGitBranches({ cwd: tmp.path });
       expect(result.branches.find((b) => b.current)!.name).toBe(initialBranch);
+    });
+  });
+
+  describe("GitCoreService", () => {
+    it("supports branch lifecycle operations through the service API", async () => {
+      await using tmp = await makeTmpDir();
+      const core = new GitCoreService();
+
+      await core.initRepo({ cwd: tmp.path });
+      await git(tmp.path, "config user.email 'test@test.com'");
+      await git(tmp.path, "config user.name 'Test'");
+      await writeFile(path.join(tmp.path, "README.md"), "# test\n");
+      await git(tmp.path, "add .");
+      await git(tmp.path, "commit -m 'initial commit'");
+
+      await core.createBranch({ cwd: tmp.path, branch: "feature/service-api" });
+      await core.checkoutBranch({ cwd: tmp.path, branch: "feature/service-api" });
+      const branches = await core.listBranches({ cwd: tmp.path });
+
+      expect(branches.isRepo).toBe(true);
+      expect(branches.branches.find((branch) => branch.current)?.name).toBe("feature/service-api");
+    });
+
+    it("reports status details and dirty state", async () => {
+      await using tmp = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      const core = new GitCoreService();
+
+      const clean = await core.status({ cwd: tmp.path });
+      expect(clean.hasWorkingTreeChanges).toBe(false);
+      expect(clean.branch).toBeTruthy();
+
+      await writeFile(path.join(tmp.path, "README.md"), "updated\n");
+      const dirty = await core.statusDetails(tmp.path);
+      expect(dirty.hasWorkingTreeChanges).toBe(true);
+    });
+
+    it("prepares commit context by auto-staging and creates commit", async () => {
+      await using tmp = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      const core = new GitCoreService();
+
+      await writeFile(path.join(tmp.path, "README.md"), "new content\n");
+      const context = await core.prepareCommitContext(tmp.path);
+      expect(context).not.toBeNull();
+      expect(context!.stagedSummary.length).toBeGreaterThan(0);
+      expect(context!.stagedPatch.length).toBeGreaterThan(0);
+
+      const created = await core.commit(
+        tmp.path,
+        "Add README update",
+        "- include updated content",
+      );
+      expect(created.commitSha.length).toBeGreaterThan(0);
+      expect(await git(tmp.path, "log -1 --pretty=%s")).toBe("Add README update");
+    });
+
+    it("pushes with upstream setup and then skips when up to date", async () => {
+      await using tmp = await makeTmpDir();
+      await using remote = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      await git(remote.path, "init --bare");
+      await git(tmp.path, `remote add origin ${JSON.stringify(remote.path)}`);
+      await createGitBranch({ cwd: tmp.path, branch: "feature/core-push" });
+      await checkoutGitBranch({ cwd: tmp.path, branch: "feature/core-push" });
+
+      await writeFile(path.join(tmp.path, "feature.txt"), "push me\n");
+      const core = new GitCoreService();
+      const context = await core.prepareCommitContext(tmp.path);
+      expect(context).not.toBeNull();
+      await core.commit(tmp.path, "Add feature file", "");
+
+      const pushed = await core.pushCurrentBranch(tmp.path, null);
+      expect(pushed.status).toBe("pushed");
+      expect(pushed.setUpstream).toBe(true);
+      expect(await git(tmp.path, "rev-parse --abbrev-ref @{upstream}")).toBe(
+        "origin/feature/core-push",
+      );
+
+      const skipped = await core.pushCurrentBranch(tmp.path, null);
+      expect(skipped.status).toBe("skipped_up_to_date");
     });
   });
 });

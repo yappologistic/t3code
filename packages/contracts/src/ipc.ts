@@ -8,6 +8,10 @@ import type {
   GitListBranchesInput,
   GitListBranchesResult,
   GitRemoveWorktreeInput,
+  GitRunStackedActionInput,
+  GitRunStackedActionResult,
+  GitStatusInput,
+  GitStatusResult,
 } from "./git";
 import type {
   ProviderEvent,
@@ -85,14 +89,21 @@ export interface NativeApi {
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
+    openExternal: (url: string) => Promise<void>;
   };
   git: {
+    // Existing branch/worktree API
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;
     createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;
     removeWorktree: (input: GitRemoveWorktreeInput) => Promise<void>;
     createBranch: (input: GitCreateBranchInput) => Promise<void>;
     checkout: (input: GitCheckoutInput) => Promise<void>;
     init: (input: GitInitInput) => Promise<void>;
+    // Stacked action API
+    status: (input: GitStatusInput) => Promise<GitStatusResult>;
+    runStackedAction: (
+      input: GitRunStackedActionInput,
+    ) => Promise<GitRunStackedActionResult>;
   };
   contextMenu: {
     show: <T extends string>(

@@ -6,6 +6,7 @@ interface DesktopBridge {
   getWsUrl: () => string | null;
   pickFolder: () => Promise<string | null>;
   showContextMenu: (items: readonly { id: string; label: string }[]) => Promise<string | null>;
+  openExternal: (url: string) => Promise<boolean>;
 }
 
 declare global {

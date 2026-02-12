@@ -31,13 +31,14 @@ import {
   formatDuration,
   formatElapsed,
   formatTimestamp,
-  readNativeApi,
 } from "../session-logic";
 import { useStore } from "../store";
 import BranchToolbar from "./BranchToolbar";
+import GitActionsControl from "./GitActionsControl";
 import { isTerminalToggleShortcut } from "../terminal-shortcuts";
 import ChatMarkdown from "./ChatMarkdown";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import { useNativeApi } from "../hooks/useNativeApi";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -132,7 +133,7 @@ function derivePendingApprovals(events: ProviderEvent[]): PendingApprovalCard[] 
 
 export default function ChatView() {
   const { state, dispatch } = useStore();
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const [prompt, setPrompt] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -256,14 +257,14 @@ export default function ChatView() {
           approvalPolicy: "on-request",
           sandboxMode: "workspace-write",
         } as const);
+  const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
+
   const envLocked = Boolean(
     activeThread &&
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
-  const terminalShortcutHint = navigator.platform.includes("Mac")
-    ? "\u2318J"
-    : "Ctrl+J";
+  const terminalShortcutHint = navigator.platform.includes("Mac") ? "\u2318J" : "Ctrl+J";
   const focusComposer = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -319,6 +320,7 @@ export default function ChatView() {
   }, [activeThread?.id]);
 
   const activeWorktreePath = activeThread?.worktreePath;
+
   useEffect(() => {
     if (!activeThread?.id) return;
     setEnvMode(activeWorktreePath ? "worktree" : "local");
@@ -652,12 +654,6 @@ export default function ChatView() {
               {activeProject.name}
             </span>
           )}
-          {activeThread.branch && (
-            <span className="rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] text-muted-foreground/50">
-              {activeThread.branch}
-              {activeThread.worktreePath ? " (worktree)" : ""}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
@@ -691,18 +687,10 @@ export default function ChatView() {
               )}
             </div>
           )}
+          {/* Git actions */}
+          {activeProject && <GitActionsControl api={api} gitCwd={gitCwd} />}
+
           {/* Diff toggle */}
-          <button
-            type="button"
-            className={`rounded-md px-2 py-1 text-[10px] transition-colors duration-150 ${
-              activeThread.terminalOpen
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground/40 hover:text-muted-foreground/60"
-            }`}
-            onClick={toggleTerminalVisibility}
-          >
-            Terminal <span className="text-muted-foreground/50">{terminalShortcutHint}</span>
-          </button>
           <button
             type="button"
             className={`rounded-md px-2 py-1 text-[10px] transition-colors duration-150 ${
@@ -757,7 +745,7 @@ export default function ChatView() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-sky-300/30 bg-sky-500/[0.15] px-2 py-1 text-[11px] text-sky-100 transition-colors duration-150 hover:bg-sky-500/[0.22] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md border border-sky-300/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100 transition-colors duration-150 hover:bg-sky-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
                     onClick={() => void onRespondToApproval(approval.requestId, "acceptForSession")}
                   >
@@ -773,7 +761,7 @@ export default function ChatView() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-rose-300/30 bg-rose-500/[0.12] px-2 py-1 text-[11px] text-rose-100 transition-colors duration-150 hover:bg-rose-500/[0.2] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md border border-rose-300/30 bg-rose-500/12 px-2 py-1 text-[11px] text-rose-100 transition-colors duration-150 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
                     onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
                   >
@@ -892,7 +880,7 @@ export default function ChatView() {
                   <Fragment key={timelineEntry.id}>
                     <div className="flex justify-end">
                       <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-foreground">
+                        <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
                           {timelineEntry.message.text}
                         </pre>
                         <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">

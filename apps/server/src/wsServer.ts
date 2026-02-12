@@ -20,6 +20,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { createLogger } from "./logger";
 import { ProjectRegistry } from "./projectRegistry";
 import { ProviderManager } from "./providerManager";
+import { GitManager } from "./gitManager";
 import {
   checkoutGitBranch,
   createGitBranch,
@@ -53,6 +54,7 @@ export interface ServerOptions {
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
   projectRegistry?: ProjectRegistry | undefined;
+  gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
   authToken?: string | undefined;
 }
@@ -74,6 +76,7 @@ export function createServer(options: ServerOptions) {
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
     projectRegistry: providedRegistry,
+    gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
     authToken,
   } = options;
@@ -81,6 +84,7 @@ export function createServer(options: ServerOptions) {
   const terminalManager = providedTerminalManager ?? new TerminalManager();
   const projectRegistry =
     providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
+  const gitManager = providedGitManager ?? new GitManager();
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
   const logWebSocketEvents =
@@ -335,6 +339,11 @@ export function createServer(options: ServerOptions) {
         return undefined;
       }
 
+      case WS_METHODS.gitStatus:
+        return gitManager.status(request.params as never);
+
+      case WS_METHODS.gitRunStackedAction:
+        return gitManager.runStackedAction(request.params as never);
       case WS_METHODS.gitListBranches:
         return listGitBranches(request.params as never);
 

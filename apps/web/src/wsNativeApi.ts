@@ -96,8 +96,24 @@ export function createWsNativeApi(): NativeApi {
     shell: {
       openInEditor: (cwd, editor) =>
         transport.request(WS_METHODS.shellOpenInEditor, { cwd, editor }),
+      openExternal: async (url) => {
+        if (window.desktopBridge) {
+          const opened = await window.desktopBridge.openExternal(url);
+          if (!opened) {
+            throw new Error("Unable to open link.");
+          }
+          return;
+        }
+
+        const popup = window.open(url, "_blank", "noopener,noreferrer");
+        if (!popup) {
+          throw new Error("Unable to open link. Allow popups and try again.");
+        }
+      },
     },
     git: {
+      status: (input) => transport.request(WS_METHODS.gitStatus, input),
+      runStackedAction: (input) => transport.request(WS_METHODS.gitRunStackedAction, input),
       listBranches: (input) => transport.request(WS_METHODS.gitListBranches, input),
       createWorktree: (input) => transport.request(WS_METHODS.gitCreateWorktree, input),
       removeWorktree: (input) => transport.request(WS_METHODS.gitRemoveWorktree, input),

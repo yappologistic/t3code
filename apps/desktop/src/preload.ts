@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
+const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const wsUrl = process.env.T3CODE_DESKTOP_WS_URL ?? null;
 
 contextBridge.exposeInMainWorld("desktopBridge", {
@@ -9,4 +10,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL) as Promise<string | null>,
   showContextMenu: (items: { id: string; label: string }[]) =>
     ipcRenderer.invoke(CONTEXT_MENU_CHANNEL, items) as Promise<string | null>,
+  openExternal: (url: string) => ipcRenderer.invoke(OPEN_EXTERNAL_CHANNEL, url) as Promise<boolean>,
 });
