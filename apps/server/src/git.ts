@@ -12,9 +12,21 @@ import type {
   GitListBranchesInput,
   GitListBranchesResult,
   GitRemoveWorktreeInput,
-  TerminalCommandInput,
-  TerminalCommandResult,
 } from "@t3tools/contracts";
+
+export interface TerminalCommandInput {
+  command: string;
+  cwd: string;
+  timeoutMs?: number;
+}
+
+export interface TerminalCommandResult {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+}
 
 /** Spawn git directly with an argv array — no shell, no quoting needed. */
 function runGit(args: string[], cwd: string, timeoutMs = 30_000): Promise<TerminalCommandResult> {
@@ -138,8 +150,8 @@ export async function listGitBranches(input: GitListBranchesInput): Promise<GitL
     let currentPath: string | null = null;
     for (const line of worktreeList.stdout.split("\n")) {
       if (line.startsWith("worktree ")) {
-        currentPath = line.slice("worktree ".length);
-        if (!fs.existsSync(currentPath)) currentPath = null;
+        const candidatePath = line.slice("worktree ".length);
+        currentPath = fs.existsSync(candidatePath) ? candidatePath : null;
       } else if (line.startsWith("branch refs/heads/") && currentPath) {
         worktreeMap.set(line.slice("branch refs/heads/".length), currentPath);
       } else if (line === "") {

@@ -27,6 +27,7 @@ import {
   listGitBranches,
   removeGitWorktree,
 } from "./git";
+import { TerminalManager } from "./terminalManager";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -51,6 +52,7 @@ export interface ServerOptions {
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
   projectRegistry?: ProjectRegistry | undefined;
+  terminalManager?: TerminalManager | undefined;
   authToken?: string | undefined;
 }
 
@@ -71,9 +73,11 @@ export function createServer(options: ServerOptions) {
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
     projectRegistry: providedRegistry,
+    terminalManager: providedTerminalManager,
     authToken,
   } = options;
   const providerManager = new ProviderManager();
+  const terminalManager = providedTerminalManager ?? new TerminalManager();
   const projectRegistry =
     providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
   const clients = new Set<WebSocket>();
@@ -95,6 +99,23 @@ export function createServer(options: ServerOptions) {
     const push: WsPush = {
       type: "push",
       channel: WS_CHANNELS.providerEvent,
+      data: event,
+    };
+    const message = JSON.stringify(push);
+    let recipients = 0;
+    for (const client of clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(message);
+        recipients += 1;
+      }
+    }
+    logOutgoingPush(push, recipients);
+  });
+
+  terminalManager.on("event", (event) => {
+    const push: WsPush = {
+      type: "push",
+      channel: WS_CHANNELS.terminalEvent,
       data: event,
     };
     const message = JSON.stringify(push);
@@ -330,6 +351,28 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.gitInit:
         return initGitRepo(request.params as never);
 
+      case WS_METHODS.terminalOpen:
+        return terminalManager.open(request.params as never);
+
+      case WS_METHODS.terminalWrite:
+        await terminalManager.write(request.params as never);
+        return undefined;
+
+      case WS_METHODS.terminalResize:
+        await terminalManager.resize(request.params as never);
+        return undefined;
+
+      case WS_METHODS.terminalClear:
+        await terminalManager.clear(request.params as never);
+        return undefined;
+
+      case WS_METHODS.terminalRestart:
+        return terminalManager.restart(request.params as never);
+
+      case WS_METHODS.terminalClose:
+        await terminalManager.close(request.params as never);
+        return undefined;
+
       case WS_METHODS.serverGetConfig:
         return { cwd };
 
@@ -360,6 +403,7 @@ export function createServer(options: ServerOptions) {
   async function stop(): Promise<void> {
     providerManager.stopAll();
     providerManager.dispose();
+    terminalManager.dispose();
 
     for (const client of clients) {
       client.close();
