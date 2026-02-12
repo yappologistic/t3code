@@ -129,6 +129,7 @@ export default function ThreadTerminalDrawer({
     startY: number;
     startHeight: number;
   } | null>(null);
+  const didResizeDuringDragRef = useRef(false);
 
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
@@ -152,11 +153,17 @@ export default function ThreadTerminalDrawer({
     [],
   );
 
-  const fitAndResizeTerminal = useCallback(() => {
+  const fitAndResizeTerminal = useCallback((preserveBottom = false) => {
     const activeTerminal = terminalRef.current;
     const activeFitAddon = fitAddonRef.current;
     if (!activeTerminal || !activeFitAddon) return;
+    const wasAtBottom =
+      preserveBottom &&
+      activeTerminal.buffer.active.viewportY >= activeTerminal.buffer.active.baseY;
     activeFitAddon.fit();
+    if (wasAtBottom) {
+      activeTerminal.scrollToBottom();
+    }
     void api.terminal
       .resize({
         threadId,
@@ -177,13 +184,14 @@ export default function ThreadTerminalDrawer({
       if (event.button !== 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
+      didResizeDuringDragRef.current = false;
       resizeStateRef.current = {
         pointerId: event.pointerId,
         startY: event.clientY,
-        startHeight: drawerHeight,
+        startHeight: drawerHeightRef.current,
       };
     },
-    [drawerHeight],
+    [],
   );
 
   const handleResizePointerMove = useCallback(
@@ -194,6 +202,11 @@ export default function ThreadTerminalDrawer({
       const clampedHeight = clampDrawerHeight(
         resizeState.startHeight + (resizeState.startY - event.clientY),
       );
+      if (clampedHeight === drawerHeightRef.current) {
+        return;
+      }
+      didResizeDuringDragRef.current = true;
+      drawerHeightRef.current = clampedHeight;
       setDrawerHeight(clampedHeight);
     },
     [],
@@ -207,9 +220,13 @@ export default function ThreadTerminalDrawer({
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
+      if (!didResizeDuringDragRef.current) {
+        return;
+      }
       syncHeight(drawerHeightRef.current);
+      fitAndResizeTerminal(true);
     },
-    [syncHeight],
+    [fitAndResizeTerminal, syncHeight],
   );
 
   useEffect(() => {
@@ -219,7 +236,7 @@ export default function ThreadTerminalDrawer({
       if (changed) {
         setDrawerHeight(clampedHeight);
       } else {
-        fitAndResizeTerminal();
+        fitAndResizeTerminal(true);
       }
       if (!resizeStateRef.current) {
         syncHeight(clampedHeight);
@@ -366,7 +383,9 @@ export default function ThreadTerminalDrawer({
       }
     });
 
-    const fitTimer = window.setTimeout(fitAndResizeTerminal, 30);
+    const fitTimer = window.setTimeout(() => {
+      fitAndResizeTerminal(true);
+    }, 30);
     void openTerminal();
 
     return () => {
@@ -396,8 +415,12 @@ export default function ThreadTerminalDrawer({
     const terminal = terminalRef.current;
     const fitAddon = fitAddonRef.current;
     if (!terminal || !fitAddon) return;
+    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
     const frame = window.requestAnimationFrame(() => {
       fitAddon.fit();
+      if (wasAtBottom) {
+        terminal.scrollToBottom();
+      }
       void api.terminal
         .resize({
           threadId,

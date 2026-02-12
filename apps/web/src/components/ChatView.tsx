@@ -628,7 +628,7 @@ export default function ChatView() {
   // Empty state: no active thread
   if (!activeThread) {
     return (
-      <div className="flex flex-1 flex-col bg-background text-muted-foreground/40">
+      <div className="flex min-h-0 flex-1 flex-col bg-background text-muted-foreground/40">
         {isElectron && <div className="drag-region h-[52px] shrink-0" />}
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -640,7 +640,7 @@ export default function ChatView() {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-background">
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       {/* Top bar */}
       <header
         className={`flex items-center justify-between border-b border-border px-5 pb-3 ${isElectron ? "drag-region pt-[28px]" : "pt-3"}`}
@@ -787,7 +787,7 @@ export default function ChatView() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {activeThread.messages.length === 0 && !isWorking ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-muted-foreground/30">
