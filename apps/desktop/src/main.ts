@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 
 import { fixPath } from "./fixPath";
 
@@ -13,6 +13,7 @@ fixPath();
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
+const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
 const BACKEND_ENTRY = path.join(ROOT_DIR, "apps/server/dist/index.mjs");
 const WEB_ENTRY = path.join(ROOT_DIR, "apps/web/dist/index.html");
@@ -158,6 +159,31 @@ function registerIpcHandlers(): void {
         callback: () => resolve(null),
       });
     });
+  });
+
+  ipcMain.removeHandler(OPEN_EXTERNAL_CHANNEL);
+  ipcMain.handle(OPEN_EXTERNAL_CHANNEL, async (_event, rawUrl: unknown) => {
+    if (typeof rawUrl !== "string" || rawUrl.length === 0) {
+      return false;
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl);
+    } catch {
+      return false;
+    }
+
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      return false;
+    }
+
+    try {
+      await shell.openExternal(parsedUrl.toString());
+      return true;
+    } catch {
+      return false;
+    }
   });
 }
 

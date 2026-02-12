@@ -1,11 +1,11 @@
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
-import { readNativeApi } from "../session-logic";
 import { useStore } from "../store";
 import { DEFAULT_THREAD_TERMINAL_HEIGHT, type Project } from "../types";
+import { useNativeApi } from "../hooks/useNativeApi";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
 function formatRelativeTime(iso: string): string {
@@ -35,7 +35,7 @@ function threadStatusLabel(
 
 export default function Sidebar() {
   const { state, dispatch } = useStore();
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const { theme, setTheme } = useTheme();
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");

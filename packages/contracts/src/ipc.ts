@@ -89,6 +89,7 @@ export interface NativeApi {
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
+    openExternal: (url: string) => Promise<void>;
   };
   git: {
     // Existing branch/worktree API
@@ -111,4 +112,3 @@ export interface NativeApi {
     ) => Promise<T | null>;
   };
 }
-

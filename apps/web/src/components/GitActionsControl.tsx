@@ -151,18 +151,6 @@ function buildGitActionMenuItems(
     gitStatus.hasUpstream &&
     gitStatus.behindCount === 0;
 
-  if (!hasChanges && !hasAhead && hasOpenPr) {
-    return [
-      {
-        id: "pr",
-        label: "Open PR",
-        disabled: !canOpenPr,
-        icon: "pr",
-        kind: "open_pr",
-      },
-    ];
-  }
-
   return [
     {
       id: "commit",
@@ -344,6 +332,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
   const openExistingPr = useCallback(() => {
     setIsGitMenuOpen(false);
     setGitActionError(null);
+    if (!api) {
+      setGitActionError("Link opening is unavailable.");
+      return;
+    }
 
     const prUrl = gitStatus?.openPr?.url ?? null;
     if (!prUrl) {
@@ -351,11 +343,12 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       return;
     }
 
-    const popup = window.open(prUrl, "_blank", "noopener,noreferrer");
-    if (!popup) {
-      setGitActionError("Unable to open PR. Allow popups and try again.");
-    }
-  }, [gitStatus?.openPr?.url]);
+    void api.shell.openExternal(prUrl).catch((error) => {
+      setGitActionError(
+        error instanceof Error ? error.message : "Unable to open PR link.",
+      );
+    });
+  }, [api, gitStatus?.openPr?.url]);
 
   const runGitAction = useCallback(async () => {
     if (!api || !gitCwd || !isGitModalOpen) return;

@@ -31,7 +31,6 @@ import {
   formatDuration,
   formatElapsed,
   formatTimestamp,
-  readNativeApi,
 } from "../session-logic";
 import { useStore } from "../store";
 import BranchToolbar from "./BranchToolbar";
@@ -39,6 +38,7 @@ import GitActionsControl from "./GitActionsControl";
 import { isTerminalToggleShortcut } from "../terminal-shortcuts";
 import ChatMarkdown from "./ChatMarkdown";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import { useNativeApi } from "../hooks/useNativeApi";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -133,7 +133,7 @@ function derivePendingApprovals(events: ProviderEvent[]): PendingApprovalCard[] 
 
 export default function ChatView() {
   const { state, dispatch } = useStore();
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const [prompt, setPrompt] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -694,9 +694,7 @@ export default function ChatView() {
             </div>
           )}
           {/* Git actions */}
-          {activeProject && (
-            <GitActionsControl api={api} gitCwd={gitCwd} />
-          )}
+          {activeProject && <GitActionsControl api={api} gitCwd={gitCwd} />}
           {/* Diff toggle */}
           <button
             type="button"

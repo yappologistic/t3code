@@ -1,9 +1,9 @@
 import type { GitBranch } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { readNativeApi } from "../session-logic";
 import { useStore } from "../store";
+import { useNativeApi } from "../hooks/useNativeApi";
 
 interface BranchToolbarProps {
   envMode: "local" | "worktree";
@@ -13,7 +13,7 @@ interface BranchToolbarProps {
 
 export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: BranchToolbarProps) {
   const { state, dispatch } = useStore();
-  const api = useMemo(() => readNativeApi(), []);
+  const api = useNativeApi();
   const queryClient = useQueryClient();
 
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
@@ -254,7 +254,11 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
                       <span className="truncate">{branch.name}</span>
                       {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
                         <span className="shrink-0 text-[10px] text-muted-foreground/45">
-                          {branch.current ? "current" : hasSecondaryWorktree ? "worktree" : "default"}
+                          {branch.current
+                            ? "current"
+                            : hasSecondaryWorktree
+                              ? "worktree"
+                              : "default"}
                         </span>
                       )}
                     </button>
