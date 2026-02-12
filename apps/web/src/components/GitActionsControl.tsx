@@ -350,6 +350,20 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     });
   }, [api, gitStatus?.openPr?.url]);
 
+  const openPrFromResult = useCallback(() => {
+    if (!api) {
+      setGitModalError("Link opening is unavailable.");
+      return;
+    }
+
+    const prUrl = gitModalResult?.pr.url ?? null;
+    if (!prUrl) return;
+
+    void api.shell.openExternal(prUrl).catch((error) => {
+      setGitModalError(error instanceof Error ? error.message : "Unable to open PR link.");
+    });
+  }, [api, gitModalResult?.pr.url]);
+
   const runGitAction = useCallback(async () => {
     if (!api || !gitCwd || !isGitModalOpen) return;
     if (!selectedGitModalActionOption || selectedGitModalActionOption.disabled) return;
@@ -398,12 +412,12 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
 
       if (includeGeneratedCommitMessage) {
         if (commitRun.commit.status === "created") {
+          if (commitRun.commit.subject) {
+            setGitModalCommitMessage(commitRun.commit.subject);
+          }
           updateStep(
             "generate",
             "completed",
-            commitRun.commit.subject
-              ? `Generated: ${commitRun.commit.subject}`
-              : "Generated commit message.",
           );
         } else {
           updateStep("generate", "skipped", "No local changes to commit.");
@@ -694,15 +708,20 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                     const borderClass =
                       index < gitModalActionOptions.length - 1 ? "border-b border-border/70" : "";
                     const selected = option.action === gitModalSelectedAction && !option.disabled;
+                    const disabled = option.disabled || isGitActionRunning;
 
                     return (
                       <button
                         key={option.action}
                         type="button"
                         className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-150 ${borderClass} ${
-                          selected ? "bg-accent/55" : "bg-card/45 hover:bg-accent/35"
-                        } disabled:cursor-not-allowed disabled:bg-card/45 disabled:text-muted-foreground/65`}
-                        disabled={option.disabled || isGitActionRunning}
+                          selected
+                            ? "bg-accent/55"
+                            : disabled
+                              ? "bg-card/25"
+                              : "bg-card/45 hover:bg-accent/35"
+                        } disabled:cursor-not-allowed`}
+                        disabled={disabled}
                         onClick={() => {
                           setGitModalSelectedAction(option.action);
                         }}
@@ -711,14 +730,20 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                           <GitActionIcon icon={option.icon} disabled={option.disabled} />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-foreground">{option.label}</p>
+                          <p
+                            className={`text-sm ${disabled ? "text-muted-foreground/60" : "text-foreground"}`}
+                          >
+                            {option.label}
+                          </p>
                           {option.detail && (
-                            <p className="mt-0.5 text-xs text-muted-foreground/70">
+                            <p
+                              className={`mt-0.5 text-xs ${disabled ? "text-muted-foreground/55" : "text-muted-foreground/70"}`}
+                            >
                               {option.detail}
                             </p>
                           )}
                         </div>
-                        {selected ? (
+                        {selected && !disabled ? (
                           <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                         ) : null}
                       </button>
@@ -731,9 +756,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                     const statusTextClass =
                       step.status === "failed"
                         ? "text-rose-500 dark:text-rose-300"
-                        : step.status === "completed"
-                          ? "text-emerald-600 dark:text-emerald-300"
-                          : "text-muted-foreground/70";
+                        : "text-muted-foreground/70";
 
                     return (
                       <div
@@ -783,6 +806,16 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
               </div>
             )}
             <div className="mt-6 flex justify-end gap-2">
+              {gitModalResult?.pr.url && (
+                <button
+                  type="button"
+                  className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={openPrFromResult}
+                  disabled={isGitActionRunning}
+                >
+                  Open PR
+                </button>
+              )}
               <button
                 type="button"
                 className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
