@@ -551,7 +551,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       <div className="relative" ref={gitMenuRef}>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => {
             if (!isGitMenuOpen) {
               void refreshGitStatus().catch(() => undefined);
@@ -798,7 +798,11 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
               )}
               <button
                 type="button"
-                className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                className={
+                  gitModalResult
+                    ? "rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors duration-150 hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    : "rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                }
                 onClick={closeGitActionModal}
                 disabled={isGitActionRunning}
               >

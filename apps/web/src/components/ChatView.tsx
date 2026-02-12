@@ -654,12 +654,6 @@ export default function ChatView() {
               {activeProject.name}
             </span>
           )}
-          {activeThread.branch && (
-            <span className="rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] text-muted-foreground/50">
-              {activeThread.branch}
-              {activeThread.worktreePath ? " (worktree)" : ""}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
@@ -695,18 +689,8 @@ export default function ChatView() {
           )}
           {/* Git actions */}
           {activeProject && <GitActionsControl api={api} gitCwd={gitCwd} />}
+
           {/* Diff toggle */}
-          <button
-            type="button"
-            className={`rounded-md px-2 py-1 text-[10px] transition-colors duration-150 ${
-              activeThread.terminalOpen
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground/40 hover:text-muted-foreground/60"
-            }`}
-            onClick={toggleTerminalVisibility}
-          >
-            Terminal <span className="text-muted-foreground/50">{terminalShortcutHint}</span>
-          </button>
           <button
             type="button"
             className={`rounded-md px-2 py-1 text-[10px] transition-colors duration-150 ${
