@@ -1,6 +1,5 @@
 import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-  type GitRunStackedActionResult,
   type GitStackedAction,
   type GitStatusResult,
   type ProviderApprovalDecision,
@@ -137,35 +136,6 @@ function derivePendingApprovals(events: ProviderEvent[]): PendingApprovalCard[] 
   return Array.from(pending.values());
 }
 
-function summarizeGitActionResult(result: GitRunStackedActionResult): string {
-  const parts: string[] = [];
-
-  if (result.commit.status === "created") {
-    parts.push(`Committed: ${result.commit.subject ?? "changes saved"}.`);
-  } else {
-    parts.push("No local changes to commit.");
-  }
-
-  if (result.push.status === "pushed") {
-    const upstream = result.push.upstreamBranch;
-    parts.push(
-      upstream ? `Pushed to ${upstream}.` : "Pushed to remote branch.",
-    );
-  } else if (result.push.status === "skipped_up_to_date") {
-    parts.push("Push skipped: branch already up to date.");
-  }
-
-  if (result.pr.status === "created") {
-    parts.push(result.pr.url ? `PR created: ${result.pr.url}` : "PR created.");
-  } else if (result.pr.status === "opened_existing") {
-    parts.push(
-      result.pr.url ? `Opened existing PR: ${result.pr.url}` : "Opened existing PR.",
-    );
-  }
-
-  return parts.join(" ");
-}
-
 export default function ChatView() {
   const { state, dispatch } = useStore();
   const api = useMemo(() => readNativeApi(), []);
@@ -177,7 +147,6 @@ export default function ChatView() {
   const [isGitMenuOpen, setIsGitMenuOpen] = useState(false);
   const [isGitActionRunning, setIsGitActionRunning] = useState(false);
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null);
-  const [gitActionNotice, setGitActionNotice] = useState<string | null>(null);
   const [gitActionError, setGitActionError] = useState<string | null>(null);
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
@@ -391,13 +360,11 @@ export default function ChatView() {
       setIsGitMenuOpen(false);
       setIsGitActionRunning(true);
       setGitActionError(null);
-      setGitActionNotice(null);
       try {
-        const result = await api.git.runStackedAction({
+        await api.git.runStackedAction({
           cwd: actionCwd,
           action,
         });
-        setGitActionNotice(summarizeGitActionResult(result));
       } catch (error) {
         setGitActionError(
           error instanceof Error ? error.message : "Git action failed.",
@@ -462,7 +429,6 @@ export default function ChatView() {
   const activeWorktreePath = activeThread?.worktreePath;
 
   useEffect(() => {
-    setGitActionNotice(null);
     setGitActionError(null);
   }, [activeProject?.id, activeWorktreePath]);
 
@@ -930,12 +896,6 @@ export default function ChatView() {
       {gitActionError && (
         <div className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-400/20 dark:bg-rose-900/20 dark:text-rose-200">
           {gitActionError}
-        </div>
-      )}
-
-      {gitActionNotice && (
-        <div className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/[0.08] dark:text-emerald-100">
-          {gitActionNotice}
         </div>
       )}
 
