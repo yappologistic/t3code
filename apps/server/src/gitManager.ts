@@ -325,7 +325,6 @@ export class GitManager {
 
     const existing = await this.findOpenPr(cwd, branch);
     if (existing) {
-      await this.openPrInBrowser(cwd, branch);
       return {
         status: "opened_existing",
         url: existing.url,
@@ -381,7 +380,6 @@ export class GitManager {
     }
 
     const created = await this.findOpenPr(cwd, branch);
-    await this.openPrInBrowser(cwd, branch);
 
     if (!created) {
       return {
@@ -400,14 +398,6 @@ export class GitManager {
       headBranch: created.headRefName,
       title: created.title,
     };
-  }
-
-  private async openPrInBrowser(cwd: string, branch: string): Promise<void> {
-    try {
-      await this.runGh(cwd, ["pr", "view", branch, "--web"]);
-    } catch {
-      // Opening the browser is best-effort.
-    }
   }
 
   private async findOpenPr(

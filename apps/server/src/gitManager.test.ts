@@ -343,7 +343,7 @@ describe("GitManager", () => {
     expect(result.push.status).toBe("skipped_up_to_date");
   });
 
-  it("opens existing PR for commit/push/pr action", async () => {
+  it("returns existing PR metadata for commit/push/pr action", async () => {
     const repoDir = makeTempDir("t3code-git-manager-");
     await initRepo(repoDir);
     await runGit(repoDir, ["checkout", "-b", "feature/existing-pr"]);
@@ -376,9 +376,7 @@ describe("GitManager", () => {
 
     expect(result.pr.status).toBe("opened_existing");
     expect(result.pr.number).toBe(42);
-    expect(
-      ghCalls.some((call) => call.startsWith("pr view feature/existing-pr --web")),
-    ).toBe(true);
+    expect(ghCalls.some((call) => call.startsWith("pr view "))).toBe(false);
   });
 
   it("creates PR when one does not already exist", async () => {
@@ -422,6 +420,7 @@ describe("GitManager", () => {
     expect(
       ghCalls.some((call) => call.includes("pr create --base main --head feature-create-pr")),
     ).toBe(true);
+    expect(ghCalls.some((call) => call.startsWith("pr view "))).toBe(false);
   });
 
   it("rejects push/pr actions from detached HEAD", async () => {

@@ -64,6 +64,22 @@ function GitActionIcon(props: { icon: GitActionIconName; disabled: boolean }) {
   return <GitHubIcon className={`h-5 w-5 shrink-0 ${toneClass}`} />;
 }
 
+function GitProgressStatusIcon(props: { status: GitProgressStepStatus }) {
+  if (props.status === "running") {
+    return <Loader2Icon className="h-4 w-4 animate-spin text-foreground" />;
+  }
+  if (props.status === "completed") {
+    return <CheckIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />;
+  }
+  if (props.status === "skipped") {
+    return <MinusIcon className="h-4 w-4 text-muted-foreground/70" />;
+  }
+  if (props.status === "failed") {
+    return <XIcon className="h-4 w-4 text-rose-500 dark:text-rose-300" />;
+  }
+  return <CircleIcon className="h-4 w-4 text-muted-foreground/60" />;
+}
+
 function gitActionModalTitle(): string {
   return "Commit your changes";
 }
@@ -249,6 +265,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
   const [gitModalProgress, setGitModalProgress] = useState<GitProgressStep[]>([]);
   const [gitModalError, setGitModalError] = useState<string | null>(null);
   const [gitModalResult, setGitModalResult] = useState<GitRunStackedActionResult | null>(null);
+  const [isGitProgressToastVisible, setIsGitProgressToastVisible] = useState(false);
   const gitMenuRef = useRef<HTMLDivElement>(null);
 
   const { data: gitStatus = null, error: gitStatusError } = useQuery(
@@ -291,10 +308,13 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     [gitModalActionOptions, gitModalSelectedAction],
   );
   const visibleGitActionError = gitActionError ?? gitStatusError?.message;
-  const gitModalOpenPrUrl = gitModalResult?.pr.url ?? gitStatus?.openPr?.url ?? null;
-  const gitModalHasProgress = gitModalProgress.length > 0;
-  const gitModalSelectionMode = !gitModalHasProgress && gitModalResult === null;
-  const gitModalSteps = gitModalProgress;
+  const gitProgressToastOpenPrUrl = gitModalResult?.pr.url ?? gitStatus?.openPr?.url ?? null;
+  const showGitProgressToast =
+    isGitProgressToastVisible &&
+    (isGitModalActionRunning ||
+      gitModalProgress.length > 0 ||
+      gitModalError !== null ||
+      gitModalResult !== null);
 
   const refreshGitStatus = useCallback(async () => {
     if (!api || !gitCwd) return;
@@ -307,6 +327,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     setIsGitModalOpen(true);
     setGitModalSelectedAction("commit");
     setGitModalCommitMessage("");
+    setIsGitProgressToastVisible(false);
     setGitModalProgress([]);
     setGitModalError(null);
     setGitModalResult(null);
@@ -318,9 +339,6 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     setIsGitModalOpen(false);
     setGitModalSelectedAction("commit");
     setGitModalCommitMessage("");
-    setGitModalProgress([]);
-    setGitModalError(null);
-    setGitModalResult(null);
   }, [isGitActionRunning]);
 
   const runGitActionImmediately = useCallback(
@@ -349,28 +367,39 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     });
   }, [api, gitStatus?.openPr?.url]);
 
-  const openPrFromModal = useCallback(() => {
+  const openPrFromToast = useCallback(() => {
     if (!api) {
       setGitModalError("Link opening is unavailable.");
       return;
     }
 
-    const prUrl = gitModalOpenPrUrl;
+    const prUrl = gitProgressToastOpenPrUrl;
     if (!prUrl) return;
 
     void api.shell.openExternal(prUrl).catch((error) => {
       setGitModalError(error instanceof Error ? error.message : "Unable to open PR link.");
     });
-  }, [api, gitModalOpenPrUrl]);
+  }, [api, gitProgressToastOpenPrUrl]);
+
+  const dismissGitProgressToast = useCallback(() => {
+    if (isGitModalActionRunning) return;
+    setIsGitProgressToastVisible(false);
+    setGitModalProgress([]);
+    setGitModalError(null);
+    setGitModalResult(null);
+  }, [isGitModalActionRunning]);
 
   const runGitAction = useCallback(async () => {
-    if (!api || !gitCwd || !isGitModalOpen) return;
+    if (!api || !gitCwd) return;
     if (!selectedGitModalActionOption || selectedGitModalActionOption.disabled) return;
     const actionCwd = gitCwd;
     const action = selectedGitModalActionOption.action;
     const commitMessage = gitModalCommitMessage.trim();
     const includeGeneratedCommitMessage = commitMessage.length === 0;
 
+    setIsGitMenuOpen(false);
+    setIsGitModalOpen(false);
+    setIsGitProgressToastVisible(true);
     setIsGitModalActionRunning(true);
     setGitModalError(null);
     setGitActionError(null);
@@ -488,7 +517,6 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     api,
     gitCwd,
     gitModalCommitMessage,
-    isGitModalOpen,
     refreshGitStatus,
     selectedGitModalActionOption,
   ]);
@@ -497,6 +525,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     setGitActionError(null);
     setGitModalError(null);
     setIsGitModalOpen(false);
+    setIsGitProgressToastVisible(false);
     setGitModalSelectedAction("commit");
     setGitModalCommitMessage("");
     setGitModalProgress([]);
@@ -690,92 +719,57 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                 placeholder="Leave blank to autogenerate a commit message"
                 value={gitModalCommitMessage}
                 onChange={(event) => setGitModalCommitMessage(event.target.value)}
-                disabled={!gitModalSelectionMode || isGitActionRunning}
+                disabled={isGitActionRunning}
               />
             </div>
             <div className="mt-6">
               <p className="text-sm font-medium text-foreground">Next steps</p>
               <div className="mt-2 overflow-hidden rounded-2xl border border-border">
-                {gitModalSelectionMode &&
-                  gitModalActionOptions.map((option, index) => {
-                    const borderClass =
-                      index < gitModalActionOptions.length - 1 ? "border-b border-border/70" : "";
-                    const selected = option.action === gitModalSelectedAction && !option.disabled;
-                    const disabled = option.disabled || isGitActionRunning;
+                {gitModalActionOptions.map((option, index) => {
+                  const borderClass =
+                    index < gitModalActionOptions.length - 1 ? "border-b border-border/70" : "";
+                  const selected = option.action === gitModalSelectedAction && !option.disabled;
+                  const disabled = option.disabled || isGitActionRunning;
 
-                    return (
-                      <button
-                        key={option.action}
-                        type="button"
-                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-150 ${borderClass} ${
-                          selected
-                            ? "bg-accent/55"
-                            : disabled
-                              ? "bg-card/25"
-                              : "bg-card/45 hover:bg-accent/35"
-                        } disabled:cursor-not-allowed`}
-                        disabled={disabled}
-                        onClick={() => {
-                          setGitModalSelectedAction(option.action);
-                        }}
-                      >
-                        <span className="mt-0.5">
-                          <GitActionIcon icon={option.icon} disabled={option.disabled} />
-                        </span>
-                        <div className="min-w-0 flex-1">
+                  return (
+                    <button
+                      key={option.action}
+                      type="button"
+                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-150 ${borderClass} ${
+                        selected
+                          ? "bg-accent/55"
+                          : disabled
+                            ? "bg-card/25"
+                            : "bg-card/45 hover:bg-accent/35"
+                      } disabled:cursor-not-allowed`}
+                      disabled={disabled}
+                      onClick={() => {
+                        setGitModalSelectedAction(option.action);
+                      }}
+                    >
+                      <span className="mt-0.5">
+                        <GitActionIcon icon={option.icon} disabled={option.disabled} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={`text-sm ${disabled ? "text-muted-foreground/60" : "text-foreground"}`}
+                        >
+                          {option.label}
+                        </p>
+                        {option.detail && (
                           <p
-                            className={`text-sm ${disabled ? "text-muted-foreground/60" : "text-foreground"}`}
+                            className={`mt-0.5 text-xs ${disabled ? "text-muted-foreground/55" : "text-muted-foreground/70"}`}
                           >
-                            {option.label}
+                            {option.detail}
                           </p>
-                          {option.detail && (
-                            <p
-                              className={`mt-0.5 text-xs ${disabled ? "text-muted-foreground/55" : "text-muted-foreground/70"}`}
-                            >
-                              {option.detail}
-                            </p>
-                          )}
-                        </div>
-                        {selected && !disabled ? (
-                          <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                {!gitModalSelectionMode &&
-                  gitModalSteps.map((step, index) => {
-                    const borderClass =
-                      index < gitModalSteps.length - 1 ? "border-b border-border/70" : "";
-
-                    return (
-                      <div
-                        key={step.id}
-                        className={`flex items-start gap-3 bg-card/45 px-4 py-3 ${borderClass}`}
-                      >
-                        <span className="mt-0.5">
-                          {step.status === "running" ? (
-                            <Loader2Icon className="h-4 w-4 animate-spin text-foreground" />
-                          ) : step.status === "completed" ? (
-                            <CheckIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-                          ) : step.status === "skipped" ? (
-                            <MinusIcon className="h-4 w-4 text-muted-foreground/70" />
-                          ) : step.status === "failed" ? (
-                            <XIcon className="h-4 w-4 text-rose-500 dark:text-rose-300" />
-                          ) : (
-                            <CircleIcon className="h-4 w-4 text-muted-foreground/60" />
-                          )}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm text-foreground">{step.label}</p>
-                          {step.status === "failed" && step.detail && (
-                            <p className="mt-0.5 text-xs text-rose-500 dark:text-rose-300">
-                              {step.detail}
-                            </p>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    );
-                  })}
+                      {selected && !disabled ? (
+                        <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             {(gitModalError ?? visibleGitActionError) && (
@@ -784,44 +778,116 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
               </div>
             )}
             <div className="mt-6 flex justify-end gap-2">
-              {gitModalResult && gitModalOpenPrUrl && (
+              <button
+                type="button"
+                className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={closeGitActionModal}
+                disabled={isGitActionRunning}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors duration-150 hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  void runGitAction();
+                }}
+                disabled={isGitActionRunning || !selectedGitModalActionOption}
+              >
+                {runActionLabel(gitModalSelectedAction)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGitProgressToast && (
+        <div
+          className="fixed bottom-4 right-4 z-[90] w-[min(420px,calc(100vw-2rem))]"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="rounded-2xl border border-border bg-popover/95 p-4 shadow-2xl backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground/65">
+                  Git actions
+                </p>
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  {isGitModalActionRunning
+                    ? "Running action..."
+                    : gitModalError
+                      ? "Action failed"
+                      : "Action complete"}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={dismissGitProgressToast}
+                disabled={isGitModalActionRunning}
+                aria-label="Dismiss git action progress toast"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+            {gitModalProgress.length > 0 && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-border/80">
+                {gitModalProgress.map((step, index) => {
+                  const borderClass =
+                    index < gitModalProgress.length - 1 ? "border-b border-border/70" : "";
+
+                  return (
+                    <div
+                      key={step.id}
+                      className={`flex items-start gap-3 bg-card/45 px-3.5 py-2.5 ${borderClass}`}
+                    >
+                      <span className="mt-0.5">
+                        <GitProgressStatusIcon status={step.status} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-foreground">{step.label}</p>
+                        {step.detail && (
+                          <p
+                            className={`mt-0.5 text-xs ${
+                              step.status === "failed"
+                                ? "text-rose-500 dark:text-rose-300"
+                                : "text-muted-foreground/70"
+                            }`}
+                          >
+                            {step.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {gitModalError && (
+              <div className="mt-3 rounded-lg border border-rose-300/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-200">
+                {gitModalError}
+              </div>
+            )}
+            <div className="mt-3 flex justify-end gap-2">
+              {!isGitModalActionRunning && gitModalResult && gitProgressToastOpenPrUrl && (
                 <button
                   type="button"
                   className="rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={openPrFromModal}
-                  disabled={isGitActionRunning}
+                  onClick={openPrFromToast}
+                  disabled={isGitModalActionRunning}
                 >
                   Open PR
                 </button>
               )}
               <button
                 type="button"
-                className={
-                  gitModalResult
-                    ? "rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors duration-150 hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    : "rounded-xl border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-                }
-                onClick={closeGitActionModal}
-                disabled={isGitActionRunning}
+                className="rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors duration-150 hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={dismissGitProgressToast}
+                disabled={isGitModalActionRunning}
               >
-                {gitModalResult ? "Done" : "Cancel"}
+                Done
               </button>
-              {!gitModalResult && (
-                <button
-                  type="button"
-                  className="rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors duration-150 hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => {
-                    void runGitAction();
-                  }}
-                  disabled={isGitActionRunning || !selectedGitModalActionOption}
-                >
-                  {isGitActionRunning
-                    ? "Running..."
-                    : gitModalSelectionMode
-                      ? "Continue"
-                      : runActionLabel(gitModalSelectedAction)}
-                </button>
-              )}
             </div>
           </div>
         </div>
