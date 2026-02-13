@@ -125,7 +125,7 @@ describe("git integration", () => {
       expect(current!.current).toBe(true);
     });
 
-    it("sorts branches by most recent commit first", async () => {
+    it("keeps current branch first and sorts the remaining branches by recency", async () => {
       await using tmp = await makeTmpDir();
       await initRepoWithCommit(tmp.path);
       const initialBranch = (await listGitBranches({ cwd: tmp.path })).branches.find(
@@ -153,11 +153,54 @@ describe("git integration", () => {
         "newer branch change",
       );
 
-      // Switch away to show sort order is recency-based, not "current"-based.
+      // Switch away to show current branch is pinned, then remaining branches are recency-sorted.
       await checkoutGitBranch({ cwd: tmp.path, branch: "older-branch" });
 
       const result = await listGitBranches({ cwd: tmp.path });
-      expect(result.branches[0]!.name).toBe("newer-branch");
+      expect(result.branches[0]!.name).toBe("older-branch");
+      expect(result.branches[1]!.name).toBe("newer-branch");
+    });
+
+    it("keeps default branch right after current branch", async () => {
+      await using tmp = await makeTmpDir();
+      await using remote = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      const defaultBranch = (await listGitBranches({ cwd: tmp.path })).branches.find(
+        (branch) => branch.current,
+      )!.name;
+
+      await git(remote.path, "init --bare");
+      await git(tmp.path, `remote add origin ${JSON.stringify(remote.path)}`);
+      await git(tmp.path, `push -u origin ${defaultBranch}`);
+      await git(tmp.path, `remote set-head origin ${defaultBranch}`);
+
+      await createGitBranch({ cwd: tmp.path, branch: "current-branch" });
+      await checkoutGitBranch({ cwd: tmp.path, branch: "current-branch" });
+      await commitWithDate(
+        tmp.path,
+        "current.txt",
+        "current change\n",
+        "Thu, 1 Jan 2037 00:00:00 +0000",
+        "current change",
+      );
+
+      await checkoutGitBranch({ cwd: tmp.path, branch: defaultBranch });
+      await createGitBranch({ cwd: tmp.path, branch: "newer-branch" });
+      await checkoutGitBranch({ cwd: tmp.path, branch: "newer-branch" });
+      await commitWithDate(
+        tmp.path,
+        "newer.txt",
+        "newer change\n",
+        "Fri, 1 Jan 2038 00:00:00 +0000",
+        "newer change",
+      );
+
+      await checkoutGitBranch({ cwd: tmp.path, branch: "current-branch" });
+
+      const result = await listGitBranches({ cwd: tmp.path });
+      expect(result.branches[0]!.name).toBe("current-branch");
+      expect(result.branches[1]!.name).toBe(defaultBranch);
+      expect(result.branches[2]!.name).toBe("newer-branch");
     });
 
     it("lists multiple branches after creating them", async () => {

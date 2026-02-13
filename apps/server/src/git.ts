@@ -393,11 +393,13 @@ export class GitCoreService {
         };
       })
       .toSorted((a, b) => {
+        const aPriority = a.current ? 0 : a.isDefault ? 1 : 2;
+        const bPriority = b.current ? 0 : b.isDefault ? 1 : 2;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+
         const aLastCommit = branchLastCommit.get(a.name) ?? 0;
         const bLastCommit = branchLastCommit.get(b.name) ?? 0;
         if (aLastCommit !== bLastCommit) return bLastCommit - aLastCommit;
-        if (a.current !== b.current) return a.current ? -1 : 1;
-        if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
 
