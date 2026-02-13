@@ -326,7 +326,7 @@ export class GitCoreService {
       throw new Error(stderr || "git branch failed");
     }
 
-    const [defaultRef, worktreeList] = await Promise.all([
+    const [defaultRef, worktreeList, branchRecency] = await Promise.all([
       executeGit(input.cwd, ["symbolic-ref", "refs/remotes/origin/HEAD"], {
         timeoutMs: 5_000,
         allowNonZeroExit: true,
@@ -335,6 +335,14 @@ export class GitCoreService {
         timeoutMs: 5_000,
         allowNonZeroExit: true,
       }),
+      executeGit(
+        input.cwd,
+        ["for-each-ref", "--format=%(refname:short)%09%(committerdate:unix)", "refs/heads"],
+        {
+          timeoutMs: 5_000,
+          allowNonZeroExit: true,
+        },
+      ),
     ]);
     const defaultBranch =
       defaultRef.code === 0
@@ -356,6 +364,21 @@ export class GitCoreService {
       }
     }
 
+    const branchLastCommit = new Map<string, number>();
+    if (branchRecency.code === 0) {
+      for (const line of branchRecency.stdout.split("\n")) {
+        if (line.length === 0) {
+          continue;
+        }
+        const [name, lastCommitRaw] = line.split("\t");
+        if (!name) {
+          continue;
+        }
+        const lastCommit = Number.parseInt(lastCommitRaw ?? "0", 10);
+        branchLastCommit.set(name, Number.isFinite(lastCommit) ? lastCommit : 0);
+      }
+    }
+
     const branches = result.stdout
       .split("\n")
       .map((line) => line.trim())
@@ -370,6 +393,9 @@ export class GitCoreService {
         };
       })
       .toSorted((a, b) => {
+        const aLastCommit = branchLastCommit.get(a.name) ?? 0;
+        const bLastCommit = branchLastCommit.get(b.name) ?? 0;
+        if (aLastCommit !== bLastCommit) return bLastCommit - aLastCommit;
         if (a.current !== b.current) return a.current ? -1 : 1;
         if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
         return a.name.localeCompare(b.name);

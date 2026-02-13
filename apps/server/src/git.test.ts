@@ -51,6 +51,25 @@ async function initRepoWithCommit(cwd: string): Promise<void> {
   await git(cwd, "commit -m 'initial commit'");
 }
 
+async function commitWithDate(
+  cwd: string,
+  fileName: string,
+  fileContents: string,
+  dateIsoString: string,
+  message: string,
+): Promise<void> {
+  await writeFile(path.join(cwd, fileName), fileContents);
+  await git(cwd, `add ${fileName}`);
+  const commitResult = await runTerminalCommand({
+    command: `GIT_AUTHOR_DATE="${dateIsoString}" GIT_COMMITTER_DATE="${dateIsoString}" git commit -m "${message}"`,
+    cwd,
+    timeoutMs: 10_000,
+  });
+  if (commitResult.code !== 0) {
+    throw new Error(`git dated commit failed: ${commitResult.stderr}`);
+  }
+}
+
 // ── Tests ──
 
 describe("git integration", () => {
@@ -106,14 +125,39 @@ describe("git integration", () => {
       expect(current!.current).toBe(true);
     });
 
-    it("sorts current branch first", async () => {
+    it("sorts branches by most recent commit first", async () => {
       await using tmp = await makeTmpDir();
       await initRepoWithCommit(tmp.path);
-      await createGitBranch({ cwd: tmp.path, branch: "aaa-first-alpha" });
-      await createGitBranch({ cwd: tmp.path, branch: "zzz-last" });
+      const initialBranch = (await listGitBranches({ cwd: tmp.path })).branches.find(
+        (branch) => branch.current,
+      )!.name;
+
+      await createGitBranch({ cwd: tmp.path, branch: "older-branch" });
+      await checkoutGitBranch({ cwd: tmp.path, branch: "older-branch" });
+      await commitWithDate(
+        tmp.path,
+        "older.txt",
+        "older branch change\n",
+        "Thu, 1 Jan 2037 00:00:00 +0000",
+        "older branch change",
+      );
+
+      await checkoutGitBranch({ cwd: tmp.path, branch: initialBranch });
+      await createGitBranch({ cwd: tmp.path, branch: "newer-branch" });
+      await checkoutGitBranch({ cwd: tmp.path, branch: "newer-branch" });
+      await commitWithDate(
+        tmp.path,
+        "newer.txt",
+        "newer branch change\n",
+        "Fri, 1 Jan 2038 00:00:00 +0000",
+        "newer branch change",
+      );
+
+      // Switch away to show sort order is recency-based, not "current"-based.
+      await checkoutGitBranch({ cwd: tmp.path, branch: "older-branch" });
 
       const result = await listGitBranches({ cwd: tmp.path });
-      expect(result.branches[0]!.current).toBe(true);
+      expect(result.branches[0]!.name).toBe("newer-branch");
     });
 
     it("lists multiple branches after creating them", async () => {
