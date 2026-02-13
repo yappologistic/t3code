@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   GitCoreService,
@@ -602,6 +602,22 @@ describe("git integration", () => {
 
       const skipped = await core.pushCurrentBranch(tmp.path, null);
       expect(skipped.status).toBe("skipped_up_to_date");
+    });
+
+    it("lists branches when recency lookup fails", async () => {
+      await using tmp = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      const core = new GitCoreService();
+      const recencySpy = vi
+        .spyOn(core as any, "readBranchRecency")
+        .mockRejectedValueOnce(new Error("timeout"));
+
+      const result = await core.listBranches({ cwd: tmp.path });
+
+      expect(result.isRepo).toBe(true);
+      expect(result.branches.length).toBeGreaterThan(0);
+      expect(result.branches[0]?.current).toBe(true);
+      recencySpy.mockRestore();
     });
   });
 });

@@ -312,7 +312,40 @@ export class GitCoreService {
     return value.length > 0 ? value : null;
   }
 
+  private async readBranchRecency(cwd: string): Promise<Map<string, number>> {
+    const branchRecency = await executeGit(
+      cwd,
+      ["for-each-ref", "--format=%(refname:short)%09%(committerdate:unix)", "refs/heads"],
+      {
+        timeoutMs: 15_000,
+        allowNonZeroExit: true,
+      },
+    );
+
+    const branchLastCommit = new Map<string, number>();
+    if (branchRecency.code !== 0) {
+      return branchLastCommit;
+    }
+
+    for (const line of branchRecency.stdout.split("\n")) {
+      if (line.length === 0) {
+        continue;
+      }
+      const [name, lastCommitRaw] = line.split("\t");
+      if (!name) {
+        continue;
+      }
+      const lastCommit = Number.parseInt(lastCommitRaw ?? "0", 10);
+      branchLastCommit.set(name, Number.isFinite(lastCommit) ? lastCommit : 0);
+    }
+
+    return branchLastCommit;
+  }
+
   async listBranches(input: GitListBranchesInput): Promise<GitListBranchesResult> {
+    const branchRecencyPromise = this.readBranchRecency(input.cwd).catch(
+      () => new Map<string, number>(),
+    );
     const result = await executeGit(input.cwd, ["branch", "--no-color"], {
       timeoutMs: 10_000,
       allowNonZeroExit: true,
@@ -326,7 +359,7 @@ export class GitCoreService {
       throw new Error(stderr || "git branch failed");
     }
 
-    const [defaultRef, worktreeList, branchRecency] = await Promise.all([
+    const [defaultRef, worktreeList, branchLastCommit] = await Promise.all([
       executeGit(input.cwd, ["symbolic-ref", "refs/remotes/origin/HEAD"], {
         timeoutMs: 5_000,
         allowNonZeroExit: true,
@@ -335,14 +368,7 @@ export class GitCoreService {
         timeoutMs: 5_000,
         allowNonZeroExit: true,
       }),
-      executeGit(
-        input.cwd,
-        ["for-each-ref", "--format=%(refname:short)%09%(committerdate:unix)", "refs/heads"],
-        {
-          timeoutMs: 5_000,
-          allowNonZeroExit: true,
-        },
-      ),
+      branchRecencyPromise,
     ]);
     const defaultBranch =
       defaultRef.code === 0
@@ -361,21 +387,6 @@ export class GitCoreService {
         } else if (line === "") {
           currentPath = null;
         }
-      }
-    }
-
-    const branchLastCommit = new Map<string, number>();
-    if (branchRecency.code === 0) {
-      for (const line of branchRecency.stdout.split("\n")) {
-        if (line.length === 0) {
-          continue;
-        }
-        const [name, lastCommitRaw] = line.split("\t");
-        if (!name) {
-          continue;
-        }
-        const lastCommit = Number.parseInt(lastCommitRaw ?? "0", 10);
-        branchLastCommit.set(name, Number.isFinite(lastCommit) ? lastCommit : 0);
       }
     }
 
