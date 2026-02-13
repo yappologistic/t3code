@@ -268,8 +268,9 @@ export default function Sidebar() {
       const displayWorktreePath = orphanedWorktreePath
         ? formatWorktreePathForDisplay(orphanedWorktreePath)
         : null;
+      const canDeleteWorktree = orphanedWorktreePath !== null && threadProject !== undefined;
       const shouldDeleteWorktree =
-        orphanedWorktreePath !== null &&
+        canDeleteWorktree &&
         (await api.dialogs.confirm(
           [
             "This thread is the only one linked to this worktree:",
