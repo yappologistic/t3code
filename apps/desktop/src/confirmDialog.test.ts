@@ -35,7 +35,7 @@ describe("showDesktopConfirmDialog", () => {
     expect(showMessageBoxMock).toHaveBeenCalledWith(
       ownerWindow,
       expect.objectContaining({
-        buttons: ["Cancel", "Confirm"],
+        buttons: ["No", "Yes"],
         message: "Delete worktree?",
       }),
     );
@@ -49,7 +49,7 @@ describe("showDesktopConfirmDialog", () => {
     expect(result).toBe(false);
     expect(showMessageBoxMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        buttons: ["Cancel", "Confirm"],
+        buttons: ["No", "Yes"],
         message: "Delete worktree?",
       }),
     );
