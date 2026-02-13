@@ -407,7 +407,7 @@ export default function Sidebar() {
                                   threadStatus.pulse ? "animate-pulse" : ""
                                 }`}
                               />
-                              <span className="hidden xl:inline">{threadStatus.label}</span>
+                              <span className="hidden md:inline">{threadStatus.label}</span>
                             </span>
                           )}
                           <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
