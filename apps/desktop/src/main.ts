@@ -83,7 +83,12 @@ function startBackend(): void {
 
   const child = spawn(process.execPath, [BACKEND_ENTRY], {
     cwd: ROOT_DIR,
-    env: backendEnv(),
+    // In Electron main, process.execPath points to the Electron binary.
+    // Run the child in Node mode so this backend process does not become a GUI app instance.
+    env: {
+      ...backendEnv(),
+      ELECTRON_RUN_AS_NODE: "1",
+    },
     stdio: "inherit",
   });
   backendProcess = child;
