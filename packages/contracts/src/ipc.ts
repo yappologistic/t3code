@@ -56,6 +56,7 @@ export interface NativeApi {
   };
   dialogs: {
     pickFolder: () => Promise<string | null>;
+    confirm: (message: string) => Promise<boolean>;
   };
   terminal: {
     open: (input: TerminalOpenInput) => Promise<TerminalSessionSnapshot>;

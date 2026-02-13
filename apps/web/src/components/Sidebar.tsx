@@ -267,14 +267,14 @@ export default function Sidebar() {
       const orphanedWorktreePath = getOrphanedWorktreePathForThread(state.threads, threadId);
       const shouldDeleteWorktree =
         orphanedWorktreePath !== null &&
-        window.confirm(
+        (await api.dialogs.confirm(
           [
             "This thread is the only one linked to this worktree:",
             orphanedWorktreePath,
             "",
             "Delete the worktree too?",
           ].join("\n"),
-        );
+        ));
 
       // Stop active session if running
       if (thread.session?.sessionId) {

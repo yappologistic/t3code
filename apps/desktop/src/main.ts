@@ -7,11 +7,13 @@ import path from "node:path";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 
+import { showDesktopConfirmDialog } from "./confirmDialog";
 import { fixPath } from "./fixPath";
 
 fixPath();
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
+const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
@@ -140,6 +142,16 @@ function registerIpcHandlers(): void {
         });
     if (result.canceled) return null;
     return result.filePaths[0] ?? null;
+  });
+
+  ipcMain.removeHandler(CONFIRM_CHANNEL);
+  ipcMain.handle(CONFIRM_CHANNEL, async (_event, message: unknown) => {
+    if (typeof message !== "string") {
+      return false;
+    }
+
+    const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    return showDesktopConfirmDialog(message, owner);
   });
 
   ipcMain.removeHandler(CONTEXT_MENU_CHANNEL);

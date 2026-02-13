@@ -60,6 +60,12 @@ export function createWsNativeApi(): NativeApi {
         if (!window.desktopBridge) return null;
         return window.desktopBridge.pickFolder();
       },
+      confirm: async (message) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.confirm(message);
+        }
+        return window.confirm(message);
+      },
     },
     terminal: {
       open: (input) => transport.request(WS_METHODS.terminalOpen, input),
