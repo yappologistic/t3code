@@ -302,9 +302,15 @@ export default function ChatView() {
   const closeTerminal = useCallback(
     (terminalId: string) => {
       if (!activeThreadId || !api) return;
-      void api.terminal.write({ threadId: activeThreadId, terminalId, data: "exit\n" }).catch(() => {
-        // Ignore write errors so the UI can still close an uninitialized or already-exited terminal.
-      });
+      const fallbackExitWrite = () =>
+        api.terminal.write({ threadId: activeThreadId, terminalId, data: "exit\n" }).catch(() => {
+          // Ignore write errors so the UI can still close an uninitialized or already-exited terminal.
+        });
+      if ("close" in api.terminal && typeof api.terminal.close === "function") {
+        void api.terminal.close({ threadId: activeThreadId, terminalId }).catch(() => fallbackExitWrite());
+      } else {
+        void fallbackExitWrite();
+      }
       dispatch({
         type: "CLOSE_THREAD_TERMINAL",
         threadId: activeThreadId,
