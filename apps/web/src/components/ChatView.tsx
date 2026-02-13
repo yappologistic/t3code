@@ -888,64 +888,68 @@ export default function ChatView() {
       )}
 
       {pendingApprovals.length > 0 && (
-        <div className="mx-4 mt-3 space-y-2">
-          {pendingApprovals.map((approval) => {
-            const isResponding = respondingRequestIds.includes(approval.requestId);
-            return (
-              <div
-                key={approval.requestId}
-                className="rounded-lg border border-amber-300/20 bg-amber-500/[0.07] px-3 py-2"
-              >
-                <p className="text-xs font-medium text-amber-100">
-                  {approval.requestKind === "command"
-                    ? "Command approval requested"
-                    : "File-change approval requested"}
-                </p>
-                {approval.detail && (
-                  <p
-                    className="mt-1 truncate font-mono text-[11px] text-amber-100/75"
-                    title={approval.detail}
-                  >
-                    {approval.detail}
+        <div className="px-5 pt-3">
+          <div className="mx-auto max-w-3xl space-y-2">
+            {pendingApprovals.map((approval) => {
+              const isResponding = respondingRequestIds.includes(approval.requestId);
+              return (
+                <div
+                  key={approval.requestId}
+                  className="rounded-lg border border-amber-300/40 bg-amber-50 px-3 py-2 dark:border-amber-300/20 dark:bg-amber-500/[0.07]"
+                >
+                  <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
+                    {approval.requestKind === "command"
+                      ? "Command approval requested"
+                      : "File-change approval requested"}
                   </p>
-                )}
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    className="rounded-md border border-border bg-accent px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isResponding}
-                    onClick={() => void onRespondToApproval(approval.requestId, "accept")}
-                  >
-                    Approve once
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-sky-300/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100 transition-colors duration-150 hover:bg-sky-500/22 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isResponding}
-                    onClick={() => void onRespondToApproval(approval.requestId, "acceptForSession")}
-                  >
-                    Always allow this session
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-[11px] text-foreground/90 transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isResponding}
-                    onClick={() => void onRespondToApproval(approval.requestId, "decline")}
-                  >
-                    Decline
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-rose-300/30 bg-rose-500/12 px-2 py-1 text-[11px] text-rose-100 transition-colors duration-150 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isResponding}
-                    onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
-                  >
-                    Cancel turn
-                  </button>
+                  {approval.detail && (
+                    <p
+                      className="mt-1 truncate font-mono text-[11px] text-amber-900/80 dark:text-amber-100/75"
+                      title={approval.detail}
+                    >
+                      {approval.detail}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      className="rounded-md border border-border bg-accent px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isResponding}
+                      onClick={() => void onRespondToApproval(approval.requestId, "accept")}
+                    >
+                      Approve once
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-sky-300/70 bg-sky-100 px-2 py-1 text-[11px] text-sky-800 transition-colors duration-150 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-300/30 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/22"
+                      disabled={isResponding}
+                      onClick={() =>
+                        void onRespondToApproval(approval.requestId, "acceptForSession")
+                      }
+                    >
+                      Always allow this session
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-border px-2 py-1 text-[11px] text-foreground/90 transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isResponding}
+                      onClick={() => void onRespondToApproval(approval.requestId, "decline")}
+                    >
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-rose-300/70 bg-rose-100 px-2 py-1 text-[11px] text-rose-800 transition-colors duration-150 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-300/30 dark:bg-rose-500/12 dark:text-rose-100 dark:hover:bg-rose-500/20"
+                      disabled={isResponding}
+                      onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
+                    >
+                      Cancel turn
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
