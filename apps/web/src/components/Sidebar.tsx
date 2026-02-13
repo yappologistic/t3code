@@ -298,13 +298,13 @@ export default function Sidebar() {
 
       dispatch({ type: "DELETE_THREAD", threadId });
 
-      if (!shouldDeleteWorktree || !orphanedWorktreePath) {
+      if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
         return;
       }
 
       try {
         await api.git.removeWorktree({
-          cwd: threadProject?.cwd ?? orphanedWorktreePath,
+          cwd: threadProject.cwd,
           path: orphanedWorktreePath,
         });
       } catch {
