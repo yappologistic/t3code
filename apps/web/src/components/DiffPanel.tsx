@@ -1,5 +1,7 @@
+import { XIcon } from "lucide-react";
 import { isElectron } from "../env";
 import { useStore } from "../store";
+import { Button } from "./ui/button";
 
 export default function DiffPanel() {
   const { dispatch } = useStore();
@@ -11,13 +13,14 @@ export default function DiffPanel() {
         className={`flex items-center justify-between border-b border-border px-4 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
       >
         <h3 className="text-xs font-medium text-foreground">Uncommitted changes</h3>
-        <button
+        <Button
           type="button"
-          className="text-muted-foreground/60 transition-colors duration-150 hover:text-muted-foreground"
+          size="icon-xs"
+          variant="ghost"
           onClick={() => dispatch({ type: "TOGGLE_DIFF" })}
         >
-          <span className="text-sm">&times;</span>
-        </button>
+          <XIcon />
+        </Button>
       </div>
 
       {/* Placeholder content */}

@@ -324,11 +324,32 @@ export function createServer(options: ServerOptions) {
         if (!params?.cwd) throw new Error("cwd is required");
         const editorDef = EDITORS.find((e) => e.id === params.editor);
         if (!editorDef) throw new Error(`Unknown editor: ${params.editor}`);
-        if (!editorDef.command) {
-          // Can't open file manager programmatically from server, just succeed silently
+
+        let command: string;
+        let args: string[];
+
+        if (editorDef.command) {
+          command = editorDef.command;
+          args = [params.cwd];
+        } else if (editorDef.id === "file-manager") {
+          // Use platform-specific file manager command
+          switch (process.platform) {
+            case "darwin":
+              command = "open";
+              break;
+            case "win32":
+              command = "explorer";
+              break;
+            default:
+              command = "xdg-open";
+              break;
+          }
+          args = [params.cwd];
+        } else {
           return undefined;
         }
-        const child = spawn(editorDef.command, [params.cwd], {
+
+        const child = spawn(command, args, {
           detached: true,
           stdio: "ignore",
         });

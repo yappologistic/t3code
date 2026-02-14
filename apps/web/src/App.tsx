@@ -10,6 +10,7 @@ import { StoreProvider, useStore } from "./store";
 import { DEFAULT_THREAD_TERMINAL_HEIGHT, DEFAULT_THREAD_TERMINAL_ID } from "./types";
 import { onServerWelcome } from "./wsNativeApi";
 import { useNativeApi } from "./hooks/useNativeApi";
+import { AnchoredToastProvider, ToastProvider } from "./components/ui/toast";
 
 function EventRouter() {
   const api = useNativeApi();
@@ -181,7 +182,7 @@ function Layout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground isolate">
       <EventRouter />
       <AutoProjectBootstrap />
       <DesktopProjectBootstrap />
@@ -198,7 +199,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <StoreProvider>
-        <Layout />
+        <ToastProvider>
+          <AnchoredToastProvider>
+            <Layout />
+          </AnchoredToastProvider>
+        </ToastProvider>
       </StoreProvider>
     </QueryClientProvider>
   );

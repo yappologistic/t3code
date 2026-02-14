@@ -4,6 +4,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProviderSendTurnAttachmentInput,
   type ProviderApprovalDecision,
+  ModelSlug,
 } from "@t3tools/contracts";
 import {
   type ClipboardEvent,
@@ -27,6 +28,7 @@ import {
   DEFAULT_REASONING,
   MODEL_OPTIONS,
   REASONING_OPTIONS,
+  ReasoningEffort,
   resolveModelSlug,
 } from "../model-logic";
 import {
@@ -46,20 +48,28 @@ import { isTerminalToggleShortcut } from "../terminal-shortcuts";
 import ChatMarkdown from "./ChatMarkdown";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { useNativeApi } from "../hooks/useNativeApi";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
+import {
+  ChevronDownIcon,
+  CircleAlertIcon,
+  FolderClosedIcon,
+  InfoIcon,
+  LockIcon,
+  LockOpenIcon,
+  XIcon,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
+import { Separator } from "./ui/separator";
+import { Group, GroupSeparator } from "./ui/group";
+import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "./ui/menu";
+import { CursorIcon, Icon } from "./Icons";
+import { cn } from "~/lib/utils";
+import { Badge } from "./ui/badge";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
   return `${formatTimestamp(createdAt)} • ${duration}`;
-}
-
-const FILE_MANAGER_LABEL = navigator.platform.includes("Mac")
-  ? "Finder"
-  : navigator.platform.includes("Win")
-    ? "Explorer"
-    : "Files";
-
-function editorLabel(editor: (typeof EDITORS)[number]): string {
-  return editor.command ? editor.label : FILE_MANAGER_LABEL;
 }
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
@@ -119,13 +129,7 @@ export default function ChatView() {
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  const [isEditorMenuOpen, setIsEditorMenuOpen] = useState(false);
-  const [lastEditor, setLastEditor] = useState<EditorId>(() => {
-    const stored = localStorage.getItem(LAST_EDITOR_KEY);
-    return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
-  });
-  const [selectedEffort, setSelectedEffort] = useState<string>(DEFAULT_REASONING);
+  const [selectedEffort, setSelectedEffort] = useState(DEFAULT_REASONING);
   const [envMode, setEnvMode] = useState<"local" | "worktree">("local");
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
   const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>([]);
@@ -137,8 +141,6 @@ export default function ChatView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const dragDepthRef = useRef(0);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
-  const editorMenuRef = useRef<HTMLDivElement>(null);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
 
   const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
@@ -150,7 +152,6 @@ export default function ChatView() {
   const phase = derivePhase(activeThread?.session ?? null);
   const isWorking = phase === "running" || isSending || isConnecting;
   const nowIso = new Date(nowTick).toISOString();
-  const modelOptions = MODEL_OPTIONS;
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(activeThread?.events ?? [], undefined),
     [activeThread?.events],
@@ -304,7 +305,9 @@ export default function ChatView() {
     (terminalId: string) => {
       if (!activeThreadId || !api) return;
       const fallbackExitWrite = () =>
-        api.terminal.write({ threadId: activeThreadId, terminalId, data: "exit\n" }).catch(() => undefined);
+        api.terminal
+          .write({ threadId: activeThreadId, terminalId, data: "exit\n" })
+          .catch(() => undefined);
       if ("close" in api.terminal && typeof api.terminal.close === "function") {
         void api.terminal
           .close({ threadId: activeThreadId, terminalId })
@@ -395,22 +398,21 @@ export default function ChatView() {
     };
   }, [revokePreviewUrls]);
 
+  /**
+   * Close expanded image on Escape key
+   */
   useEffect(() => {
     if (!expandedImage) {
       return;
     }
 
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
+      if (event.key !== "Escape") return;
       setExpandedImage(null);
     };
 
     window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [expandedImage]);
 
   const activeWorktreePath = activeThread?.worktreePath;
@@ -437,53 +439,6 @@ export default function ChatView() {
       window.clearInterval(timer);
     };
   }, [phase]);
-
-  useEffect(() => {
-    if (!isModelMenuOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!modelMenuRef.current) return;
-      if (event.target instanceof Node && !modelMenuRef.current.contains(event.target)) {
-        setIsModelMenuOpen(false);
-      }
-    };
-
-    window.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      window.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isModelMenuOpen]);
-
-  useEffect(() => {
-    if (!isEditorMenuOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!editorMenuRef.current) return;
-      if (event.target instanceof Node && !editorMenuRef.current.contains(event.target)) {
-        setIsEditorMenuOpen(false);
-      }
-    };
-
-    window.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      window.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isEditorMenuOpen]);
-
-  // Cmd+O / Ctrl+O to open in last-used editor
-  useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "o" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        if (api && activeProject) {
-          e.preventDefault();
-          const cwd = activeThread?.worktreePath ?? activeProject.cwd;
-          void api.shell.openInEditor(cwd, lastEditor);
-        }
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [api, activeProject, activeThread, lastEditor]);
 
   useEffect(() => {
     if (!activeThreadId) return;
@@ -515,15 +470,6 @@ export default function ChatView() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeThreadId, toggleTerminalVisibility]);
-
-  const openInEditor = (editorId: EditorId) => {
-    if (!api || !activeProject) return;
-    const cwd = activeThread?.worktreePath ?? activeProject.cwd;
-    void api.shell.openInEditor(cwd, editorId);
-    setLastEditor(editorId);
-    localStorage.setItem(LAST_EDITOR_KEY, editorId);
-    setIsEditorMenuOpen(false);
-  };
 
   const setThreadError = (threadId: string | null, error: string | null) => {
     if (!threadId) return;
@@ -577,13 +523,6 @@ export default function ChatView() {
       }
       return existing.filter((image) => image.id !== imageId);
     });
-  };
-
-  const openImageDialog = (src: string | undefined, name: string) => {
-    if (!src) {
-      return;
-    }
-    setExpandedImage({ src, name });
   };
 
   const onComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -782,13 +721,15 @@ export default function ChatView() {
     setIsSending(true);
     try {
       const turnAttachments = await Promise.all(
-        composerImagesSnapshot.map(async (image): Promise<ProviderSendTurnAttachmentInput> => ({
-          type: "image",
-          name: image.name,
-          mimeType: image.mimeType,
-          sizeBytes: image.sizeBytes,
-          dataUrl: await readFileAsDataUrl(image.file),
-        })),
+        composerImagesSnapshot.map(
+          async (image): Promise<ProviderSendTurnAttachmentInput> => ({
+            type: "image",
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+            dataUrl: await readFileAsDataUrl(image.file),
+          }),
+        ),
       );
       const shouldBootstrap =
         previousMessages.length > 0 &&
@@ -800,7 +741,7 @@ export default function ChatView() {
             latestPromptForBootstrap,
             PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
           ).text
-        : (trimmed || undefined);
+        : trimmed || undefined;
       await api.providers.sendTurn({
         sessionId: sessionInfo.sessionId,
         ...(input ? { input } : {}),
@@ -849,14 +790,13 @@ export default function ChatView() {
     }
   };
 
-  const onModelSelect = (model: string) => {
+  const onModelSelect = (model: ModelSlug) => {
     if (!activeThread) return;
     dispatch({
       type: "SET_THREAD_MODEL",
       threadId: activeThread.id,
       model: resolveModelSlug(model),
     });
-    setIsModelMenuOpen(false);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -892,132 +832,97 @@ export default function ChatView() {
       >
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-foreground">{activeThread.title}</h2>
-          {activeProject && (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] text-muted-foreground/50">
-              {activeProject.name}
-            </span>
-          )}
+          {activeProject && <Badge variant="outline">{activeProject.name}</Badge>}
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
-          {activeProject && (
-            <div className="relative" ref={editorMenuRef}>
-              <button
-                type="button"
-                className="rounded-md px-2 py-1 text-[10px] text-muted-foreground/40 transition-colors duration-150 hover:text-muted-foreground/60"
-                onClick={() => setIsEditorMenuOpen((v) => !v)}
-              >
-                Open in&hellip;
-              </button>
-              {isEditorMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[120px] rounded-md border border-border bg-popover py-1 shadow-xl">
-                  {EDITORS.map((editor) => (
-                    <button
-                      key={editor.id}
-                      type="button"
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
-                      onClick={() => openInEditor(editor.id)}
-                    >
-                      {editorLabel(editor)}
-                      {editor.id === lastEditor && (
-                        <kbd className="ml-auto text-[9px] text-muted-foreground/40">
-                          {navigator.platform.includes("Mac") ? "\u2318O" : "Ctrl+O"}
-                        </kbd>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {activeProject && <OpenInPicker />}
           {/* Git actions */}
           {activeProject && <GitActionsControl api={api} gitCwd={gitCwd} />}
 
           {/* Diff toggle */}
-          <button
-            type="button"
-            className={`rounded-md px-2 py-1 text-[10px] transition-colors duration-150 ${
-              state.diffOpen
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground/40 hover:text-muted-foreground/60"
-            }`}
+          <Button
+            size="xs"
+            variant="ghost"
+            className={cn(
+              "text-muted-foreground/70 hover:text-foreground/80",
+              state.diffOpen && "bg-accent text-accent-foreground",
+            )}
             onClick={() => dispatch({ type: "TOGGLE_DIFF" })}
           >
             Diff
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* Error banner */}
       {activeThread.error && (
-        <div className="mx-4 mt-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {activeThread.error}
+        <div className="pt-3 mx-auto max-w-3xl">
+          <Alert variant="error">
+            <CircleAlertIcon />
+            <AlertDescription className="line-clamp-3" title={activeThread.error}>
+              {activeThread.error}
+            </AlertDescription>
+          </Alert>
         </div>
       )}
 
       {pendingApprovals.length > 0 && (
-        <div className="px-5 pt-3">
-          <div className="mx-auto max-w-3xl space-y-2">
-            {pendingApprovals.map((approval) => {
-              const isResponding = respondingRequestIds.includes(approval.requestId);
-              return (
-                <div
-                  key={approval.requestId}
-                  className="rounded-lg border border-amber-300/40 bg-amber-50 px-3 py-2 dark:border-amber-300/20 dark:bg-amber-500/[0.07]"
+        <div className="pt-3 mx-auto max-w-3xl space-y-2">
+          {pendingApprovals.map((approval) => {
+            const isResponding = respondingRequestIds.includes(approval.requestId);
+
+            return (
+              <Alert variant="warning" key={approval.requestId}>
+                <InfoIcon />
+                <AlertTitle className="text-xs">
+                  {approval.requestKind === "command"
+                    ? "Command approval requested"
+                    : "File-change approval requested"}
+                </AlertTitle>
+                <AlertDescription
+                  className="truncate block font-mono text-[11px]"
+                  title={approval.detail}
                 >
-                  <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
-                    {approval.requestKind === "command"
-                      ? "Command approval requested"
-                      : "File-change approval requested"}
-                  </p>
-                  {approval.detail && (
-                    <p
-                      className="mt-1 truncate font-mono text-[11px] text-amber-900/80 dark:text-amber-100/75"
-                      title={approval.detail}
-                    >
-                      {approval.detail}
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      className="rounded-md border border-border bg-accent px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isResponding}
-                      onClick={() => void onRespondToApproval(approval.requestId, "accept")}
-                    >
-                      Approve once
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-md border border-sky-300/70 bg-sky-100 px-2 py-1 text-[11px] text-sky-800 transition-colors duration-150 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-300/30 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/22"
-                      disabled={isResponding}
-                      onClick={() =>
-                        void onRespondToApproval(approval.requestId, "acceptForSession")
-                      }
-                    >
-                      Always allow this session
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-md border border-border px-2 py-1 text-[11px] text-foreground/90 transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isResponding}
-                      onClick={() => void onRespondToApproval(approval.requestId, "decline")}
-                    >
-                      Decline
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-md border border-rose-300/70 bg-rose-100 px-2 py-1 text-[11px] text-rose-800 transition-colors duration-150 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-300/30 dark:bg-rose-500/12 dark:text-rose-100 dark:hover:bg-rose-500/20"
-                      disabled={isResponding}
-                      onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
-                    >
-                      Cancel turn
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  {approval.detail}
+                </AlertDescription>
+                <AlertAction className="col-start-2! -col-end-1! mt-1.5 sm:row-start-auto sm:row-end-auto">
+                  <Button
+                    size="xs"
+                    variant="default"
+                    disabled={isResponding}
+                    onClick={() => void onRespondToApproval(approval.requestId, "accept")}
+                  >
+                    Approve once
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={isResponding}
+                    onClick={() => void onRespondToApproval(approval.requestId, "acceptForSession")}
+                  >
+                    Always allow this session
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="destructive-outline"
+                    disabled={isResponding}
+                    onClick={() => void onRespondToApproval(approval.requestId, "decline")}
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={isResponding}
+                    onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
+                  >
+                    Cancel turn
+                  </Button>
+                </AlertAction>
+              </Alert>
+            );
+          })}
         </div>
       )}
 
@@ -1140,7 +1045,9 @@ export default function ChatView() {
                                     src={image.previewUrl}
                                     alt={image.name}
                                     className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
-                                    onClick={() => openImageDialog(image.previewUrl, image.name)}
+                                    onClick={() =>
+                                      setExpandedImage({ src: image.previewUrl!, name: image.name })
+                                    }
                                   />
                                 ) : (
                                   <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
@@ -1152,7 +1059,7 @@ export default function ChatView() {
                           </div>
                         )}
                         {timelineEntry.message.text && (
-                          <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-foreground">
+                          <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
                             {timelineEntry.message.text}
                           </pre>
                         )}
@@ -1241,21 +1148,24 @@ export default function ChatView() {
                           src={image.previewUrl}
                           alt={image.name}
                           className="h-full w-full cursor-zoom-in object-cover"
-                          onClick={() => openImageDialog(image.previewUrl, image.name)}
+                          onClick={() =>
+                            setExpandedImage({ src: image.previewUrl, name: image.name })
+                          }
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
                           {image.name}
                         </div>
                       )}
-                      <button
-                        type="button"
-                        className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-background/80 text-[11px] leading-none text-foreground transition-colors duration-150 hover:bg-background"
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
                         onClick={() => removeComposerImage(image.id)}
                         aria-label={`Remove ${image.name}`}
                       >
-                        ×
-                      </button>
+                        <XIcon />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -1281,110 +1191,23 @@ export default function ChatView() {
             <div className="flex items-center justify-between px-3 pb-3">
               <div className="flex items-center gap-1">
                 {/* Model picker */}
-                <div className="relative" ref={modelMenuRef}>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80"
-                    onClick={() => setIsModelMenuOpen((open) => !open)}
-                  >
-                    <span className="max-w-[180px] truncate">{selectedModel}</span>
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 10 10"
-                      fill="none"
-                      className="opacity-50"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M2.5 4L5 6.5L7.5 4"
-                        stroke="currentColor"
-                        strokeWidth="1.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  {isModelMenuOpen && (
-                    <div className="absolute bottom-full left-0 z-20 mb-2 w-[320px] rounded-2xl border border-border bg-popover/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur">
-                      <p className="px-2 py-1 text-[11px] text-muted-foreground/70">Select model</p>
-                      <div className="max-h-72 overflow-y-auto">
-                        {modelOptions.map((model) => {
-                          const isSelected = model === selectedModel;
-                          return (
-                            <button
-                              key={model}
-                              type="button"
-                              className={`mb-0.5 flex w-full items-center justify-between gap-2 rounded-xl px-2 py-2 text-left font-mono text-sm transition-colors duration-150 ${
-                                isSelected
-                                  ? "bg-accent text-foreground"
-                                  : "text-foreground/90 hover:bg-accent"
-                              }`}
-                              onClick={() => onModelSelect(model)}
-                            >
-                              <span className="truncate">{model}</span>
-                              <span
-                                className={`pt-0.5 text-sm ${
-                                  isSelected ? "text-foreground" : "text-transparent"
-                                }`}
-                              >
-                                ✓
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ModelPicker model={selectedModel} onModelChange={onModelSelect} />
 
                 {/* Divider */}
-                <div className="mx-0.5 h-4 w-px bg-border" />
+                <Separator orientation="vertical" className="mx-0.5 h-4" />
 
                 {/* Reasoning effort */}
-                <label
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80"
-                  htmlFor="reasoning-effort"
-                >
-                  <span>{selectedEffort.charAt(0).toUpperCase() + selectedEffort.slice(1)}</span>
-                  <select
-                    id="reasoning-effort"
-                    className="absolute opacity-0 w-0 h-0"
-                    value={selectedEffort}
-                    onChange={(event) => setSelectedEffort(event.target.value)}
-                  >
-                    {REASONING_OPTIONS.map((effort) => (
-                      <option key={effort} value={effort} className="bg-popover">
-                        {effort}
-                        {effort === DEFAULT_REASONING ? " (default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 10 10"
-                    fill="none"
-                    className="opacity-50"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M2.5 4L5 6.5L7.5 4"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </label>
+                <ReasoningEffortPicker effort={selectedEffort} onEffortChange={setSelectedEffort} />
 
                 {/* Divider */}
-                <div className="mx-0.5 h-4 w-px bg-border" />
+                <Separator orientation="vertical" className="mx-0.5 h-4" />
 
                 {/* Runtime mode toggle */}
-                <button
+                <Button
+                  variant="ghost"
+                  className="text-muted-foreground/70 hover:text-foreground/80"
+                  size="sm"
                   type="button"
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80"
                   disabled={isSwitchingRuntimeMode}
                   onClick={() =>
                     void handleRuntimeModeChange(
@@ -1397,45 +1220,9 @@ export default function ChatView() {
                       : "Approval required — click for full access"
                   }
                 >
-                  {state.runtimeMode === "full-access" ? (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                      <rect
-                        x="2"
-                        y="5.5"
-                        width="10"
-                        height="7"
-                        rx="1.5"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                      />
-                      <path
-                        d="M9.5 5.5V4a2.5 2.5 0 0 0-5 0"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                      <rect
-                        x="2"
-                        y="5.5"
-                        width="10"
-                        height="7"
-                        rx="1.5"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                      />
-                      <path
-                        d="M4.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  )}
-                  <span>{state.runtimeMode === "full-access" ? "Full access" : "Supervised"}</span>
-                </button>
+                  {state.runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+                  {state.runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                </Button>
               </div>
 
               {/* Right side: send / stop button */}
@@ -1461,7 +1248,9 @@ export default function ChatView() {
                   <button
                     type="submit"
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
-                    disabled={isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)}
+                    disabled={
+                      isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)
+                    }
                     aria-label={
                       isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"
                     }
@@ -1550,14 +1339,16 @@ export default function ChatView() {
             className="relative isolate max-h-[92vh] max-w-[92vw]"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
+            <Button
               type="button"
-              className="absolute right-2 top-2 z-30 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-xl leading-none text-white transition-colors duration-150 hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 [-webkit-app-region:no-drag]"
+              size="icon-xs"
+              variant="ghost"
+              className="absolute right-2 top-2"
               onClick={() => setExpandedImage(null)}
               aria-label="Close image preview"
             >
-              <span className="pointer-events-none">×</span>
-            </button>
+              <XIcon />
+            </Button>
             <img
               src={expandedImage.src}
               alt={expandedImage.name}
@@ -1571,5 +1362,135 @@ export default function ChatView() {
         </div>
       )}
     </div>
+  );
+}
+
+function ModelPicker(props: { model: ModelSlug; onModelChange: (model: ModelSlug) => void }) {
+  return (
+    <Select
+      items={MODEL_OPTIONS.map((option) => ({ label: option.name, value: option.slug }))}
+      value={props.model}
+      onValueChange={(value) => (value ? props.onModelChange(value) : undefined)}
+    >
+      <SelectTrigger size="sm" variant="ghost">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectPopup alignItemWithTrigger={false}>
+        {MODEL_OPTIONS.map(({ slug, name }) => (
+          <SelectItem key={slug} value={slug}>
+            {name}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+function ReasoningEffortPicker(props: {
+  effort: ReasoningEffort;
+  onEffortChange: (effort: ReasoningEffort) => void;
+}) {
+  return (
+    <Select
+      value={props.effort}
+      onValueChange={(value) => (value ? props.onEffortChange(value) : undefined)}
+    >
+      <SelectTrigger variant="ghost" size="sm">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectPopup alignItemWithTrigger={false}>
+        {REASONING_OPTIONS.map((effort) => (
+          <SelectItem key={effort} value={effort}>
+            {effort}
+            {effort === DEFAULT_REASONING ? " (default)" : ""}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+function OpenInPicker() {
+  const [lastEditor, setLastEditor] = useState<EditorId>(() => {
+    const stored = localStorage.getItem(LAST_EDITOR_KEY);
+    return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
+  });
+
+  const options = [
+    {
+      label: "Cursor",
+      Icon: CursorIcon,
+      value: "cursor",
+    },
+    {
+      label: navigator.platform.includes("Mac")
+        ? "Finder"
+        : navigator.platform.includes("Win")
+          ? "Explorer"
+          : "Files",
+      Icon: FolderClosedIcon,
+      value: "file-manager",
+    },
+  ] satisfies { label: string; Icon: Icon; value: EditorId }[];
+  const primaryOption = options.find(({ value }) => value === lastEditor);
+
+  const api = useNativeApi();
+  const { state } = useStore();
+  const activeProject = state.projects.find((p) => p.id === state.activeThreadId);
+  const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
+
+  const openInEditor = useCallback(
+    (editorId: EditorId | null) => {
+      if (!api || !activeProject) return;
+      const editor = editorId ?? lastEditor;
+      const cwd = activeThread?.worktreePath ?? activeProject.cwd;
+      void api.shell.openInEditor(cwd, editor);
+      localStorage.setItem(LAST_EDITOR_KEY, editor);
+      setLastEditor(editor);
+    },
+    [api, activeProject, activeThread, lastEditor, setLastEditor],
+  );
+
+  // Cmd+O / Ctrl+O to open in last-used editor
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "o" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        if (api && activeProject) {
+          e.preventDefault();
+          const cwd = activeThread?.worktreePath ?? activeProject.cwd;
+          void api.shell.openInEditor(cwd, lastEditor);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [api, activeProject, activeThread, lastEditor]);
+
+  return (
+    <Group aria-label="Subscription actions">
+      <Button size="xs" variant="outline" onClick={() => openInEditor(lastEditor)}>
+        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3" />}
+        Open
+      </Button>
+      <GroupSeparator />
+      <Menu>
+        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
+          <ChevronDownIcon aria-hidden="true" className="size-4" />
+        </MenuTrigger>
+        <MenuPopup align="end">
+          {options.map(({ label, Icon, value }) => (
+            <MenuItem key={value} onClick={() => openInEditor(value)}>
+              <Icon aria-hidden="true" className="text-muted-foreground" />
+              {label}
+              {value === lastEditor && (
+                <MenuShortcut>
+                  {navigator.platform.includes("Mac") ? "\u2318O" : "Ctrl+O"}
+                </MenuShortcut>
+              )}
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+    </Group>
   );
 }

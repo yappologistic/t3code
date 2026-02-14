@@ -6,4 +6,5 @@ export {
 } from "@t3tools/contracts";
 
 export const REASONING_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
-export const DEFAULT_REASONING = "high";
+export type ReasoningEffort = (typeof REASONING_OPTIONS)[number];
+export const DEFAULT_REASONING: ReasoningEffort = "high";

@@ -1,9 +1,21 @@
 import type { GitBranch } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { useStore } from "../store";
 import { useNativeApi } from "../hooks/useNativeApi";
+import { useStore } from "../store";
+import { Button } from "./ui/button";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxTrigger,
+} from "./ui/combobox";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 
 interface BranchToolbarProps {
   envMode: "local" | "worktree";
@@ -19,7 +31,6 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
-  const branchMenuRef = useRef<HTMLDivElement>(null);
 
   const activeThread = state.threads.find((thread) => thread.id === state.activeThreadId);
   const activeProject = state.projects.find((project) => project.id === activeThread?.projectId);
@@ -37,6 +48,8 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   });
 
   const branches = branchesQuery.data?.branches ?? [];
+  const branchNames = branches.map((branch) => branch.name);
+  const branchByName = new Map(branches.map((branch) => [branch.name, branch]));
   // Default to true while loading — showing "Initialize git" during a fetch is wrong,
   // and worktrees are inherently git repos.
   const isRepo = branchesQuery.data?.isRepo ?? !branchesQuery.isLoading;
@@ -46,8 +59,10 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   const checkoutMutation = useMutation({
     mutationFn: (branch: string) => api!.git.checkout({ cwd: branchCwd!, branch }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["git", "branches", branchCwd] }),
-    onError: (error) =>
-      setThreadError(error instanceof Error ? error.message : "Failed to checkout branch."),
+    onError: (error) => {
+      setThreadError(error instanceof Error ? error.message : "Failed to checkout branch.");
+      setIsBranchMenuOpen(true);
+    },
   });
 
   const createBranchMutation = useMutation({
@@ -88,17 +103,9 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   }, [activeThreadId, activeWorktreePath, activeThreadBranch, queryBranches, dispatch]);
 
   useEffect(() => {
-    if (!isBranchMenuOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!branchMenuRef.current) return;
-      if (event.target instanceof Node && !branchMenuRef.current.contains(event.target)) {
-        setIsBranchMenuOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      window.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (isBranchMenuOpen) return;
+    setIsCreatingBranch(false);
+    setNewBranchName("");
   }, [isBranchMenuOpen]);
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -171,21 +178,19 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
     <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1">
       <div className="flex items-center gap-2">
         {envLocked || activeWorktreePath ? (
-          <span className="inline-flex items-center gap-1.5 px-1 text-[12px] text-muted-foreground/55">
+          <span className="border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 sm:text-xs">
             {activeWorktreePath ? "Worktree" : "Local"}
           </span>
         ) : (
-          <button
+          <Button
             type="button"
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] transition-colors duration-150 ${
-              envMode === "worktree"
-                ? "bg-accent text-foreground/80"
-                : "text-muted-foreground/60 hover:bg-accent/50 hover:text-muted-foreground/80"
-            }`}
+            variant="ghost"
+            className="text-muted-foreground/70 hover:text-foreground/80"
+            size="xs"
             onClick={() => onEnvModeChange(envMode === "local" ? "worktree" : "local")}
           >
             {envMode === "worktree" ? "New worktree" : "Local"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -199,59 +204,56 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
           {initMutation.isPending ? "Initializing\u2026" : "Initialize git"}
         </button>
       ) : (
-        <div className="relative" ref={branchMenuRef}>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-muted-foreground/60 transition-colors duration-150 hover:bg-accent/50 hover:text-muted-foreground/80"
-            onClick={() => setIsBranchMenuOpen((open) => !open)}
+        <Combobox
+          items={branchNames}
+          autoHighlight
+          onOpenChange={(open) => setIsBranchMenuOpen(open)}
+          open={isBranchMenuOpen}
+          value={activeThread.branch}
+        >
+          <ComboboxTrigger
+            render={<Button variant="ghost" size="xs" />}
+            className="text-muted-foreground/70 hover:text-foreground/80"
             disabled={branchesQuery.isLoading}
           >
-            <span className="max-w-[240px] truncate font-mono">
+            <span className="max-w-[240px] truncate">
               {activeThread.branch
                 ? envMode === "worktree" && !activeWorktreePath
                   ? `From ${activeThread.branch}`
                   : activeThread.branch
                 : "Select branch"}
             </span>
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              fill="none"
-              className="opacity-40"
-              aria-hidden="true"
-            >
-              <path
-                d="M2.5 4L5 6.5L7.5 4"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <ChevronDownIcon />
+          </ComboboxTrigger>
+          <ComboboxPopup align="end" side="top" className="w-64">
+            <div className="border-b">
+              <ComboboxInput
+                className="rounded-b-none before:rounded-b-none [&_input]:font-sans"
+                placeholder="Search branches..."
+                showClear
+                showTrigger={false}
+                size="sm"
               />
-            </svg>
-          </button>
-          {isBranchMenuOpen && (
-            <div className="absolute bottom-full right-0 z-20 mb-2 w-[320px] rounded-2xl border border-border bg-popover/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur">
-              <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">
-                Branch
-              </p>
-              <div className="max-h-64 overflow-y-auto">
-                {branches.map((branch) => {
-                  const isSelected = branch.name === activeThread.branch;
-                  const hasSecondaryWorktree =
-                    branch.worktreePath && branch.worktreePath !== activeProject.cwd;
-                  return (
-                    <button
-                      key={branch.name}
-                      type="button"
-                      className={`mb-0.5 flex w-full items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-left font-mono text-xs transition-colors duration-150 ${
-                        isSelected
-                          ? "bg-accent text-foreground"
-                          : "text-foreground/90 hover:bg-accent/50"
-                      }`}
-                      onClick={() => selectBranch(branch)}
-                    >
-                      <span className="truncate">{branch.name}</span>
+            </div>
+            <ComboboxEmpty>No branches found.</ComboboxEmpty>
+
+            <ComboboxList className="max-h-56">
+              {(branchName) => {
+                const branch = branchByName.get(branchName);
+                if (!branch) return null;
+
+                const hasSecondaryWorktree =
+                  branch.worktreePath && branch.worktreePath !== activeProject.cwd;
+                return (
+                  <ComboboxItem
+                    hideIndicator
+                    key={branchName}
+                    value={branchName}
+                    className={branchName === activeThread.branch ? "bg-accent text-foreground" : undefined}
+                    onClick={() => selectBranch(branch)}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="truncate">{branchName}</span>
                       {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
                         <span className="shrink-0 text-[10px] text-muted-foreground/45">
                           {branch.current
@@ -261,58 +263,64 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
                               : "default"}
                         </span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-              {envMode === "local" && (
-                <>
-                  <div className="mx-1 my-1 h-px bg-border" />
-                  {isCreatingBranch ? (
-                    <form
-                      className="flex items-center gap-1 px-1"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        createBranch();
-                      }}
-                    >
-                      <input
-                        type="text"
-                        className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground placeholder:text-muted-foreground/30 focus:border-ring focus:outline-none"
+                    </div>
+                  </ComboboxItem>
+                );
+              }}
+            </ComboboxList>
+            {envMode === "local" && (
+              <>
+                {isCreatingBranch ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      createBranch();
+                    }}
+                  >
+                    <InputGroup className="rounded-t-none before:rounded-t-none">
+                      <InputGroupInput
+                        className="[&_input]:font-sans"
+                        size="sm"
                         placeholder="branch-name"
+                        type="text"
                         value={newBranchName}
                         onChange={(event) => setNewBranchName(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Escape") {
+                            event.stopPropagation();
                             setIsCreatingBranch(false);
                             setNewBranchName("");
                           }
                         }}
-                        // biome-ignore lint/a11y/noAutofocus: branch name input should focus when shown
                         autoFocus
                       />
-                      <button
-                        type="submit"
-                        disabled={!newBranchName.trim() || createBranchMutation.isPending}
-                        className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground/80 disabled:opacity-30"
-                      >
-                        Create
-                      </button>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80"
-                      onClick={() => setIsCreatingBranch(true)}
-                    >
-                      + New branch
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+                      <InputGroupAddon align="inline-end">
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          type="submit"
+                          disabled={!newBranchName.trim() || createBranchMutation.isPending}
+                        >
+                          Create
+                        </Button>
+                      </InputGroupAddon>
+                    </InputGroup>
+                  </form>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="w-full justify-start h-9 rounded-t-none rounded-b-lg before:rounded-t-none"
+                    variant="outline"
+                    onClick={() => setIsCreatingBranch(true)}
+                  >
+                    <PlusIcon />
+                    New branch
+                  </Button>
+                )}
+              </>
+            )}
+          </ComboboxPopup>
+        </Combobox>
       )}
     </div>
   );

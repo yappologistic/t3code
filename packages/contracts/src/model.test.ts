@@ -29,7 +29,7 @@ describe("resolveModelSlug", () => {
 
   it("resolves only supported model options", () => {
     for (const model of MODEL_OPTIONS) {
-      expect(resolveModelSlug(model)).toBe(model);
+      expect(resolveModelSlug(model.slug)).toBe(model.slug);
     }
   });
 });
