@@ -1,10 +1,12 @@
-## TODO
+# TODO
+
+## Small things
 
 - [ ] 1 click copy in codeblocks
-- [ ] Pasting/adding images to submit with prompts
+- [x] Pasting/adding images to submit with prompts
 - [ ] Only show last 10 threads for a given project
 - [ ] Thread archiving
-- [ ] Selecting folder should instantly create project
+- [x] Selecting folder should instantly create project
 - [ ] New projects should go on top
 - [ ] Projects should be sorted by latest thread update
 - [x] "Response" bar should ONLY appear on work completed
@@ -14,3 +16,8 @@
 - [ ] Disable "streaming" (wait until whole paragraph/step finishes before showing it
 - [x] Making new thread should auto-focus input box
 - [x] Threads should be scrolled to bottom on open (they currently start near top and "scroll down" after rendering, it's jank)
+
+## Bigger things
+
+- [ ] Queueing messages
+- [ ] External runners (i.e. running the cli on a mac mini)
