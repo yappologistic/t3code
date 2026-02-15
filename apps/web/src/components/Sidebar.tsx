@@ -1,7 +1,7 @@
 import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import type { GitStatusResult } from "@t3tools/contracts";
+import { gitStatusResultSchema, type GitStatusResult } from "@t3tools/contracts";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
@@ -153,29 +153,49 @@ export default function Sidebar() {
       })),
     [projectCwdById, state.threads],
   );
+  const threadGitStatusCwds = useMemo(
+    () =>
+      [
+        ...new Set(
+          threadGitTargets
+            .filter((target) => target.branch !== null)
+            .map((target) => target.cwd)
+            .filter((cwd): cwd is string => cwd !== null),
+        ),
+      ],
+    [threadGitTargets],
+  );
   const threadGitStatusQueries = useQueries({
-    queries: threadGitTargets.map((target) => {
-      const base = gitStatusQueryOptions(api, target.cwd);
+    queries: threadGitStatusCwds.map((cwd) => {
+      const base = gitStatusQueryOptions(api, cwd);
       return {
         ...base,
-        enabled: Boolean(base.enabled && target.branch !== null),
+        enabled: Boolean(base.enabled),
         staleTime: 30_000,
         refetchInterval: 60_000,
       };
     }),
   });
   const mergedPrByThreadId = useMemo(() => {
+    const statusByCwd = new Map<string, GitStatusResult>();
+    for (let index = 0; index < threadGitStatusCwds.length; index += 1) {
+      const cwd = threadGitStatusCwds[index];
+      if (!cwd) continue;
+      const parsed = gitStatusResultSchema.safeParse(threadGitStatusQueries[index]?.data);
+      if (parsed.success) {
+        statusByCwd.set(cwd, parsed.data);
+      }
+    }
+
     const map = new Map<string, boolean>();
-    for (let index = 0; index < threadGitTargets.length; index += 1) {
-      const target = threadGitTargets[index];
-      if (!target) continue;
-      const status = threadGitStatusQueries[index]?.data as GitStatusResult | undefined;
+    for (const target of threadGitTargets) {
+      const status = target.cwd ? statusByCwd.get(target.cwd) : undefined;
       const branchMatches =
         target.branch !== null && status?.branch !== null && status?.branch === target.branch;
       map.set(target.threadId, branchMatches && status?.openPr === null && status?.mergedPr !== null);
     }
     return map;
-  }, [threadGitStatusQueries, threadGitTargets]);
+  }, [threadGitStatusCwds, threadGitStatusQueries, threadGitTargets]);
 
   const handleNewThread = useCallback(
     (projectId: string) => {

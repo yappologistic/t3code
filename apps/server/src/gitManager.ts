@@ -195,10 +195,13 @@ export class GitManager {
     let mergedPr: ReturnType<typeof toStatusOpenPr> | null = null;
     if (details.branch) {
       try {
-        const existing = await this.findOpenPr(input.cwd, details.branch);
-        if (existing) {
-          openPr = toStatusOpenPr(existing);
-        } else {
+        if (details.hasUpstream) {
+          const existing = await this.findOpenPr(input.cwd, details.branch);
+          if (existing) {
+            openPr = toStatusOpenPr(existing);
+          }
+        }
+        if (!openPr) {
           const merged = await this.findMergedPr(input.cwd, details.branch);
           if (merged) {
             mergedPr = toStatusOpenPr(merged);

@@ -242,6 +242,28 @@ describe("GitManager", () => {
     expect(ghCalls.some((call) => call.includes("--state merged"))).toBe(true);
   });
 
+  it("status skips open PR lookup for branches without upstream", async () => {
+    const repoDir = makeTempDir("t3code-git-manager-");
+    await initRepo(repoDir);
+    await runGit(repoDir, ["checkout", "-b", "feature/local-only"]);
+
+    const { runner, ghCalls } = createRunnerWithFakeGh({
+      prListSequence: ["[]"],
+    });
+
+    const manager = new GitManager({
+      runProcess: runner,
+      textGenerator: createTextGenerator(),
+    });
+
+    const status = await manager.status({ cwd: repoDir });
+    expect(status.branch).toBe("feature/local-only");
+    expect(status.openPr).toBeNull();
+    expect(status.mergedPr).toBeNull();
+    expect(ghCalls.some((call) => call.includes("--state open"))).toBe(false);
+    expect(ghCalls.some((call) => call.includes("--state merged"))).toBe(true);
+  });
+
   it("status is resilient to gh lookup failures and returns openPr/mergedPr null", async () => {
     const repoDir = makeTempDir("t3code-git-manager-");
     await initRepo(repoDir);
