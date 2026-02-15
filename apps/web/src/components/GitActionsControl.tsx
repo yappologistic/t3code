@@ -277,19 +277,19 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
           title: resultToast.title,
           description: resultToast.description,
           timeout: 0,
-              ...(shouldOfferPushCta
-                ? {
-                    actionProps: {
-                      children: "Push",
-                      onClick: () => {
-                        void runGitActionWithToast({
-                          action: "commit_push",
-                          forcePushOnlyProgress: true,
-                          onConfirmed: closeResultToast,
-                        });
-                      },
-                    },
-                  }
+          ...(shouldOfferPushCta
+            ? {
+                actionProps: {
+                  children: "Push",
+                  onClick: () => {
+                    void runGitActionWithToast({
+                      action: "commit_push",
+                      forcePushOnlyProgress: true,
+                      onConfirmed: closeResultToast,
+                    });
+                  },
+                },
+              }
             : shouldOfferOpenPrCta
               ? {
                   actionProps: {
