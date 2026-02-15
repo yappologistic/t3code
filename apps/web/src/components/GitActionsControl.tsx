@@ -1,8 +1,4 @@
-import {
-  type GitStatusResult,
-  type GitStackedAction,
-  type NativeApi,
-} from "@t3tools/contracts";
+import { type GitStatusResult, type GitStackedAction, type NativeApi } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from "lucide-react";
@@ -195,9 +191,9 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     ? (quickAction.hint ?? "This action is currently unavailable.")
     : null;
   const [isQuickActionPopoverOpen, setIsQuickActionPopoverOpen] = useState(false);
-  const [openDisabledMenuItemId, setOpenDisabledMenuItemId] = useState<GitActionMenuItem["id"] | null>(
-    null,
-  );
+  const [openDisabledMenuItemId, setOpenDisabledMenuItemId] = useState<
+    GitActionMenuItem["id"] | null
+  >(null);
 
   const refreshGitStatus = useCallback(async () => {
     if (!api || !gitCwd) return;
@@ -240,13 +236,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
   }, [api, gitStatus?.openPr?.url]);
 
   const runGitActionWithToast = useCallback(
-    async ({
-      action,
-      commitMessage,
-    }: {
-      action: GitStackedAction;
-      commitMessage?: string;
-    }) => {
+    async ({ action, commitMessage }: { action: GitStackedAction; commitMessage?: string }) => {
       const confirmed = await maybeConfirmPushToDefaultBranch(action);
       if (!confirmed) return;
 
@@ -396,8 +386,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
         : activeDialogAction === "push"
           ? "commit_push"
           : "commit_push_pr";
-    const commitMessage =
-      activeDialogAction === "commit" ? dialogCommitMessage.trim() : "";
+    const commitMessage = activeDialogAction === "commit" ? dialogCommitMessage.trim() : "";
     setActiveDialogAction(null);
     void runGitActionWithToast({
       action,
@@ -503,7 +492,11 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
             </MenuTrigger>
             <MenuPopup align="end" sideOffset={4}>
               {gitActionMenuItems.map((item) => {
-                const disabledReason = getMenuActionDisabledReason(item, gitStatus, isGitActionRunning);
+                const disabledReason = getMenuActionDisabledReason(
+                  item,
+                  gitStatus,
+                  isGitActionRunning,
+                );
                 if (item.disabled && disabledReason) {
                   return (
                     <Popover
@@ -611,7 +604,9 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                         <>
                           <span className="text-success">+{gitStatus.workingTree.insertions}</span>
                           <span className="text-muted-foreground"> / </span>
-                          <span className="text-destructive">-{gitStatus.workingTree.deletions}</span>
+                          <span className="text-destructive">
+                            -{gitStatus.workingTree.deletions}
+                          </span>
                         </>
                       )}
                     </span>

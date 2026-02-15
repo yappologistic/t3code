@@ -1304,7 +1304,9 @@ export default function ChatView() {
         </form>
       </div>
 
-      {isGitRepo && <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />}
+      {isGitRepo && (
+        <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />
+      )}
 
       {activeThread.terminalOpen && api && activeProject && (
         <ThreadTerminalDrawer

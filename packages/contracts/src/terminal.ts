@@ -36,12 +36,7 @@ export const terminalCloseInputSchema = terminalThreadInputSchema.extend({
   deleteHistory: z.boolean().optional(),
 });
 
-export const terminalSessionStatusSchema = z.enum([
-  "starting",
-  "running",
-  "exited",
-  "error",
-]);
+export const terminalSessionStatusSchema = z.enum(["starting", "running", "exited", "error"]);
 
 export const terminalSessionSnapshotSchema = z.object({
   threadId: z.string().min(1),

@@ -100,23 +100,11 @@ export const gitStatusResultSchema = z.object({
     .nullable(),
 });
 
-export const gitStackedActionSchema = z.enum([
-  "commit",
-  "commit_push",
-  "commit_push_pr",
-]);
+export const gitStackedActionSchema = z.enum(["commit", "commit_push", "commit_push_pr"]);
 
 const gitCommitStepStatusSchema = z.enum(["created", "skipped_no_changes"]);
-const gitPushStepStatusSchema = z.enum([
-  "pushed",
-  "skipped_not_requested",
-  "skipped_up_to_date",
-]);
-const gitPrStepStatusSchema = z.enum([
-  "created",
-  "opened_existing",
-  "skipped_not_requested",
-]);
+const gitPushStepStatusSchema = z.enum(["pushed", "skipped_not_requested", "skipped_up_to_date"]);
+const gitPrStepStatusSchema = z.enum(["created", "opened_existing", "skipped_not_requested"]);
 
 export const gitRunStackedActionInputSchema = z.object({
   cwd: z.string().trim().min(1),

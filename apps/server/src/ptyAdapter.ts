@@ -40,12 +40,7 @@ function resolveNodePtySpawnHelperPath(): string | null {
     const candidates = [
       path.join(packageDir, "build", "Release", "spawn-helper"),
       path.join(packageDir, "build", "Debug", "spawn-helper"),
-      path.join(
-        packageDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`,
-        "spawn-helper",
-      ),
+      path.join(packageDir, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper"),
     ];
 
     for (const candidate of candidates) {
@@ -128,10 +123,7 @@ export class NodePtyAdapter implements PtyAdapter {
       cols: input.cols,
       rows: input.rows,
       env: input.env,
-      name:
-        globalThis.process.platform === "win32"
-          ? "xterm-color"
-          : "xterm-256color",
+      name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
     });
     return new NodePtyProcess(ptyProcess);
   }

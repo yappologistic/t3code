@@ -101,7 +101,8 @@ function parseNumstatEntries(
   for (const line of stdout.split(/\r?\n/g)) {
     if (line.trim().length === 0) continue;
     const [addedRaw, deletedRaw, ...pathParts] = line.split("\t");
-    const rawPath = pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
+    const rawPath =
+      pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
     if (rawPath.length === 0) continue;
     const added = Number.parseInt(addedRaw ?? "0", 10);
     const deleted = Number.parseInt(deletedRaw ?? "0", 10);
@@ -311,21 +312,12 @@ export class GitCoreService {
   async prepareCommitContext(cwd: string): Promise<GitPreparedCommitContext | null> {
     await this.git(cwd, ["add", "-A"]);
 
-    const stagedSummary = await this.gitStdout(cwd, [
-      "diff",
-      "--cached",
-      "--name-status",
-    ]);
+    const stagedSummary = await this.gitStdout(cwd, ["diff", "--cached", "--name-status"]);
     if (trimStdout(stagedSummary).length === 0) {
       return null;
     }
 
-    const stagedPatch = await this.gitStdout(cwd, [
-      "diff",
-      "--cached",
-      "--patch",
-      "--minimal",
-    ]);
+    const stagedPatch = await this.gitStdout(cwd, ["diff", "--cached", "--patch", "--minimal"]);
 
     return {
       stagedSummary,

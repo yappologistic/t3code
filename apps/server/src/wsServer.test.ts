@@ -224,9 +224,7 @@ describe("WebSocket Server", () => {
       ...(options.authToken ? { authToken: options.authToken } : {}),
       projectRegistry: new ProjectRegistry(stateDir),
       ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
-      ...(options.terminalManager
-        ? { terminalManager: options.terminalManager }
-        : {}),
+      ...(options.terminalManager ? { terminalManager: options.terminalManager } : {}),
     });
   }
 
@@ -602,9 +600,7 @@ describe("WebSocket Server", () => {
   it("returns errors from git.runStackedAction", async () => {
     const gitManager = {
       status: vi.fn(),
-      runStackedAction: vi
-        .fn()
-        .mockRejectedValue(new Error("Cannot push from detached HEAD.")),
+      runStackedAction: vi.fn().mockRejectedValue(new Error("Cannot push from detached HEAD.")),
     };
 
     server = createTestServer({ cwd: "/test", gitManager });

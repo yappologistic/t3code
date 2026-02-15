@@ -20,11 +20,7 @@ import type {
 } from "./coreServices";
 import { CodexTextGenerator } from "./codexTextGenerator";
 import { GitCoreService } from "./git";
-import {
-  type ProcessRunOptions,
-  type ProcessRunResult,
-  runProcess,
-} from "./processRunner";
+import { type ProcessRunOptions, type ProcessRunResult, runProcess } from "./processRunner";
 
 const GH_CLI_TIMEOUT_MS = 30_000;
 
@@ -58,11 +54,7 @@ function parseOpenPrList(raw: unknown): OpenPrInfo[] {
     const url = record.url;
     const baseRefName = record.baseRefName;
     const headRefName = record.headRefName;
-    if (
-      typeof number !== "number" ||
-      !Number.isInteger(number) ||
-      number <= 0
-    ) {
+    if (typeof number !== "number" || !Number.isInteger(number) || number <= 0) {
       continue;
     }
     if (
@@ -98,8 +90,7 @@ function sanitizeCommitMessage(
 ): CommitMessageGenerationResult {
   const rawSubject = generated.subject.trim().split(/\r?\n/g)[0]?.trim() ?? "";
   const subject = rawSubject.replace(/[.]+$/g, "").trim();
-  const safeSubject =
-    subject.length > 0 ? subject.slice(0, 72).trimEnd() : "Update project files";
+  const safeSubject = subject.length > 0 ? subject.slice(0, 72).trimEnd() : "Update project files";
   return {
     subject: safeSubject,
     body: generated.body.trim(),
@@ -143,10 +134,7 @@ function extractBranchFromRef(ref: string): string {
   return normalized.slice(firstSlash + 1).trim();
 }
 
-function asCommandNotFound(
-  command: string,
-  error: unknown,
-): Error | undefined {
+function asCommandNotFound(command: string, error: unknown): Error | undefined {
   if (!(error instanceof Error)) return undefined;
   if (!error.message.includes(`Command not found: ${command}`)) return undefined;
   if (command === "gh") {
@@ -226,9 +214,7 @@ export class GitManager {
     };
   }
 
-  async runStackedAction(
-    raw: GitRunStackedActionInput,
-  ): Promise<GitRunStackedActionResult> {
+  async runStackedAction(raw: GitRunStackedActionInput): Promise<GitRunStackedActionResult> {
     const input = gitRunStackedActionInputSchema.parse(raw);
     const wantsPush = input.action !== "commit";
     const wantsPr = input.action === "commit_push_pr";
@@ -241,11 +227,7 @@ export class GitManager {
       throw new Error("Cannot create a pull request from detached HEAD.");
     }
 
-    const commit = await this.runCommitStep(
-      input.cwd,
-      initialStatus.branch,
-      input.commitMessage,
-    );
+    const commit = await this.runCommitStep(input.cwd, initialStatus.branch, input.commitMessage);
 
     const push = wantsPush
       ? await this.gitCore.pushCurrentBranch(input.cwd, initialStatus.branch)
@@ -353,10 +335,7 @@ export class GitManager {
       throw asCommandNotFound("codex", error) ?? error;
     }
 
-    const bodyFile = path.join(
-      os.tmpdir(),
-      `t3code-pr-body-${process.pid}-${randomUUID()}.md`,
-    );
+    const bodyFile = path.join(os.tmpdir(), `t3code-pr-body-${process.pid}-${randomUUID()}.md`);
     await fs.writeFile(bodyFile, generated.body, "utf8");
 
     try {
@@ -401,10 +380,7 @@ export class GitManager {
     };
   }
 
-  private async findOpenPr(
-    cwd: string,
-    branch: string,
-  ): Promise<OpenPrInfo | null> {
+  private async findOpenPr(cwd: string, branch: string): Promise<OpenPrInfo | null> {
     const stdout = await this.runGhStdout(cwd, [
       "pr",
       "list",
@@ -437,10 +413,7 @@ export class GitManager {
     branch: string,
     upstreamRef: string | null,
   ): Promise<string> {
-    const configured = await this.gitCore.readConfigValue(
-      cwd,
-      `branch.${branch}.gh-merge-base`,
-    );
+    const configured = await this.gitCore.readConfigValue(cwd, `branch.${branch}.gh-merge-base`);
     if (configured) return configured;
 
     if (upstreamRef) {
@@ -477,10 +450,7 @@ export class GitManager {
     return result.stdout;
   }
 
-  private async runGhCommand(
-    cwd: string,
-    args: readonly string[],
-  ): Promise<ProcessRunResult> {
+  private async runGhCommand(cwd: string, args: readonly string[]): Promise<ProcessRunResult> {
     try {
       return await this.run("gh", args, {
         cwd,

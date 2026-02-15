@@ -258,8 +258,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     const turnInput: Array<
-      | { type: "text"; text: string; text_elements: [] }
-      | { type: "image"; url: string }
+      { type: "text"; text: string; text_elements: [] } | { type: "image"; url: string }
     > = [];
     if (input.input) {
       turnInput.push({
@@ -283,8 +282,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     const turnStartParams: {
       threadId: string;
       input: Array<
-        | { type: "text"; text: string; text_elements: [] }
-        | { type: "image"; url: string }
+        { type: "text"; text: string; text_elements: [] } | { type: "image"; url: string }
       >;
       model?: string;
       effort?: string;

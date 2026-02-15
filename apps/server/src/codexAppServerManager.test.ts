@@ -21,10 +21,16 @@ function createSendTurnHarness() {
   };
 
   const requireSession = vi
-    .spyOn(manager as unknown as { requireSession: (sessionId: string) => unknown }, "requireSession")
+    .spyOn(
+      manager as unknown as { requireSession: (sessionId: string) => unknown },
+      "requireSession",
+    )
     .mockReturnValue(context);
   const sendRequest = vi
-    .spyOn(manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> }, "sendRequest")
+    .spyOn(
+      manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> },
+      "sendRequest",
+    )
     .mockResolvedValue({
       turn: {
         id: "turn_1",
@@ -109,7 +115,8 @@ describe("isRecoverableThreadResumeError", () => {
 
 describe("sendTurn", () => {
   it("sends text and image user input items to turn/start", async () => {
-    const { manager, context, requireSession, sendRequest, updateSession } = createSendTurnHarness();
+    const { manager, context, requireSession, sendRequest, updateSession } =
+      createSendTurnHarness();
 
     const result = await manager.sendTurn({
       sessionId: "sess_1",

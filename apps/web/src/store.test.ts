@@ -244,11 +244,7 @@ describe("store reducer thread continuity", () => {
       terminalId: "term-3",
     });
 
-    expect(next.threads[0]?.terminalIds).toEqual([
-      DEFAULT_THREAD_TERMINAL_ID,
-      "term-2",
-      "term-3",
-    ]);
+    expect(next.threads[0]?.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID, "term-2", "term-3"]);
     expect(next.threads[0]?.terminalGroups).toEqual([
       {
         id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,

@@ -570,11 +570,7 @@ describe("git integration", () => {
       expect(context!.stagedSummary.length).toBeGreaterThan(0);
       expect(context!.stagedPatch.length).toBeGreaterThan(0);
 
-      const created = await core.commit(
-        tmp.path,
-        "Add README update",
-        "- include updated content",
-      );
+      const created = await core.commit(tmp.path, "Add README update", "- include updated content");
       expect(created.commitSha.length).toBeGreaterThan(0);
       expect(await git(tmp.path, "log -1 --pretty=%s")).toBe("Add README update");
     });

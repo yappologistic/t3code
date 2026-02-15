@@ -101,17 +101,12 @@ function readPersistedState(): AppState {
 
   try {
     const rawCurrent = window.localStorage.getItem(PERSISTED_STATE_KEY);
-    const legacyValues = LEGACY_PERSISTED_STATE_KEYS.map((key) =>
-      window.localStorage.getItem(key),
-    );
+    const legacyValues = LEGACY_PERSISTED_STATE_KEYS.map((key) => window.localStorage.getItem(key));
     const rawLegacy = legacyValues.find((value) => value !== null) ?? null;
     const raw = rawCurrent ?? rawLegacy;
     if (!raw) return initialState;
     const rawCodethingV1 = window.localStorage.getItem("codething:renderer-state:v1");
-    const hydrated = hydratePersistedState(
-      raw,
-      !rawCurrent && raw === rawCodethingV1,
-    );
+    const hydrated = hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
     if (!hydrated) return initialState;
 
     return { ...hydrated, diffOpen: false };
@@ -183,10 +178,7 @@ function assignUniqueGroupId(groupId: string, usedGroupIds: Set<string>): string
   return uniqueGroupId;
 }
 
-function normalizeTerminalGroups(
-  thread: Thread,
-  terminalIds: string[],
-): ThreadTerminalGroup[] {
+function normalizeTerminalGroups(thread: Thread, terminalIds: string[]): ThreadTerminalGroup[] {
   const validTerminalIdSet = new Set(terminalIds);
   const assignedTerminalIds = new Set<string>();
   const usedGroupIds = new Set<string>();
@@ -248,14 +240,13 @@ function normalizeThreadTerminals(thread: Thread): Thread {
   const activeGroupIndexFromId = terminalGroups.findIndex(
     (group) => group.id === thread.activeTerminalGroupId,
   );
-  const activeGroupIndexFromTerminal = findGroupIndexByTerminalId(
-    terminalGroups,
-    activeTerminalId,
-  );
+  const activeGroupIndexFromTerminal = findGroupIndexByTerminalId(terminalGroups, activeTerminalId);
   const activeGroupIndex =
     activeGroupIndexFromId >= 0
       ? activeGroupIndexFromId
-      : (activeGroupIndexFromTerminal >= 0 ? activeGroupIndexFromTerminal : 0);
+      : activeGroupIndexFromTerminal >= 0
+        ? activeGroupIndexFromTerminal
+        : 0;
   const activeTerminalGroupId =
     terminalGroups[activeGroupIndex]?.id ??
     terminalGroups[0]?.id ??
@@ -301,9 +292,9 @@ function closeThreadTerminal(thread: Thread, terminalId: string): Thread {
   const closedTerminalGroupIndex = closedTerminalGroup
     ? closedTerminalGroup.terminalIds.indexOf(terminalId)
     : -1;
-  const remainingTerminalsInClosedGroup = (
-    closedTerminalGroup?.terminalIds ?? []
-  ).filter((id) => id !== terminalId);
+  const remainingTerminalsInClosedGroup = (closedTerminalGroup?.terminalIds ?? []).filter(
+    (id) => id !== terminalId,
+  );
   const nextActiveTerminalId =
     thread.activeTerminalId === terminalId
       ? (remainingTerminalsInClosedGroup[
@@ -562,10 +553,7 @@ export function reducer(state: AppState, action: Action): AppState {
             activeGroupIndex = terminalGroups.length - 1;
           }
 
-          const existingGroupIndex = findGroupIndexByTerminalId(
-            terminalGroups,
-            action.terminalId,
-          );
+          const existingGroupIndex = findGroupIndexByTerminalId(terminalGroups, action.terminalId);
           if (existingGroupIndex >= 0) {
             terminalGroups[existingGroupIndex]!.terminalIds = terminalGroups[
               existingGroupIndex
@@ -674,10 +662,7 @@ export function reducer(state: AppState, action: Action): AppState {
         threads: updateThread(state.threads, action.event.threadId, (thread) => {
           const normalizedThread = normalizeThreadTerminals(thread);
           const runningTerminalIdSet = new Set(normalizedThread.runningTerminalIds);
-          if (
-            action.event.type === "started" ||
-            action.event.type === "restarted"
-          ) {
+          if (action.event.type === "started" || action.event.type === "restarted") {
             runningTerminalIdSet.delete(action.event.terminalId);
           } else if (action.event.type === "activity") {
             if (action.event.hasRunningSubprocess) {

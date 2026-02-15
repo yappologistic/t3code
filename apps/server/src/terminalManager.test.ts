@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { DEFAULT_TERMINAL_ID, type TerminalEvent, type TerminalOpenInput } from "@t3tools/contracts";
+import {
+  DEFAULT_TERMINAL_ID,
+  type TerminalEvent,
+  type TerminalOpenInput,
+} from "@t3tools/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { PtyAdapter, PtyExitEvent, PtyProcess, PtySpawnInput } from "./ptyAdapter";
@@ -161,7 +165,10 @@ describe("TerminalManager", () => {
 
   it("spawns lazily and reuses running terminal per thread", async () => {
     const { manager, ptyAdapter } = makeManager();
-    const [first, second] = await Promise.all([manager.open(openInput()), manager.open(openInput())]);
+    const [first, second] = await Promise.all([
+      manager.open(openInput()),
+      manager.open(openInput()),
+    ]);
     const third = await manager.open(openInput());
 
     expect(first.threadId).toBe("thread-1");
@@ -299,18 +306,14 @@ describe("TerminalManager", () => {
     hasRunningSubprocess = true;
     await waitFor(
       () =>
-        events.some(
-          (event) => event.type === "activity" && event.hasRunningSubprocess === true,
-        ),
+        events.some((event) => event.type === "activity" && event.hasRunningSubprocess === true),
       1_200,
     );
 
     hasRunningSubprocess = false;
     await waitFor(
       () =>
-        events.some(
-          (event) => event.type === "activity" && event.hasRunningSubprocess === false,
-        ),
+        events.some((event) => event.type === "activity" && event.hasRunningSubprocess === false),
       1_200,
     );
 
@@ -368,12 +371,8 @@ describe("TerminalManager", () => {
 
     expect(defaultProcess.killed).toBe(true);
     expect(sidecarProcess.killed).toBe(true);
-    expect(fs.existsSync(multiTerminalHistoryLogPath(logsDir, "thread-1", "default"))).toBe(
-      false,
-    );
-    expect(fs.existsSync(multiTerminalHistoryLogPath(logsDir, "thread-1", "sidecar"))).toBe(
-      false,
-    );
+    expect(fs.existsSync(multiTerminalHistoryLogPath(logsDir, "thread-1", "default"))).toBe(false);
+    expect(fs.existsSync(multiTerminalHistoryLogPath(logsDir, "thread-1", "sidecar"))).toBe(false);
 
     manager.dispose();
   });
@@ -415,9 +414,7 @@ describe("TerminalManager", () => {
     } else {
       expect(
         ptyAdapter.spawnInputs.some((input) =>
-          ["/bin/zsh", "/bin/bash", "/bin/sh", "zsh", "bash", "sh"].includes(
-            input.shell,
-          ),
+          ["/bin/zsh", "/bin/bash", "/bin/sh", "zsh", "bash", "sh"].includes(input.shell),
         ),
       ).toBe(true);
     }

@@ -5,11 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { GitManager } from "./gitManager";
-import {
-  type ProcessRunOptions,
-  type ProcessRunResult,
-  runProcess,
-} from "./processRunner";
+import { type ProcessRunOptions, type ProcessRunResult, runProcess } from "./processRunner";
 
 interface FakeGhScenario {
   prListSequence?: string[];
@@ -71,9 +67,7 @@ async function createBareRemote(): Promise<string> {
   return remoteDir;
 }
 
-function createTextGenerator(
-  overrides: Partial<FakeGitTextGenerator> = {},
-): FakeGitTextGenerator {
+function createTextGenerator(overrides: Partial<FakeGitTextGenerator> = {}): FakeGitTextGenerator {
   return {
     generateCommitMessage: async () => ({
       subject: "Implement stacked git actions",
@@ -126,8 +120,7 @@ function createRunnerWithFakeGh(scenario: FakeGhScenario = {}): {
     if (args[0] === "pr" && args[1] === "create") {
       return {
         stdout:
-          (scenario.createdPrUrl ??
-            "https://github.com/pingdotgg/codething-mvp/pull/101") + "\n",
+          (scenario.createdPrUrl ?? "https://github.com/pingdotgg/codething-mvp/pull/101") + "\n",
         stderr: "",
         code: 0,
         signal: null,

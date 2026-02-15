@@ -52,9 +52,7 @@ const persistedThreadSchema = z.object({
   title: z.string().min(1),
   model: z.string().min(1),
   terminalOpen: z.boolean().default(false),
-  terminalHeight: z.number().int().min(120).max(4_096).default(
-    DEFAULT_THREAD_TERMINAL_HEIGHT,
-  ),
+  terminalHeight: z.number().int().min(120).max(4_096).default(DEFAULT_THREAD_TERMINAL_HEIGHT),
   terminalIds: z.array(z.string().trim().min(1)).default([DEFAULT_THREAD_TERMINAL_ID]),
   activeTerminalId: z.string().trim().min(1).default(DEFAULT_THREAD_TERMINAL_ID),
   terminalGroups: z.array(persistedTerminalGroupSchema).default([]),
@@ -149,9 +147,10 @@ function hydrateThread(
   thread: z.infer<typeof persistedThreadSchema>,
   isLegacyPayload: boolean,
 ): Thread {
-  const terminalIds = [...new Set(thread.terminalIds.map((id) => id.trim()).filter((id) => id.length > 0))];
-  const safeTerminalIds =
-    terminalIds.length > 0 ? terminalIds : [DEFAULT_THREAD_TERMINAL_ID];
+  const terminalIds = [
+    ...new Set(thread.terminalIds.map((id) => id.trim()).filter((id) => id.length > 0)),
+  ];
+  const safeTerminalIds = terminalIds.length > 0 ? terminalIds : [DEFAULT_THREAD_TERMINAL_ID];
   const activeTerminalId = safeTerminalIds.includes(thread.activeTerminalId)
     ? thread.activeTerminalId
     : (safeTerminalIds[0] ?? DEFAULT_THREAD_TERMINAL_ID);
@@ -197,7 +196,9 @@ function hydrateThread(
 
   if (normalizedGroups.length === 0 && thread.terminalLayout === "split") {
     const splitTerminalIds = [
-      ...new Set((thread.splitTerminalIds ?? []).map((id) => id.trim()).filter((id) => id.length > 0)),
+      ...new Set(
+        (thread.splitTerminalIds ?? []).map((id) => id.trim()).filter((id) => id.length > 0),
+      ),
     ].filter((terminalId) => safeTerminalIdSet.has(terminalId));
     if (splitTerminalIds.length >= 2) {
       const splitGroupTerminalIds = splitTerminalIds.slice(0, 2);
@@ -228,7 +229,9 @@ function hydrateThread(
   const activeGroupIndex =
     activeGroupIndexFromId >= 0
       ? activeGroupIndexFromId
-      : (activeGroupIndexFromTerminal >= 0 ? activeGroupIndexFromTerminal : 0);
+      : activeGroupIndexFromTerminal >= 0
+        ? activeGroupIndexFromTerminal
+        : 0;
   const activeTerminalGroupId =
     normalizedGroups[activeGroupIndex]?.id ??
     normalizedGroups[0]?.id ??

@@ -47,9 +47,7 @@ describe("git contracts", () => {
   it("accepts supported stacked actions", () => {
     expect(gitStackedActionSchema.parse("commit")).toBe("commit");
     expect(gitStackedActionSchema.parse("commit_push")).toBe("commit_push");
-    expect(gitStackedActionSchema.parse("commit_push_pr")).toBe(
-      "commit_push_pr",
-    );
+    expect(gitStackedActionSchema.parse("commit_push_pr")).toBe("commit_push_pr");
   });
 
   it("parses stacked action input", () => {

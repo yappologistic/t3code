@@ -57,10 +57,7 @@ describe("resolvePathLinkTarget", () => {
 
   it("keeps absolute paths unchanged", () => {
     expect(
-      resolvePathLinkTarget(
-        "/Users/julius/project/src/main.ts:12",
-        "/Users/julius/project",
-      ),
+      resolvePathLinkTarget("/Users/julius/project/src/main.ts:12", "/Users/julius/project"),
     ).toBe("/Users/julius/project/src/main.ts:12");
   });
 });

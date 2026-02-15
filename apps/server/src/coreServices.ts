@@ -28,8 +28,5 @@ export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
   ): Promise<CommitMessageGenerationResult>;
-  generatePrContent(
-    input: PrContentGenerationInput,
-  ): Promise<PrContentGenerationResult>;
+  generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
 }
-

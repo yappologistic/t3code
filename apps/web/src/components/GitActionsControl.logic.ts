@@ -1,4 +1,8 @@
-import type { GitRunStackedActionResult, GitStackedAction, GitStatusResult } from "@t3tools/contracts";
+import type {
+  GitRunStackedActionResult,
+  GitStackedAction,
+  GitStatusResult,
+} from "@t3tools/contracts";
 
 export type GitActionIconName = "commit" | "push" | "pr";
 
@@ -29,16 +33,20 @@ function shortenSha(sha: string | undefined): string | null {
   return sha.slice(0, SHORT_SHA_LENGTH);
 }
 
-function truncateText(value: string | undefined, maxLength = TOAST_DESCRIPTION_MAX): string | undefined {
+function truncateText(
+  value: string | undefined,
+  maxLength = TOAST_DESCRIPTION_MAX,
+): string | undefined {
   if (!value) return undefined;
   if (value.length <= maxLength) return value;
   if (maxLength <= 3) return "...".slice(0, maxLength);
   return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
-export function summarizeGitResult(
-  result: GitRunStackedActionResult,
-): { title: string; description?: string } {
+export function summarizeGitResult(result: GitRunStackedActionResult): {
+  title: string;
+  description?: string;
+} {
   const withDescription = (title: string, description: string | undefined) =>
     description ? { title, description } : { title };
 
@@ -79,12 +87,7 @@ export function buildMenuItems(
   const hasOpenPr = gitStatus.openPr !== null;
   const isBehind = gitStatus.behindCount > 0;
   const canCommit = !isBusy && hasChanges;
-  const canPush =
-    !isBusy &&
-    hasBranch &&
-    !hasChanges &&
-    !isBehind &&
-    gitStatus.aheadCount > 0;
+  const canPush = !isBusy && hasBranch && !hasChanges && !isBehind && gitStatus.aheadCount > 0;
   const canCreatePr =
     !isBusy &&
     hasBranch &&
@@ -215,4 +218,3 @@ export function requiresDefaultBranchConfirmation(
   if (!isDefaultBranch) return false;
   return action === "commit_push" || action === "commit_push_pr";
 }
-

@@ -31,13 +31,7 @@ export function isTerminalClearShortcut(
 ): boolean {
   const key = event.key.toLowerCase();
 
-  if (
-    key === "l" &&
-    event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    !event.shiftKey
-  ) {
+  if (key === "l" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     return true;
   }
 

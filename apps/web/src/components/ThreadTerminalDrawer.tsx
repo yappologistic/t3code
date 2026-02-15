@@ -28,16 +28,11 @@ const MAX_DRAWER_HEIGHT_RATIO = 0.75;
 
 function maxDrawerHeight(): number {
   if (typeof window === "undefined") return DEFAULT_THREAD_TERMINAL_HEIGHT;
-  return Math.max(
-    MIN_DRAWER_HEIGHT,
-    Math.floor(window.innerHeight * MAX_DRAWER_HEIGHT_RATIO),
-  );
+  return Math.max(MIN_DRAWER_HEIGHT, Math.floor(window.innerHeight * MAX_DRAWER_HEIGHT_RATIO));
 }
 
 function clampDrawerHeight(height: number): number {
-  const safeHeight = Number.isFinite(height)
-    ? height
-    : DEFAULT_THREAD_TERMINAL_HEIGHT;
+  const safeHeight = Number.isFinite(height) ? height : DEFAULT_THREAD_TERMINAL_HEIGHT;
   const maxHeight = maxDrawerHeight();
   return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
 }
@@ -51,8 +46,7 @@ function terminalThemeFromApp(): ITheme {
   const bodyStyles = getComputedStyle(document.body);
   const background =
     bodyStyles.backgroundColor || (isDark ? "rgb(14, 18, 24)" : "rgb(255, 255, 255)");
-  const foreground =
-    bodyStyles.color || (isDark ? "rgb(237, 241, 247)" : "rgb(28, 33, 41)");
+  const foreground = bodyStyles.color || (isDark ? "rgb(237, 241, 247)" : "rgb(28, 33, 41)");
 
   if (isDark) {
     return {
@@ -146,8 +140,7 @@ function TerminalViewport({
       lineHeight: 1.2,
       fontSize: 12,
       scrollback: 5_000,
-      fontFamily:
-        '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontFamily: '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
       theme: terminalThemeFromApp(),
     });
     terminal.loadAddon(fitAddon);
@@ -538,8 +531,9 @@ export default function ThreadTerminalDrawer({
     return indexByTerminal >= 0 ? indexByTerminal : 0;
   }, [activeTerminalGroupId, resolvedActiveTerminalId, resolvedTerminalGroups]);
 
-  const visibleTerminalIds =
-    resolvedTerminalGroups[resolvedActiveGroupIndex]?.terminalIds ?? [resolvedActiveTerminalId];
+  const visibleTerminalIds = resolvedTerminalGroups[resolvedActiveGroupIndex]?.terminalIds ?? [
+    resolvedActiveTerminalId,
+  ];
   const hasTerminalSidebar = normalizedTerminalIds.length > 1;
   const isSplitView = visibleTerminalIds.length > 1;
   const showGroupHeaders =
@@ -707,9 +701,7 @@ export default function ThreadTerminalDrawer({
                   <div
                     key={terminalId}
                     className={`min-h-0 min-w-0 border-l first:border-l-0 ${
-                      terminalId === resolvedActiveTerminalId
-                        ? "border-border"
-                        : "border-border/70"
+                      terminalId === resolvedActiveTerminalId ? "border-border" : "border-border/70"
                     }`}
                     onMouseDown={() => {
                       if (terminalId !== resolvedActiveTerminalId) {
@@ -785,7 +777,8 @@ export default function ThreadTerminalDrawer({
 
               <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
                 {resolvedTerminalGroups.map((terminalGroup, groupIndex) => {
-                  const isGroupActive = terminalGroup.terminalIds.includes(resolvedActiveTerminalId);
+                  const isGroupActive =
+                    terminalGroup.terminalIds.includes(resolvedActiveTerminalId);
                   const groupActiveTerminalId = isGroupActive
                     ? resolvedActiveTerminalId
                     : (terminalGroup.terminalIds[0] ?? resolvedActiveTerminalId);
@@ -808,7 +801,9 @@ export default function ThreadTerminalDrawer({
                         </button>
                       )}
 
-                      <div className={showGroupHeaders ? "ml-1 border-l border-border/60 pl-1.5" : ""}>
+                      <div
+                        className={showGroupHeaders ? "ml-1 border-l border-border/60 pl-1.5" : ""}
+                      >
                         {terminalGroup.terminalIds.map((terminalId) => {
                           const isActive = terminalId === resolvedActiveTerminalId;
                           return (

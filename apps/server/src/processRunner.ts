@@ -24,11 +24,7 @@ function commandLabel(command: string, args: readonly string[]): string {
   return [command, ...args].join(" ");
 }
 
-function normalizeSpawnError(
-  command: string,
-  args: readonly string[],
-  error: unknown,
-): Error {
+function normalizeSpawnError(command: string, args: readonly string[], error: unknown): Error {
   if (!(error instanceof Error)) {
     return new Error(`Failed to run ${commandLabel(command, args)}.`);
   }
@@ -38,9 +34,7 @@ function normalizeSpawnError(
     return new Error(`Command not found: ${command}`);
   }
 
-  return new Error(
-    `Failed to run ${commandLabel(command, args)}: ${error.message}`,
-  );
+  return new Error(`Failed to run ${commandLabel(command, args)}: ${error.message}`);
 }
 
 function normalizeExitError(
@@ -56,17 +50,11 @@ function normalizeExitError(
   return new Error(`${commandLabel(command, args)} ${reason}.${detail}`);
 }
 
-function normalizeStdinError(
-  command: string,
-  args: readonly string[],
-  error: unknown,
-): Error {
+function normalizeStdinError(command: string, args: readonly string[], error: unknown): Error {
   if (!(error instanceof Error)) {
     return new Error(`Failed to write stdin for ${commandLabel(command, args)}.`);
   }
-  return new Error(
-    `Failed to write stdin for ${commandLabel(command, args)}: ${error.message}`,
-  );
+  return new Error(`Failed to write stdin for ${commandLabel(command, args)}: ${error.message}`);
 }
 
 function normalizeBufferError(
@@ -161,22 +149,13 @@ export async function runProcess(
       });
     };
 
-    const appendOutput = (
-      stream: "stdout" | "stderr",
-      chunk: Buffer | string,
-    ): Error | null => {
-      const chunkBuffer =
-        typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    const appendOutput = (stream: "stdout" | "stderr", chunk: Buffer | string): Error | null => {
+      const chunkBuffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
       const text = chunkBuffer.toString();
       const byteLength = chunkBuffer.length;
       if (stream === "stdout") {
         if (outputMode === "truncate") {
-          const appended = appendChunkWithinLimit(
-            stdout,
-            stdoutBytes,
-            chunkBuffer,
-            maxBufferBytes,
-          );
+          const appended = appendChunkWithinLimit(stdout, stdoutBytes, chunkBuffer, maxBufferBytes);
           stdout = appended.next;
           stdoutBytes = appended.nextBytes;
           stdoutTruncated = stdoutTruncated || appended.truncated;
@@ -189,12 +168,7 @@ export async function runProcess(
         }
       } else {
         if (outputMode === "truncate") {
-          const appended = appendChunkWithinLimit(
-            stderr,
-            stderrBytes,
-            chunkBuffer,
-            maxBufferBytes,
-          );
+          const appended = appendChunkWithinLimit(stderr, stderrBytes, chunkBuffer, maxBufferBytes);
           stderr = appended.next;
           stderrBytes = appended.nextBytes;
           stderrTruncated = stderrTruncated || appended.truncated;
@@ -241,10 +215,7 @@ export async function runProcess(
       };
 
       finalize(() => {
-        if (
-          !options.allowNonZeroExit &&
-          (timedOut || (code !== null && code !== 0))
-        ) {
+        if (!options.allowNonZeroExit && (timedOut || (code !== null && code !== 0))) {
           reject(normalizeExitError(command, args, result));
           return;
         }

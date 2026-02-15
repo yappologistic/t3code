@@ -55,9 +55,7 @@ describe("hydratePersistedState", () => {
     expect(hydrated?.threads[0]?.terminalGroups).toEqual([
       { id: `group-${DEFAULT_THREAD_TERMINAL_ID}`, terminalIds: [DEFAULT_THREAD_TERMINAL_ID] },
     ]);
-    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(
-      `group-${DEFAULT_THREAD_TERMINAL_ID}`,
-    );
+    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
     expect(hydrated?.threads[0]?.messages[0]?.streaming).toBe(false);
     expect(hydrated?.runtimeMode).toBe("full-access");
   });
@@ -105,9 +103,7 @@ describe("hydratePersistedState", () => {
     expect(hydrated?.threads[0]?.terminalGroups).toEqual([
       { id: `group-${DEFAULT_THREAD_TERMINAL_ID}`, terminalIds: [DEFAULT_THREAD_TERMINAL_ID] },
     ]);
-    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(
-      `group-${DEFAULT_THREAD_TERMINAL_ID}`,
-    );
+    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
     expect(hydrated?.activeThreadId).toBe("t-1");
     expect(hydrated?.runtimeMode).toBe("full-access");
   });
@@ -221,9 +217,7 @@ describe("hydratePersistedState", () => {
       },
       { id: "group-term-3", terminalIds: ["term-3"] },
     ]);
-    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(
-      `group-${DEFAULT_THREAD_TERMINAL_ID}`,
-    );
+    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
   });
 
   it("defaults terminalHeight when hydrating v5 payloads", () => {
@@ -261,9 +255,7 @@ describe("hydratePersistedState", () => {
     expect(hydrated?.threads[0]?.terminalGroups).toEqual([
       { id: `group-${DEFAULT_THREAD_TERMINAL_ID}`, terminalIds: [DEFAULT_THREAD_TERMINAL_ID] },
     ]);
-    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(
-      `group-${DEFAULT_THREAD_TERMINAL_ID}`,
-    );
+    expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
   });
 });
 

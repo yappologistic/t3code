@@ -214,13 +214,16 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
               const branch = branchByName.get(branchName);
               if (!branch) return null;
 
-              const hasSecondaryWorktree = branch.worktreePath && branch.worktreePath !== activeProject.cwd;
+              const hasSecondaryWorktree =
+                branch.worktreePath && branch.worktreePath !== activeProject.cwd;
               return (
                 <ComboboxItem
                   hideIndicator
                   key={branchName}
                   value={branchName}
-                  className={branchName === activeThread.branch ? "bg-accent text-foreground" : undefined}
+                  className={
+                    branchName === activeThread.branch ? "bg-accent text-foreground" : undefined
+                  }
                   onClick={() => selectBranch(branch)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">

@@ -383,7 +383,11 @@ describe("when: working tree has local changes", () => {
 
 describe("when: on default branch without open PR", () => {
   it("resolveQuickAction returns commit and push when local changes exist", () => {
-    const quick = resolveQuickAction(status({ branch: "main", hasWorkingTreeChanges: true }), false, true);
+    const quick = resolveQuickAction(
+      status({ branch: "main", hasWorkingTreeChanges: true }),
+      false,
+      true,
+    );
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
@@ -393,7 +397,11 @@ describe("when: on default branch without open PR", () => {
   });
 
   it("resolveQuickAction returns push when branch is ahead", () => {
-    const quick = resolveQuickAction(status({ branch: "main", aheadCount: 2, openPr: null }), false, true);
+    const quick = resolveQuickAction(
+      status({ branch: "main", aheadCount: 2, openPr: null }),
+      false,
+      true,
+    );
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
@@ -405,7 +413,10 @@ describe("when: on default branch without open PR", () => {
 
 describe("when: working tree has local changes and branch is behind upstream", () => {
   it("resolveQuickAction still prefers commit, push, and create PR", () => {
-    const quick = resolveQuickAction(status({ hasWorkingTreeChanges: true, behindCount: 1 }), false);
+    const quick = resolveQuickAction(
+      status({ hasWorkingTreeChanges: true, behindCount: 1 }),
+      false,
+    );
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push_pr",
@@ -486,7 +497,10 @@ describe("when: HEAD is detached and there are no local changes", () => {
 
 describe("when: branch has no upstream configured", () => {
   it("resolveQuickAction returns disabled commit state when clean and no commits are ahead", () => {
-    const quick = resolveQuickAction(status({ hasUpstream: false, openPr: null, aheadCount: 0 }), false);
+    const quick = resolveQuickAction(
+      status({ hasUpstream: false, openPr: null, aheadCount: 0 }),
+      false,
+    );
     assert.deepInclude(quick, {
       kind: "show_hint",
       label: "Commit",
@@ -540,7 +554,10 @@ describe("when: branch has no upstream configured", () => {
   });
 
   it("buildMenuItems disables push and create PR when no commits are ahead", () => {
-    const items = buildMenuItems(status({ hasUpstream: false, openPr: null, aheadCount: 0 }), false);
+    const items = buildMenuItems(
+      status({ hasUpstream: false, openPr: null, aheadCount: 0 }),
+      false,
+    );
     assert.deepEqual(items, [
       {
         id: "commit",
