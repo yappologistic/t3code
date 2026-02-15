@@ -1,5 +1,6 @@
 import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
@@ -12,6 +13,7 @@ import {
   type Thread,
 } from "../types";
 import { useNativeApi } from "../hooks/useNativeApi";
+import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
@@ -110,6 +112,8 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
 export default function Sidebar() {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
+  const queryClient = useQueryClient();
+  const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ api, queryClient }));
   const { theme, setTheme } = useTheme();
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");
@@ -307,7 +311,7 @@ export default function Sidebar() {
       }
 
       try {
-        await api.git.removeWorktree({
+        await removeWorktreeMutation.mutateAsync({
           cwd: threadProject.cwd,
           path: orphanedWorktreePath,
         });
@@ -315,7 +319,7 @@ export default function Sidebar() {
         // Worktree deletion is best-effort and should not block thread deletion.
       }
     },
-    [api, dispatch, state.projects, state.threads],
+    [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
   );
 
   useEffect(() => {

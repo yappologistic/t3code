@@ -19,8 +19,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { gitBranchesQueryOptions } from "~/lib/gitReactQuery";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  gitBranchesQueryOptions,
+  gitCreateWorktreeMutationOptions,
+} from "~/lib/gitReactQuery";
 
 import { EDITORS, type EditorId } from "@t3tools/contracts";
 import { isElectron } from "../env";
@@ -125,6 +128,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export default function ChatView() {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
+  const queryClient = useQueryClient();
+  const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ api, queryClient }));
   const [prompt, setPrompt] = useState("");
   const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([]);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
@@ -663,7 +668,7 @@ export default function ChatView() {
     ) {
       try {
         const newBranch = `codething/${crypto.randomUUID().slice(0, 8)}`;
-        const result = await api.git.createWorktree({
+        const result = await createWorktreeMutation.mutateAsync({
           cwd: activeProject.cwd,
           branch: activeThread.branch,
           newBranch,

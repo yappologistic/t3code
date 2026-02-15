@@ -108,8 +108,8 @@ export function gitRunStackedActionMutationOptions(input: {
         ...(commitMessage ? { commitMessage } : {}),
       });
     },
-    onSuccess: () => {
-      void invalidateGitQueries(input.queryClient);
+    onSettled: async () => {
+      await invalidateGitQueries(input.queryClient);
     },
   });
 }
@@ -124,8 +124,50 @@ export function gitPullMutationOptions(input: {
       if (!input.api || !input.cwd) throw new Error("Git pull is unavailable.");
       return input.api.git.pull({ cwd: input.cwd });
     },
-    onSuccess: () => {
-      void invalidateGitQueries(input.queryClient);
+    onSettled: async () => {
+      await invalidateGitQueries(input.queryClient);
+    },
+  });
+}
+
+export function gitCreateWorktreeMutationOptions(input: {
+  api: NativeApi | undefined;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationFn: async ({
+      cwd,
+      branch,
+      newBranch,
+    }: {
+      cwd: string;
+      branch: string;
+      newBranch: string;
+    }) => {
+      if (!input.api) {
+        throw new Error("Git worktree creation is unavailable.");
+      }
+      return input.api.git.createWorktree({ cwd, branch, newBranch });
+    },
+    onSettled: async () => {
+      await invalidateGitQueries(input.queryClient);
+    },
+  });
+}
+
+export function gitRemoveWorktreeMutationOptions(input: {
+  api: NativeApi | undefined;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationFn: async ({ cwd, path }: { cwd: string; path: string }) => {
+      if (!input.api) {
+        throw new Error("Git worktree removal is unavailable.");
+      }
+      return input.api.git.removeWorktree({ cwd, path });
+    },
+    onSettled: async () => {
+      await invalidateGitQueries(input.queryClient);
     },
   });
 }
