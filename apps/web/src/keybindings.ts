@@ -305,17 +305,25 @@ function matchesCommandShortcut(
   command: KeybindingCommand,
   options?: ShortcutMatchOptions,
 ): boolean {
+  return resolveShortcutCommand(event, keybindings, options) === command;
+}
+
+function resolveShortcutCommand(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindings,
+  options?: ShortcutMatchOptions,
+): KeybindingCommand | null {
   const platform = resolvePlatform(options);
   const context = resolveContext(options);
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
-    if (!binding || binding.command !== command) continue;
+    if (!binding) continue;
     if (!matchesWhenExpression(binding.when, context)) continue;
     if (!matchesShortcutValue(event, binding.key, platform)) continue;
-    return true;
+    return binding.command;
   }
-  return false;
+  return null;
 }
 
 function formatShortcutKeyLabel(key: string): string {

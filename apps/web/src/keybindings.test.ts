@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, it } from "vitest";
 
 import type { KeybindingsConfig } from "@t3tools/contracts";
 import {
@@ -34,43 +34,47 @@ const DEFAULT_BINDINGS: KeybindingsConfig = [
 
 describe("isTerminalToggleShortcut", () => {
   it("matches Cmd+J on macOS", () => {
-    expect(isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_BINDINGS, { platform: "MacIntel" })).toBe(true);
+    assert.isTrue(
+      isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_BINDINGS, { platform: "MacIntel" }),
+    );
   });
 
   it("matches Ctrl+J on non-macOS", () => {
-    expect(isTerminalToggleShortcut(event({ ctrlKey: true }), DEFAULT_BINDINGS, { platform: "Win32" })).toBe(true);
+    assert.isTrue(
+      isTerminalToggleShortcut(event({ ctrlKey: true }), DEFAULT_BINDINGS, { platform: "Win32" }),
+    );
   });
 });
 
 describe("split/new terminal shortcuts", () => {
   it("requires terminalFocus for default split/new bindings", () => {
-    expect(
+    assert.isFalse(
       isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: false },
       }),
-    ).toBe(false);
-    expect(
+    );
+    assert.isFalse(
       isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
         context: { terminalFocus: false },
       }),
-    ).toBe(false);
+    );
   });
 
   it("matches split/new when terminalFocus is true", () => {
-    expect(
+    assert.isTrue(
       isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: true },
       }),
-    ).toBe(true);
-    expect(
+    );
+    assert.isTrue(
       isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
         context: { terminalFocus: true },
       }),
-    ).toBe(true);
+    );
   });
 
   it("supports when expressions", () => {
@@ -87,24 +91,24 @@ describe("split/new terminal shortcuts", () => {
       },
       { key: "mod+j", command: "terminal.toggle" },
     ];
-    expect(
+    assert.isTrue(
       isTerminalSplitShortcut(event({ key: "\\", ctrlKey: true }), keybindings, {
         platform: "Win32",
         context: { terminalOpen: true, terminalFocus: false },
       }),
-    ).toBe(true);
-    expect(
+    );
+    assert.isFalse(
       isTerminalSplitShortcut(event({ key: "\\", ctrlKey: true }), keybindings, {
         platform: "Win32",
         context: { terminalOpen: false, terminalFocus: false },
       }),
-    ).toBe(false);
-    expect(
+    );
+    assert.isTrue(
       isTerminalNewShortcut(event({ key: "n", ctrlKey: true, shiftKey: true }), keybindings, {
         platform: "Win32",
         context: { terminalOpen: true, terminalFocus: false },
       }),
-    ).toBe(true);
+    );
   });
 });
 
@@ -114,12 +118,13 @@ describe("shortcutLabelForCommand", () => {
       { key: "mod+\\", command: "terminal.split", when: "terminalFocus" },
       { key: "mod+shift+\\", command: "terminal.split", when: "!terminalFocus" },
     ];
-    expect(shortcutLabelForCommand(bindings, "terminal.split", "Linux")).toBe("Ctrl+Shift+\\");
+    assert.strictEqual(shortcutLabelForCommand(bindings, "terminal.split", "Linux"), "Ctrl+Shift+\\");
   });
 
   it("returns labels for non-terminal commands", () => {
-    expect(shortcutLabelForCommand(DEFAULT_BINDINGS, "chat.new", "MacIntel")).toBe("⇧⌘O");
-    expect(shortcutLabelForCommand(DEFAULT_BINDINGS, "editor.openFavorite", "Linux")).toBe(
+    assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "chat.new", "MacIntel"), "⇧⌘O");
+    assert.strictEqual(
+      shortcutLabelForCommand(DEFAULT_BINDINGS, "editor.openFavorite", "Linux"),
       "Ctrl+O",
     );
   });
@@ -127,49 +132,103 @@ describe("shortcutLabelForCommand", () => {
 
 describe("chat/editor shortcuts", () => {
   it("matches chat.new shortcut", () => {
-    expect(
+    assert.isTrue(
       isChatNewShortcut(event({ key: "o", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
       }),
-    ).toBe(true);
-    expect(
+    );
+    assert.isTrue(
       isChatNewShortcut(event({ key: "o", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
       }),
-    ).toBe(true);
+    );
   });
 
   it("matches editor.openFavorite shortcut", () => {
-    expect(
+    assert.isTrue(
       isOpenFavoriteEditorShortcut(event({ key: "o", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
       }),
-    ).toBe(true);
-    expect(
+    );
+    assert.isTrue(
       isOpenFavoriteEditorShortcut(event({ key: "o", ctrlKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
       }),
-    ).toBe(true);
+    );
+  });
+});
+
+describe("cross-command precedence", () => {
+  it("uses when + order so a later focused rule overrides a global rule", () => {
+    const keybindings: KeybindingsConfig = [
+      { key: "mod+n", command: "chat.new" },
+      { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
+    ];
+
+    assert.isTrue(
+      isTerminalNewShortcut(event({ key: "n", metaKey: true }), keybindings, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isFalse(
+      isChatNewShortcut(event({ key: "n", metaKey: true }), keybindings, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isFalse(
+      isTerminalNewShortcut(event({ key: "n", metaKey: true }), keybindings, {
+        platform: "MacIntel",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isTrue(
+      isChatNewShortcut(event({ key: "n", metaKey: true }), keybindings, {
+        platform: "MacIntel",
+        context: { terminalFocus: false },
+      }),
+    );
+  });
+
+  it("still lets a later global rule win when both rules match", () => {
+    const keybindings: KeybindingsConfig = [
+      { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
+      { key: "mod+n", command: "chat.new" },
+    ];
+
+    assert.isFalse(
+      isTerminalNewShortcut(event({ key: "n", ctrlKey: true }), keybindings, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isTrue(
+      isChatNewShortcut(event({ key: "n", ctrlKey: true }), keybindings, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+    );
   });
 });
 
 describe("formatShortcutLabel", () => {
   it("formats labels for macOS", () => {
-    expect(formatShortcutLabel("mod+shift+d", "MacIntel")).toBe("⇧⌘D");
+    assert.strictEqual(formatShortcutLabel("mod+shift+d", "MacIntel"), "⇧⌘D");
   });
 
   it("formats labels for non-macOS", () => {
-    expect(formatShortcutLabel("mod+shift+d", "Linux")).toBe("Ctrl+Shift+D");
+    assert.strictEqual(formatShortcutLabel("mod+shift+d", "Linux"), "Ctrl+Shift+D");
   });
 });
 
 describe("isTerminalClearShortcut", () => {
   it("matches Ctrl+L on all platforms", () => {
-    expect(isTerminalClearShortcut(event({ key: "l", ctrlKey: true }), "Linux")).toBe(true);
-    expect(isTerminalClearShortcut(event({ key: "l", ctrlKey: true }), "MacIntel")).toBe(true);
+    assert.isTrue(isTerminalClearShortcut(event({ key: "l", ctrlKey: true }), "Linux"));
+    assert.isTrue(isTerminalClearShortcut(event({ key: "l", ctrlKey: true }), "MacIntel"));
   });
 
   it("matches Cmd+K on macOS", () => {
-    expect(isTerminalClearShortcut(event({ key: "k", metaKey: true }), "MacIntel")).toBe(true);
+    assert.isTrue(isTerminalClearShortcut(event({ key: "k", metaKey: true }), "MacIntel"));
   });
 });

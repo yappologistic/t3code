@@ -97,4 +97,5 @@ If you define any rules for a command, the default rule for that command is remo
 ## Precedence
 
 - Rules are evaluated in array order.
-- Later matching rules win over earlier matching rules for the same command.
+- For a key event, the server/client resolves the last rule where both `key` matches and `when` evaluates to `true`.
+- That means precedence is across commands, not only within the same command.
