@@ -7,6 +7,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProviderApprovalDecision,
   type ProviderSendTurnAttachmentInput,
+  type KeybindingsConfig,
 } from "@t3tools/contracts";
 import {
   type ClipboardEvent,
@@ -26,6 +27,7 @@ import {
   gitBranchesQueryOptions,
   gitCreateWorktreeMutationOptions,
 } from "~/lib/gitReactQuery";
+import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 
 import { isElectron } from "../env";
 import { buildBootstrapInput } from "../historyBootstrap";
@@ -55,7 +57,6 @@ import {
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalToggleShortcut,
-  type ResolvedTerminalKeybindings,
   shortcutLabelForCommand,
 } from "../keybindings";
 import ChatMarkdown from "./ChatMarkdown";
@@ -90,6 +91,7 @@ const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
+const EMPTY_KEYBINDINGS: KeybindingsConfig = [];
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -151,7 +153,6 @@ export default function ChatView() {
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
-  const [terminalKeybindings, setTerminalKeybindings] = useState<ResolvedTerminalKeybindings>([]);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -262,6 +263,11 @@ export default function ChatView() {
         } as const);
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
+  const terminalKeybindingsQuery = useQuery({
+    ...serverConfigQueryOptions(api),
+    select: (config) => config.keybindings,
+  });
+  const terminalKeybindings = terminalKeybindingsQuery.data ?? EMPTY_KEYBINDINGS;
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = branchesQuery.data?.isRepo ?? true;
   const splitTerminalShortcutLabel = useMemo(
@@ -278,30 +284,6 @@ export default function ChatView() {
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
-
-  useEffect(() => {
-    if (!api || !api.server || typeof api.server.getConfig !== "function") {
-      setTerminalKeybindings([]);
-      return;
-    }
-
-    let disposed = false;
-
-    void api.server
-      .getConfig()
-      .then((config) => {
-        if (disposed) return;
-        setTerminalKeybindings(config.keybindings);
-      })
-      .catch(() => {
-        if (disposed) return;
-        setTerminalKeybindings([]);
-      });
-
-    return () => {
-      disposed = true;
-    };
-  }, [api]);
 
   const revokePreviewUrls = useCallback((images: Array<{ previewUrl?: string }>) => {
     for (const image of images) {
