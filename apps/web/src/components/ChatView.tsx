@@ -314,14 +314,20 @@ export default function ChatView() {
   const closeTerminal = useCallback(
     (terminalId: string) => {
       if (!activeThreadId || !api) return;
+      const isFinalTerminal = (activeThread?.terminalIds.length ?? 0) <= 1;
       const fallbackExitWrite = () =>
         api.terminal
           .write({ threadId: activeThreadId, terminalId, data: "exit\n" })
           .catch(() => undefined);
       if ("close" in api.terminal && typeof api.terminal.close === "function") {
-        void api.terminal
-          .close({ threadId: activeThreadId, terminalId, deleteHistory: true })
-          .catch(() => fallbackExitWrite());
+        void (async () => {
+          if (isFinalTerminal) {
+            await api.terminal
+              .clear({ threadId: activeThreadId, terminalId })
+              .catch(() => undefined);
+          }
+          await api.terminal.close({ threadId: activeThreadId, terminalId, deleteHistory: true });
+        })().catch(() => fallbackExitWrite());
       } else {
         void fallbackExitWrite();
       }
@@ -332,7 +338,7 @@ export default function ChatView() {
       });
       setTerminalFocusRequestId((value) => value + 1);
     },
-    [activeThreadId, api, dispatch],
+    [activeThread?.terminalIds.length, activeThreadId, api, dispatch],
   );
 
   const handleRuntimeModeChange = async (mode: "approval-required" | "full-access") => {
