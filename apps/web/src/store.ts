@@ -164,13 +164,6 @@ function fallbackGroupId(terminalId: string): string {
   return `group-${terminalId}`;
 }
 
-function replacementTerminalId(closedTerminalId: string): string {
-  const normalizedId = closedTerminalId.trim();
-  return normalizedId === DEFAULT_THREAD_TERMINAL_ID
-    ? `${DEFAULT_THREAD_TERMINAL_ID}-next`
-    : DEFAULT_THREAD_TERMINAL_ID;
-}
-
 function assignUniqueGroupId(groupId: string, usedGroupIds: Set<string>): string {
   if (!usedGroupIds.has(groupId)) {
     usedGroupIds.add(groupId);
@@ -276,7 +269,7 @@ function closeThreadTerminal(thread: Thread, terminalId: string): Thread {
 
   const remainingTerminalIds = thread.terminalIds.filter((id) => id !== terminalId);
   if (remainingTerminalIds.length === 0) {
-    const nextTerminalId = replacementTerminalId(terminalId);
+    const nextTerminalId = terminalId;
     const nextTerminalGroupId = fallbackGroupId(nextTerminalId);
     return normalizeThreadTerminals({
       ...thread,

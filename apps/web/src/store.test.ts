@@ -301,13 +301,13 @@ describe("store reducer thread continuity", () => {
     });
 
     expect(next.threads[0]?.terminalOpen).toBe(true);
-    expect(next.threads[0]?.terminalIds).toEqual([`${DEFAULT_THREAD_TERMINAL_ID}-next`]);
+    expect(next.threads[0]?.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID]);
     expect(next.threads[0]?.runningTerminalIds).toEqual([]);
-    expect(next.threads[0]?.activeTerminalId).toBe(`${DEFAULT_THREAD_TERMINAL_ID}-next`);
+    expect(next.threads[0]?.activeTerminalId).toBe(DEFAULT_THREAD_TERMINAL_ID);
     expect(next.threads[0]?.terminalGroups).toEqual([
       {
-        id: `group-${DEFAULT_THREAD_TERMINAL_ID}-next`,
-        terminalIds: [`${DEFAULT_THREAD_TERMINAL_ID}-next`],
+        id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
       },
     ]);
   });

@@ -320,7 +320,7 @@ export default function ChatView() {
           .catch(() => undefined);
       if ("close" in api.terminal && typeof api.terminal.close === "function") {
         void api.terminal
-          .close({ threadId: activeThreadId, terminalId })
+          .close({ threadId: activeThreadId, terminalId, deleteHistory: true })
           .catch(() => fallbackExitWrite());
       } else {
         void fallbackExitWrite();
