@@ -19,7 +19,9 @@ The file must be a JSON array of rules:
 [
   { "key": "mod+j", "command": "terminal.toggle" },
   { "key": "mod+d", "command": "terminal.split", "when": "terminalFocus" },
-  { "key": "mod+shift+d", "command": "terminal.new", "when": "terminalFocus" }
+  { "key": "mod+shift+d", "command": "terminal.new", "when": "terminalFocus" },
+  { "key": "mod+shift+o", "command": "chat.new" },
+  { "key": "mod+o", "command": "editor.openFavorite" }
 ]
 ```
 
@@ -38,6 +40,8 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 - `terminal.toggle`: open/close terminal drawer
 - `terminal.split`: split terminal (in focused terminal context by default)
 - `terminal.new`: create new terminal (in focused terminal context by default)
+- `chat.new`: create a new chat thread for the active project
+- `editor.openFavorite`: open current project/worktree in the last-used editor
 
 ## Key Syntax
 
@@ -85,6 +89,8 @@ Built-in defaults are resolved on the server and sent to the web client via `ser
 - `terminal.toggle`: `mod+j`
 - `terminal.split`: `mod+d` when `terminalFocus`
 - `terminal.new`: `mod+shift+d` when `terminalFocus`
+- `chat.new`: `mod+shift+o`
+- `editor.openFavorite`: `mod+o`
 
 If you define any rules for a command, the default rule for that command is removed on the server.
 

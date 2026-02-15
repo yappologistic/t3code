@@ -4,6 +4,8 @@ export const keybindingCommandSchema = z.enum([
   "terminal.toggle",
   "terminal.split",
   "terminal.new",
+  "chat.new",
+  "editor.openFavorite",
 ]);
 
 const keybindingValueSchema = z.string().trim().min(1).max(64);

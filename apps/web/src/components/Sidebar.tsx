@@ -1,11 +1,13 @@
 import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { KeybindingsConfig } from "@t3tools/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
 import { derivePendingApprovals } from "../session-logic";
 import { useStore } from "../store";
+import { isChatNewShortcut } from "../keybindings";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -14,9 +16,12 @@ import {
 } from "../types";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
+import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
+const EMPTY_KEYBINDINGS: KeybindingsConfig = [];
+
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60_000);
@@ -112,6 +117,11 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
 export default function Sidebar() {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
+  const keybindingsQuery = useQuery({
+    ...serverConfigQueryOptions(api),
+    select: (config) => config.keybindings,
+  });
+  const keybindings = keybindingsQuery.data ?? EMPTY_KEYBINDINGS;
   const queryClient = useQueryClient();
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ api, queryClient }));
   const { theme, setTheme } = useTheme();
@@ -324,13 +334,7 @@ export default function Sidebar() {
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      const isNewThreadShortcut =
-        event.metaKey &&
-        event.shiftKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        event.key.toLowerCase() === "o";
-      if (!isNewThreadShortcut) return;
+      if (!isChatNewShortcut(event, keybindings)) return;
 
       const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
@@ -344,7 +348,7 @@ export default function Sidebar() {
     return () => {
       window.removeEventListener("keydown", onWindowKeyDown);
     };
-  }, [handleNewThread, state.activeThreadId, state.projects, state.threads]);
+  }, [handleNewThread, keybindings, state.activeThreadId, state.projects, state.threads]);
 
   return (
     <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">

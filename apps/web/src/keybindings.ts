@@ -14,7 +14,7 @@ export interface ShortcutMatchContext {
   [key: string]: boolean;
 }
 
-export type ResolvedTerminalKeybindings = KeybindingsConfig;
+export type ResolvedKeybindings = KeybindingsConfig;
 
 interface ParsedShortcut {
   key: string;
@@ -301,7 +301,7 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
 
 function matchesCommandShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings,
+  keybindings: ResolvedKeybindings,
   command: KeybindingCommand,
   options?: ShortcutMatchOptions,
 ): boolean {
@@ -356,7 +356,7 @@ export function formatShortcutLabel(shortcutValue: string, platform = navigator.
 }
 
 export function shortcutLabelForCommand(
-  keybindings: ResolvedTerminalKeybindings,
+  keybindings: ResolvedKeybindings,
   command: KeybindingCommand,
   platform = navigator.platform,
 ): string | null {
@@ -370,7 +370,7 @@ export function shortcutLabelForCommand(
 
 export function isTerminalToggleShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings,
+  keybindings: ResolvedKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.toggle", options);
@@ -378,7 +378,7 @@ export function isTerminalToggleShortcut(
 
 export function isTerminalSplitShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings,
+  keybindings: ResolvedKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.split", options);
@@ -386,10 +386,26 @@ export function isTerminalSplitShortcut(
 
 export function isTerminalNewShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings,
+  keybindings: ResolvedKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.new", options);
+}
+
+export function isChatNewShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindings,
+  options?: ShortcutMatchOptions,
+): boolean {
+  return matchesCommandShortcut(event, keybindings, "chat.new", options);
+}
+
+export function isOpenFavoriteEditorShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindings,
+  options?: ShortcutMatchOptions,
+): boolean {
+  return matchesCommandShortcut(event, keybindings, "editor.openFavorite", options);
 }
 
 export function isTerminalClearShortcut(

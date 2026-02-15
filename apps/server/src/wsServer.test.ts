@@ -313,6 +313,8 @@ describe("WebSocket Server", () => {
         { key: "mod+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
       ],
     });
   });
@@ -347,6 +349,8 @@ describe("WebSocket Server", () => {
     expect(response.result).toEqual({
       cwd: "/my/workspace",
       keybindings: [
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
         { key: "cmd+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
@@ -386,6 +390,8 @@ describe("WebSocket Server", () => {
       keybindings: [
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
         { key: "mod+j", command: "terminal.toggle" },
       ],
     });
@@ -426,6 +432,8 @@ describe("WebSocket Server", () => {
         { key: "mod+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
       ],
     });
     expect(
@@ -461,6 +469,8 @@ describe("WebSocket Server", () => {
         { key: "mod+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
       ],
     });
     expect(

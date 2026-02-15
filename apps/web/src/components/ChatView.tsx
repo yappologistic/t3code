@@ -54,6 +54,7 @@ import type { ChatImageAttachment } from "../types";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
 import {
+  isOpenFavoriteEditorShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalToggleShortcut,
@@ -263,20 +264,20 @@ export default function ChatView() {
         } as const);
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
-  const terminalKeybindingsQuery = useQuery({
+  const keybindingsQuery = useQuery({
     ...serverConfigQueryOptions(api),
     select: (config) => config.keybindings,
   });
-  const terminalKeybindings = terminalKeybindingsQuery.data ?? EMPTY_KEYBINDINGS;
+  const keybindings = keybindingsQuery.data ?? EMPTY_KEYBINDINGS;
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = branchesQuery.data?.isRepo ?? true;
   const splitTerminalShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(terminalKeybindings, "terminal.split"),
-    [terminalKeybindings],
+    () => shortcutLabelForCommand(keybindings, "terminal.split"),
+    [keybindings],
   );
   const newTerminalShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(terminalKeybindings, "terminal.new"),
-    [terminalKeybindings],
+    () => shortcutLabelForCommand(keybindings, "terminal.new"),
+    [keybindings],
   );
 
   const envLocked = Boolean(
@@ -527,14 +528,14 @@ export default function ChatView() {
         terminalOpen: Boolean(activeThread?.terminalOpen),
       };
 
-      if (isTerminalToggleShortcut(event, terminalKeybindings, { context: shortcutContext })) {
+      if (isTerminalToggleShortcut(event, keybindings, { context: shortcutContext })) {
         event.preventDefault();
         event.stopPropagation();
         toggleTerminalVisibility();
         return;
       }
 
-      if (isTerminalSplitShortcut(event, terminalKeybindings, { context: shortcutContext })) {
+      if (isTerminalSplitShortcut(event, keybindings, { context: shortcutContext })) {
         event.preventDefault();
         event.stopPropagation();
         if (!activeThread?.terminalOpen) {
@@ -548,7 +549,7 @@ export default function ChatView() {
         return;
       }
 
-      if (!isTerminalNewShortcut(event, terminalKeybindings, { context: shortcutContext })) return;
+      if (!isTerminalNewShortcut(event, keybindings, { context: shortcutContext })) return;
       event.preventDefault();
       event.stopPropagation();
       if (!activeThread?.terminalOpen) {
@@ -568,7 +569,7 @@ export default function ChatView() {
     createNewTerminal,
     dispatch,
     splitTerminal,
-    terminalKeybindings,
+    keybindings,
     toggleTerminalVisibility,
   ]);
 
@@ -937,7 +938,7 @@ export default function ChatView() {
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
-          {activeProject && <OpenInPicker />}
+          {activeProject && <OpenInPicker keybindings={keybindings} />}
           {/* Git actions */}
           {activeProject && <GitActionsControl api={api} gitCwd={gitCwd} />}
 
@@ -1519,7 +1520,7 @@ function ReasoningEffortPicker(props: {
   );
 }
 
-function OpenInPicker() {
+function OpenInPicker({ keybindings }: { keybindings: KeybindingsConfig }) {
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
     return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
@@ -1560,20 +1561,23 @@ function OpenInPicker() {
     [api, activeProject, activeThread, lastEditor, setLastEditor],
   );
 
-  // Cmd+O / Ctrl+O to open in last-used editor
+  const openFavoriteEditorShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "editor.openFavorite"),
+    [keybindings],
+  );
+
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "o" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        if (api && activeProject) {
-          e.preventDefault();
-          const cwd = activeThread?.worktreePath ?? activeProject.cwd;
-          void api.shell.openInEditor(cwd, lastEditor);
-        }
-      }
+      if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
+      if (!api || !activeProject) return;
+
+      e.preventDefault();
+      const cwd = activeThread?.worktreePath ?? activeProject.cwd;
+      void api.shell.openInEditor(cwd, lastEditor);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, activeProject, activeThread, lastEditor]);
+  }, [api, activeProject, activeThread, keybindings, lastEditor]);
 
   return (
     <Group aria-label="Subscription actions">
@@ -1591,10 +1595,8 @@ function OpenInPicker() {
             <MenuItem key={value} onClick={() => openInEditor(value)}>
               <Icon aria-hidden="true" className="text-muted-foreground" />
               {label}
-              {value === lastEditor && (
-                <MenuShortcut>
-                  {navigator.platform.includes("Mac") ? "\u2318O" : "Ctrl+O"}
-                </MenuShortcut>
+              {value === lastEditor && openFavoriteEditorShortcutLabel && (
+                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
               )}
             </MenuItem>
           ))}

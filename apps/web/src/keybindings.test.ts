@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { KeybindingsConfig } from "@t3tools/contracts";
 import {
   formatShortcutLabel,
+  isChatNewShortcut,
+  isOpenFavoriteEditorShortcut,
   isTerminalClearShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
@@ -26,6 +28,8 @@ const DEFAULT_BINDINGS: KeybindingsConfig = [
   { key: "mod+j", command: "terminal.toggle" },
   { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
   { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+  { key: "mod+shift+o", command: "chat.new" },
+  { key: "mod+o", command: "editor.openFavorite" },
 ];
 
 describe("isTerminalToggleShortcut", () => {
@@ -111,6 +115,41 @@ describe("shortcutLabelForCommand", () => {
       { key: "mod+shift+\\", command: "terminal.split", when: "!terminalFocus" },
     ];
     expect(shortcutLabelForCommand(bindings, "terminal.split", "Linux")).toBe("Ctrl+Shift+\\");
+  });
+
+  it("returns labels for non-terminal commands", () => {
+    expect(shortcutLabelForCommand(DEFAULT_BINDINGS, "chat.new", "MacIntel")).toBe("⇧⌘O");
+    expect(shortcutLabelForCommand(DEFAULT_BINDINGS, "editor.openFavorite", "Linux")).toBe(
+      "Ctrl+O",
+    );
+  });
+});
+
+describe("chat/editor shortcuts", () => {
+  it("matches chat.new shortcut", () => {
+    expect(
+      isChatNewShortcut(event({ key: "o", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      isChatNewShortcut(event({ key: "o", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+      }),
+    ).toBe(true);
+  });
+
+  it("matches editor.openFavorite shortcut", () => {
+    expect(
+      isOpenFavoriteEditorShortcut(event({ key: "o", metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      isOpenFavoriteEditorShortcut(event({ key: "o", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+      }),
+    ).toBe(true);
   });
 });
 
