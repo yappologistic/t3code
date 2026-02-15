@@ -108,8 +108,8 @@ export function gitRunStackedActionMutationOptions(input: {
         ...(commitMessage ? { commitMessage } : {}),
       });
     },
-    onSuccess: async () => {
-      await invalidateGitQueries(input.queryClient);
+    onSuccess: () => {
+      void invalidateGitQueries(input.queryClient);
     },
   });
 }
@@ -124,8 +124,8 @@ export function gitPullMutationOptions(input: {
       if (!input.api || !input.cwd) throw new Error("Git pull is unavailable.");
       return input.api.git.pull({ cwd: input.cwd });
     },
-    onSuccess: async () => {
-      await invalidateGitQueries(input.queryClient);
+    onSuccess: () => {
+      void invalidateGitQueries(input.queryClient);
     },
   });
 }

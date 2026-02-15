@@ -272,9 +272,9 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
         const prUrl = result.pr.url ?? gitStatus?.openPr?.url;
         const shouldOfferPushCta = action === "commit" && result.commit.status === "created";
         const shouldOfferOpenPrCta =
-          (action === "commit_push" || action === "commit_push_pr") && !!prUrl;
+          (action === "commit_push" || action === "commit_push_pr") && !!prUrl && !isDefaultBranch;
         const shouldOfferCreatePrCta =
-          action === "commit_push" && !prUrl && result.push.status === "pushed";
+          action === "commit_push" && !prUrl && result.push.status === "pushed" && !isDefaultBranch;
         const closeResultToast = () => {
           toastManager.close(progressToastId);
         };
@@ -329,6 +329,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       api,
       gitStatus?.hasWorkingTreeChanges,
       gitStatus?.openPr?.url,
+      isDefaultBranch,
       maybeConfirmPushToDefaultBranch,
       runImmediateGitActionMutation,
       setActiveDialogAction,
@@ -449,7 +450,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                 render={
                   <Button
                     aria-disabled="true"
-                    className="cursor-not-allowed opacity-64"
+                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-64 before:rounded-e-none"
                     size="xs"
                     variant="outline"
                   />
