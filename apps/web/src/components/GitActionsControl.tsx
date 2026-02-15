@@ -448,10 +448,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                 openOnHover
                 render={
                   <Button
-                    variant="outline"
+                    aria-disabled="true"
+                    className="cursor-not-allowed opacity-64"
                     size="xs"
-                    disabled={isGitActionRunning || quickAction.disabled}
-                    className="cursor-not-allowed disabled:cursor-not-allowed disabled:pointer-events-auto"
+                    variant="outline"
                   />
                 }
               >
@@ -485,7 +485,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />
             </MenuTrigger>
-            <MenuPopup align="end" sideOffset={4}>
+            <MenuPopup align="end" className="w-full">
               {gitActionMenuItems.map((item) => {
                 const disabledReason = getMenuActionDisabledReason(
                   item,
@@ -497,9 +497,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                     <Popover key={`${item.id}-${item.label}`}>
                       <PopoverTrigger
                         openOnHover
-                        render={<span className="inline-flex w-full cursor-not-allowed" />}
+                        nativeButton={false}
+                        render={<span className="block w-max cursor-not-allowed" />}
                       >
-                        <MenuItem disabled>
+                        <MenuItem className="w-full" disabled>
                           <GitActionItemIcon icon={item.icon} />
                           {item.label}
                         </MenuItem>
