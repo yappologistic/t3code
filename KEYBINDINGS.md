@@ -9,8 +9,9 @@ Schema source of truth:
 - [`packages/contracts/src/keybindings.ts`](packages/contracts/src/keybindings.ts)
 - [`packages/contracts/src/server.ts`](packages/contracts/src/server.ts)
 
-Server-side default resolution/merging:
+Server-side parsing/default resolution/merging:
 
+- [`apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
 - [`apps/server/src/wsServer.ts`](apps/server/src/wsServer.ts)
 
 The file must be a JSON array of rules:
@@ -94,8 +95,18 @@ Built-in defaults are resolved on the server and sent to the web client via `ser
 
 If you define any rules for a command, the default rule for that command is removed on the server.
 
+## Server-Resolved Payload
+
+`~/.t3/keybindings.json` is parsed and compiled on the server. The web client receives resolved rules (including parsed shortcut/when fields) and does not parse raw keybinding strings.
+
+See:
+
+- [`packages/contracts/src/keybindings.ts`](packages/contracts/src/keybindings.ts)
+- [`apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
+- [`apps/server/src/wsServer.ts`](apps/server/src/wsServer.ts)
+
 ## Precedence
 
 - Rules are evaluated in array order.
-- For a key event, the server/client resolves the last rule where both `key` matches and `when` evaluates to `true`.
+- For a key event, the last rule where both `key` matches and `when` evaluates to `true` wins.
 - That means precedence is across commands, not only within the same command.

@@ -1,5 +1,6 @@
 import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
@@ -19,6 +20,7 @@ import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
+const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -115,7 +117,7 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
 export default function Sidebar() {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
-  const { data: keybindings = [] } = useQuery({
+  const { data: keybindings = EMPTY_KEYBINDINGS } = useQuery({
     ...serverConfigQueryOptions(api),
     select: (config) => config.keybindings,
   });

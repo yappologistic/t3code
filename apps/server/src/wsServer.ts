@@ -11,6 +11,7 @@ import {
   WS_METHODS,
   keybindingRuleSchema,
   type KeybindingsConfig,
+  type ResolvedKeybindingsConfig,
   type TerminalEvent,
   type WsPush,
   type WsRequest,
@@ -33,6 +34,7 @@ import {
   removeGitWorktree,
 } from "./git";
 import { TerminalManager } from "./terminalManager";
+import { compileResolvedKeybindingRule } from "./keybindings";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -78,129 +80,29 @@ const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
   { key: "mod+o", command: "editor.openFavorite" },
 ];
 
-type WhenTokenType = "identifier" | "not" | "and" | "or" | "lparen" | "rparen";
-
-interface WhenToken {
-  type: WhenTokenType;
-}
-
-function tokenizeWhenExpression(expression: string): WhenToken[] | null {
-  const tokens: WhenToken[] = [];
-  let index = 0;
-
-  while (index < expression.length) {
-    const current = expression[index];
-    if (!current) break;
-
-    if (/\s/.test(current)) {
-      index += 1;
-      continue;
+function compileDefaultKeybindings(): ResolvedKeybindingsConfig {
+  const resolved: ResolvedKeybindingsConfig = [];
+  for (const rule of DEFAULT_KEYBINDINGS) {
+    const compiled = compileResolvedKeybindingRule(rule);
+    if (!compiled) {
+      throw new Error(`Invalid default keybinding: ${rule.command} (${rule.key})`);
     }
-    if (expression.startsWith("&&", index)) {
-      tokens.push({ type: "and" });
-      index += 2;
-      continue;
-    }
-    if (expression.startsWith("||", index)) {
-      tokens.push({ type: "or" });
-      index += 2;
-      continue;
-    }
-    if (current === "!") {
-      tokens.push({ type: "not" });
-      index += 1;
-      continue;
-    }
-    if (current === "(") {
-      tokens.push({ type: "lparen" });
-      index += 1;
-      continue;
-    }
-    if (current === ")") {
-      tokens.push({ type: "rparen" });
-      index += 1;
-      continue;
-    }
-
-    const identifier = /^[A-Za-z_][A-Za-z0-9_.-]*/.exec(expression.slice(index));
-    if (!identifier) {
-      return null;
-    }
-    tokens.push({ type: "identifier" });
-    index += identifier[0].length;
+    resolved.push(compiled);
   }
-
-  return tokens;
+  return resolved;
 }
 
-function isValidWhenExpression(when: string): boolean {
-  const tokens = tokenizeWhenExpression(when);
-  if (!tokens || tokens.length === 0) return false;
-  let index = 0;
+const DEFAULT_RESOLVED_KEYBINDINGS = compileDefaultKeybindings();
 
-  const parsePrimary = (): boolean => {
-    const token = tokens[index];
-    if (!token) return false;
-
-    if (token.type === "identifier") {
-      index += 1;
-      return true;
-    }
-
-    if (token.type === "lparen") {
-      index += 1;
-      const parsed = parseOr();
-      const close = tokens[index];
-      if (!parsed || !close || close.type !== "rparen") return false;
-      index += 1;
-      return true;
-    }
-
-    return false;
-  };
-
-  const parseUnary = (): boolean => {
-    const token = tokens[index];
-    if (token?.type === "not") {
-      index += 1;
-      return parseUnary();
-    }
-    return parsePrimary();
-  };
-
-  const parseAnd = (): boolean => {
-    if (!parseUnary()) return false;
-
-    while (tokens[index]?.type === "and") {
-      index += 1;
-      if (!parseUnary()) return false;
-    }
-
-    return true;
-  };
-
-  const parseOr = (): boolean => {
-    if (!parseAnd()) return false;
-
-    while (tokens[index]?.type === "or") {
-      index += 1;
-      if (!parseAnd()) return false;
-    }
-
-    return true;
-  };
-
-  if (!parseOr()) return false;
-  return index === tokens.length;
-}
-
-function mergeWithDefaultKeybindings(custom: KeybindingsConfig): KeybindingsConfig {
+function mergeWithDefaultKeybindings(
+  custom: ResolvedKeybindingsConfig,
+): ResolvedKeybindingsConfig {
   if (custom.length === 0) {
-    return [...DEFAULT_KEYBINDINGS];
+    return [...DEFAULT_RESOLVED_KEYBINDINGS];
   }
 
   const overriddenCommands = new Set(custom.map((binding) => binding.command));
-  const retainedDefaults = DEFAULT_KEYBINDINGS.filter(
+  const retainedDefaults = DEFAULT_RESOLVED_KEYBINDINGS.filter(
     (binding) => !overriddenCommands.has(binding.command),
   );
   const merged = [...retainedDefaults, ...custom];
@@ -213,7 +115,9 @@ function mergeWithDefaultKeybindings(custom: KeybindingsConfig): KeybindingsConf
   return merged.slice(-256);
 }
 
-function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): KeybindingsConfig {
+function readKeybindingsConfig(
+  logger: ReturnType<typeof createLogger>,
+): ResolvedKeybindingsConfig {
   const configPath = path.join(os.homedir(), ".t3", "keybindings.json");
   try {
     const raw = fs.readFileSync(configPath, "utf8");
@@ -222,19 +126,20 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
       logger.warn("ignoring keybindings config with unsupported format; expected array", {
         path: configPath,
       });
-      return [...DEFAULT_KEYBINDINGS];
+      return [...DEFAULT_RESOLVED_KEYBINDINGS];
     }
 
-    const sanitized: KeybindingsConfig = [];
+    const sanitized: ResolvedKeybindingsConfig = [];
     let invalidEntries = 0;
     for (const entry of parsed) {
       const result = keybindingRuleSchema.safeParse(entry);
       if (result.success) {
-        if (result.data.when && !isValidWhenExpression(result.data.when)) {
+        const compiled = compileResolvedKeybindingRule(result.data);
+        if (!compiled) {
           invalidEntries += 1;
           continue;
         }
-        sanitized.push(result.data);
+        sanitized.push(compiled);
         continue;
       }
       invalidEntries += 1;
@@ -246,14 +151,12 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
         totalEntries: parsed.length,
       });
     }
-    const mergedBeforeCap = [
-      ...DEFAULT_KEYBINDINGS.filter(
-        (binding) => !new Set(sanitized.map((entry) => entry.command)).has(binding.command),
-      ),
-      ...sanitized,
-    ];
+    const overriddenCommands = new Set(sanitized.map((entry) => entry.command));
+    const mergedBeforeCapLength =
+      DEFAULT_RESOLVED_KEYBINDINGS.filter((binding) => !overriddenCommands.has(binding.command))
+        .length + sanitized.length;
     const merged = mergeWithDefaultKeybindings(sanitized);
-    if (mergedBeforeCap.length > 256) {
+    if (mergedBeforeCapLength > 256) {
       logger.warn("truncating merged keybindings config to max entries", {
         path: configPath,
         maxEntries: 256,
@@ -262,14 +165,14 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
     return merged;
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return [...DEFAULT_KEYBINDINGS];
+      return [...DEFAULT_RESOLVED_KEYBINDINGS];
     }
     logger.warn("ignoring malformed keybindings config", {
       path: configPath,
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  return [...DEFAULT_KEYBINDINGS];
+  return [...DEFAULT_RESOLVED_KEYBINDINGS];
 }
 
 export function createServer(options: ServerOptions) {

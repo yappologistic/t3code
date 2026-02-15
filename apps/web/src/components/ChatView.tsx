@@ -5,9 +5,9 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
   type ProviderSendTurnAttachmentInput,
-  type KeybindingsConfig,
 } from "@t3tools/contracts";
 import {
   type ClipboardEvent,
@@ -92,7 +92,7 @@ const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
-const EMPTY_KEYBINDINGS: KeybindingsConfig = [];
+const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -1520,7 +1520,7 @@ function ReasoningEffortPicker(props: {
   );
 }
 
-function OpenInPicker({ keybindings }: { keybindings: KeybindingsConfig }) {
+function OpenInPicker({ keybindings }: { keybindings: ResolvedKeybindingsConfig }) {
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
     return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
