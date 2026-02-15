@@ -54,12 +54,14 @@ function ComboboxChipsInput({
 
 function ComboboxInput({
   className,
+  inputClassName,
   showTrigger = true,
   showClear = false,
   startAddon,
   size,
   ...props
 }: Omit<ComboboxPrimitive.Input.Props, "size"> & {
+  inputClassName?: string;
   showTrigger?: boolean;
   showClear?: boolean;
   startAddon?: React.ReactNode;
@@ -89,7 +91,13 @@ function ComboboxInput({
           className,
         )}
         data-slot="combobox-input"
-        render={<Input className="has-disabled:opacity-100" nativeInput size={sizeValue} />}
+        render={
+          <Input
+            className={cn("has-disabled:opacity-100", inputClassName)}
+            nativeInput
+            size={sizeValue}
+          />
+        }
         {...props}
       />
       {showTrigger && (

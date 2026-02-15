@@ -19,8 +19,7 @@ import {
   ComboboxPopup,
   ComboboxTrigger,
 } from "./ui/combobox";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
+import { ChevronDownIcon } from "lucide-react";
 
 interface BranchToolbarProps {
   envMode: "local" | "worktree";
@@ -34,8 +33,7 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   const queryClient = useQueryClient();
 
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
-  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
-  const [newBranchName, setNewBranchName] = useState("");
+  const [branchQuery, setBranchQuery] = useState("");
 
   const activeThread = state.threads.find((thread) => thread.id === state.activeThreadId);
   const activeProject = state.projects.find((project) => project.id === activeThread?.projectId);
@@ -51,6 +49,16 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   const branches = branchesQuery.data?.branches ?? [];
   const branchNames = branches.map((branch) => branch.name);
   const branchByName = new Map(branches.map((branch) => [branch.name, branch]));
+  const trimmedBranchQuery = branchQuery.trim();
+  const canCreateBranch = envMode === "local" && trimmedBranchQuery.length > 0;
+  const hasExactBranchMatch = branchByName.has(trimmedBranchQuery);
+  const createBranchItemValue = canCreateBranch
+    ? `__create_new_branch__:${trimmedBranchQuery}`
+    : null;
+  const branchPickerItems =
+    createBranchItemValue && !hasExactBranchMatch
+      ? [...branchNames, createBranchItemValue]
+      : branchNames;
   // ── Mutations ─────────────────────────────────────────────────────────
 
   const checkoutMutation = useMutation({
@@ -86,8 +94,7 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
 
   useEffect(() => {
     if (isBranchMenuOpen) return;
-    setIsCreatingBranch(false);
-    setNewBranchName("");
+    setBranchQuery("");
   }, [isBranchMenuOpen]);
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -140,15 +147,14 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
     });
   };
 
-  const createBranch = () => {
-    const name = newBranchName.trim();
-    if (!api || !activeThreadId || !branchCwd || !name) return;
+  const createBranch = (rawName: string) => {
+    const name = rawName.trim();
+    if (!api || !activeThreadId || !branchCwd || !name || createBranchMutation.isPending) return;
     createBranchMutation.mutate(name, {
       onSuccess: () => {
         setThreadError(null);
         setThreadBranch(name, activeWorktreePath);
-        setNewBranchName("");
-        setIsCreatingBranch(false);
+        setBranchQuery("");
         setIsBranchMenuOpen(false);
       },
     });
@@ -177,7 +183,7 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
       </div>
 
       <Combobox
-        items={branchNames}
+        items={branchPickerItems}
         autoHighlight
         onOpenChange={(open) => setIsBranchMenuOpen(open)}
         open={isBranchMenuOpen}
@@ -198,20 +204,35 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
           <ChevronDownIcon />
         </ComboboxTrigger>
         <ComboboxPopup align="end" side="top" className="w-64">
-          <div className="border-b">
+          <div className="border-b p-1">
             <ComboboxInput
-              className="rounded-b-none before:rounded-b-none [&_input]:font-sans"
+              className="[&_input]:font-sans rounded-md"
+              inputClassName="ring-0"
               placeholder="Search branches..."
-              showClear
               showTrigger={false}
               size="sm"
+              value={branchQuery}
+              onChange={(event) => setBranchQuery(event.target.value)}
             />
           </div>
           <ComboboxEmpty>No branches found.</ComboboxEmpty>
 
           <ComboboxList className="max-h-56">
-            {(branchName) => {
-              const branch = branchByName.get(branchName);
+            {(itemValue) => {
+              if (createBranchItemValue && itemValue === createBranchItemValue) {
+                return (
+                  <ComboboxItem
+                    hideIndicator
+                    key={itemValue}
+                    value={itemValue}
+                    onClick={() => createBranch(trimmedBranchQuery)}
+                  >
+                    <span className="truncate">Create new branch "{trimmedBranchQuery}"</span>
+                  </ComboboxItem>
+                );
+              }
+
+              const branch = branchByName.get(itemValue);
               if (!branch) return null;
 
               const hasSecondaryWorktree =
@@ -219,15 +240,15 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
               return (
                 <ComboboxItem
                   hideIndicator
-                  key={branchName}
-                  value={branchName}
+                  key={itemValue}
+                  value={itemValue}
                   className={
-                    branchName === activeThread.branch ? "bg-accent text-foreground" : undefined
+                    itemValue === activeThread.branch ? "bg-accent text-foreground" : undefined
                   }
                   onClick={() => selectBranch(branch)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
-                    <span className="truncate">{branchName}</span>
+                    <span className="truncate">{itemValue}</span>
                     {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
                       <span className="shrink-0 text-[10px] text-muted-foreground/45">
                         {branch.current ? "current" : hasSecondaryWorktree ? "worktree" : "default"}
@@ -238,57 +259,6 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
               );
             }}
           </ComboboxList>
-          {envMode === "local" && (
-            <>
-              {isCreatingBranch ? (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    createBranch();
-                  }}
-                >
-                  <InputGroup className="rounded-t-none before:rounded-t-none">
-                    <InputGroupInput
-                      className="[&_input]:font-sans"
-                      size="sm"
-                      placeholder="branch-name"
-                      type="text"
-                      value={newBranchName}
-                      onChange={(event) => setNewBranchName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.stopPropagation();
-                          setIsCreatingBranch(false);
-                          setNewBranchName("");
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <Button
-                        size="xs"
-                        variant="secondary"
-                        type="submit"
-                        disabled={!newBranchName.trim() || createBranchMutation.isPending}
-                      >
-                        Create
-                      </Button>
-                    </InputGroupAddon>
-                  </InputGroup>
-                </form>
-              ) : (
-                <Button
-                  size="sm"
-                  className="w-full justify-start h-9 rounded-t-none rounded-b-lg before:rounded-t-none"
-                  variant="outline"
-                  onClick={() => setIsCreatingBranch(true)}
-                >
-                  <PlusIcon />
-                  New branch
-                </Button>
-              )}
-            </>
-          )}
         </ComboboxPopup>
       </Combobox>
     </div>
