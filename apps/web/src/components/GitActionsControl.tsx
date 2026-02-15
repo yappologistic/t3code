@@ -459,26 +459,18 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
             <Popover open={isQuickActionPopoverOpen} onOpenChange={setIsQuickActionPopoverOpen}>
               <PopoverTrigger
                 render={
-                  <span
-                    className="inline-flex cursor-not-allowed"
-                    onBlur={() => setIsQuickActionPopoverOpen(false)}
-                    onFocus={() => setIsQuickActionPopoverOpen(true)}
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    disabled={isGitActionRunning || quickAction.disabled}
+                    className="cursor-not-allowed disabled:cursor-not-allowed disabled:pointer-events-auto"
                     onMouseEnter={() => setIsQuickActionPopoverOpen(true)}
                     onMouseLeave={() => setIsQuickActionPopoverOpen(false)}
-                    tabIndex={0}
                   />
                 }
               >
-                <Button
-                  variant="outline"
-                  size="xs"
-                  disabled={isGitActionRunning || quickAction.disabled}
-                  className="cursor-not-allowed disabled:cursor-not-allowed"
-                  onClick={runQuickAction}
-                >
-                  <GitQuickActionIcon quickAction={quickAction} />
-                  {quickAction.label}
-                </Button>
+                <GitQuickActionIcon quickAction={quickAction} />
+                {quickAction.label}
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
                 {quickActionDisabledReason}
@@ -522,11 +514,8 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                         render={
                           <span
                             className="inline-flex w-full cursor-not-allowed"
-                            onBlur={() => setOpenDisabledMenuItemId(null)}
-                            onFocus={() => setOpenDisabledMenuItemId(item.id)}
                             onMouseEnter={() => setOpenDisabledMenuItemId(item.id)}
                             onMouseLeave={() => setOpenDisabledMenuItemId(null)}
-                            tabIndex={0}
                           />
                         }
                       >
