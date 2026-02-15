@@ -1476,8 +1476,8 @@ function OpenInPicker() {
   return (
     <Group aria-label="Subscription actions">
       <Button size="xs" variant="outline" onClick={() => openInEditor(lastEditor)}>
-        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3" />}
-        Open
+        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3.5" />}
+        <span className="ml-0.5">Open</span>
       </Button>
       <GroupSeparator />
       <Menu>

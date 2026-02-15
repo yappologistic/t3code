@@ -122,15 +122,16 @@ function GitActionItemIcon({ icon }: { icon: GitActionIconName }) {
 }
 
 function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
-  if (quickAction.kind === "open_pr") return <GitHubIcon className="size-4" />;
-  if (quickAction.kind === "run_pull") return <InfoIcon className="size-4" />;
+  const iconClassName = "size-3.5";
+  if (quickAction.kind === "open_pr") return <GitHubIcon className={iconClassName} />;
+  if (quickAction.kind === "run_pull") return <InfoIcon className={iconClassName} />;
   if (quickAction.kind === "run_action") {
-    if (quickAction.action === "commit") return <GitCommitIcon className="size-4" />;
-    if (quickAction.action === "commit_push") return <CloudUploadIcon className="size-4" />;
-    return <GitHubIcon className="size-4" />;
+    if (quickAction.action === "commit") return <GitCommitIcon className={iconClassName} />;
+    if (quickAction.action === "commit_push") return <CloudUploadIcon className={iconClassName} />;
+    return <GitHubIcon className={iconClassName} />;
   }
-  if (quickAction.label === "Commit") return <GitCommitIcon className="size-4" />;
-  return <InfoIcon className="size-4" />;
+  if (quickAction.label === "Commit") return <GitCommitIcon className={iconClassName} />;
+  return <InfoIcon className={iconClassName} />;
 }
 
 function buildGitActionProgressStages(input: {
@@ -192,10 +193,6 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
   const quickActionDisabledReason = quickAction.disabled
     ? (quickAction.hint ?? "This action is currently unavailable.")
     : null;
-  const [isQuickActionPopoverOpen, setIsQuickActionPopoverOpen] = useState(false);
-  const [openDisabledMenuItemId, setOpenDisabledMenuItemId] = useState<
-    GitActionMenuItem["id"] | null
-  >(null);
 
   const refreshGitStatus = useCallback(async () => {
     if (!api || !gitCwd) return;
@@ -451,21 +448,20 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       ) : (
         <Group aria-label="Git actions">
           {quickActionDisabledReason ? (
-            <Popover open={isQuickActionPopoverOpen} onOpenChange={setIsQuickActionPopoverOpen}>
+            <Popover>
               <PopoverTrigger
+                openOnHover
                 render={
                   <Button
                     variant="outline"
                     size="xs"
                     disabled={isGitActionRunning || quickAction.disabled}
                     className="cursor-not-allowed disabled:cursor-not-allowed disabled:pointer-events-auto"
-                    onMouseEnter={() => setIsQuickActionPopoverOpen(true)}
-                    onMouseLeave={() => setIsQuickActionPopoverOpen(false)}
                   />
                 }
               >
                 <GitQuickActionIcon quickAction={quickAction} />
-                {quickAction.label}
+                <span className="ml-0.5">{quickAction.label}</span>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
                 {quickActionDisabledReason}
@@ -479,16 +475,11 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
               onClick={runQuickAction}
             >
               <GitQuickActionIcon quickAction={quickAction} />
-              {quickAction.label}
+              <span className="ml-0.5">{quickAction.label}</span>
             </Button>
           )}
           <GroupSeparator />
-          <Menu
-            onOpenChange={(open) => {
-              if (open) void refreshGitStatus();
-              if (!open) setOpenDisabledMenuItemId(null);
-            }}
-          >
+          <Menu>
             <MenuTrigger
               render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
               disabled={isGitActionRunning}
@@ -504,19 +495,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                 );
                 if (item.disabled && disabledReason) {
                   return (
-                    <Popover
-                      key={`${item.id}-${item.label}`}
-                      open={openDisabledMenuItemId === item.id}
-                      onOpenChange={(open) => setOpenDisabledMenuItemId(open ? item.id : null)}
-                    >
+                    <Popover key={`${item.id}-${item.label}`}>
                       <PopoverTrigger
-                        render={
-                          <span
-                            className="inline-flex w-full cursor-not-allowed"
-                            onMouseEnter={() => setOpenDisabledMenuItemId(item.id)}
-                            onMouseLeave={() => setOpenDisabledMenuItemId(null)}
-                          />
-                        }
+                        openOnHover
+                        render={<span className="inline-flex w-full cursor-not-allowed" />}
                       >
                         <MenuItem disabled>
                           <GitActionItemIcon icon={item.icon} />

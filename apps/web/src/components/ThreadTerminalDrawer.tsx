@@ -4,12 +4,14 @@ import { type NativeApi } from "@t3tools/contracts";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import {
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import {
   extractTerminalLinks,
   isTerminalLinkActivation,
@@ -419,6 +421,41 @@ interface ThreadTerminalDrawerProps {
   onHeightChange: (height: number) => void;
 }
 
+interface TerminalActionButtonProps {
+  label: string;
+  className: string;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+function TerminalActionButton({ label, className, onClick, children }: TerminalActionButtonProps) {
+  return (
+    <Popover>
+      <PopoverTrigger openOnHover
+        render={
+          <button
+            type="button"
+            className={className}
+            onClick={onClick}
+            aria-label={label}
+          />
+        }
+      >
+        {children}
+      </PopoverTrigger>
+      <PopoverPopup
+        tooltipStyle
+        side="bottom"
+        sideOffset={6}
+        align="center"
+        className="pointer-events-none select-none"
+      >
+        {label}
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
 export default function ThreadTerminalDrawer({
   api,
   threadId,
@@ -654,35 +691,29 @@ export default function ThreadTerminalDrawer({
       {!hasTerminalSidebar && (
         <div className="pointer-events-none absolute right-2 top-2 z-20">
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background/70">
-            <button
-              type="button"
+            <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={onSplitTerminal}
-              aria-label="Split Terminal"
-              title="Split Terminal"
+              label="Split Terminal"
             >
               <SquareSplitHorizontal className="size-3.25" />
-            </button>
+            </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
-            <button
-              type="button"
+            <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={onNewTerminal}
-              aria-label="New Terminal"
-              title="New Terminal"
+              label="New Terminal"
             >
               <Plus className="size-3.25" />
-            </button>
+            </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
-            <button
-              type="button"
+            <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
-              aria-label="Close Terminal"
-              title="Close Terminal"
+              label="Close Terminal"
             >
               <Trash2 className="size-3.25" />
-            </button>
+            </TerminalActionButton>
           </div>
         </div>
       )}
@@ -745,33 +776,27 @@ export default function ThreadTerminalDrawer({
             <aside className="flex w-36 min-w-36 flex-col border border-border/70 bg-muted/10">
               <div className="flex h-[22px] items-stretch justify-end border-b border-border/70">
                 <div className="inline-flex h-full items-stretch">
-                  <button
-                    type="button"
+                  <TerminalActionButton
                     className="inline-flex h-full items-center px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={onSplitTerminal}
-                    aria-label="Split Terminal"
-                    title="Split Terminal"
+                    label="Split Terminal"
                   >
                     <SquareSplitHorizontal className="size-3.25" />
-                  </button>
-                  <button
-                    type="button"
+                  </TerminalActionButton>
+                  <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={onNewTerminal}
-                    aria-label="New Terminal"
-                    title="New Terminal"
+                    label="New Terminal"
                   >
                     <Plus className="size-3.25" />
-                  </button>
-                  <button
-                    type="button"
+                  </TerminalActionButton>
+                  <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
-                    aria-label="Close Terminal"
-                    title="Close Terminal"
+                    label="Close Terminal"
                   >
                     <Trash2 className="size-3.25" />
-                  </button>
+                  </TerminalActionButton>
                 </div>
               </div>
 
