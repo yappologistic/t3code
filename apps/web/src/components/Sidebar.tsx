@@ -17,6 +17,7 @@ import {
 import { useNativeApi } from "../hooks/useNativeApi";
 import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
+import { toastManager } from "./ui/toast";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
@@ -342,17 +343,59 @@ export default function Sidebar() {
       const project = state.projects.find((entry) => entry.id === projectId);
       if (!project) return;
 
+      const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
+      const linkedWorktreeCount = new Set(
+        projectThreads
+          .map((thread) => thread.worktreePath?.trim() ?? "")
+          .filter((worktreePath) => worktreePath.length > 0),
+      ).size;
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Delete project "${project.name}"?`,
+          `This will delete ${projectThreads.length} thread${projectThreads.length === 1 ? "" : "s"}.`,
+          linkedWorktreeCount > 0
+            ? `Linked worktrees to remove: ${linkedWorktreeCount}.`
+            : "No linked worktrees detected.",
+        ].join("\n"),
+      );
+      if (!confirmed) return;
+
       if (isElectron) {
         try {
           await api.projects.remove({ id: projectId });
-        } catch {
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown error deleting project.";
+          console.error("Failed to remove project", { projectId, error });
+          toastManager.add({
+            type: "error",
+            title: `Failed to delete "${project.name}"`,
+            description: message,
+          });
           return;
         }
       }
 
-      const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
+      const retainedThreads = state.threads.filter((thread) => thread.projectId !== projectId);
+      const removedWorktreePaths = new Set<string>();
       await Promise.all(
         projectThreads.map(async (thread) => {
+          const orphanedWorktreePath = getOrphanedWorktreePathForThread(
+            [thread, ...retainedThreads],
+            thread.id,
+          );
+          if (orphanedWorktreePath && !removedWorktreePaths.has(orphanedWorktreePath)) {
+            removedWorktreePaths.add(orphanedWorktreePath);
+            try {
+              await removeWorktreeMutation.mutateAsync({
+                cwd: project.cwd,
+                path: orphanedWorktreePath,
+              });
+            } catch {
+              // Worktree deletion is best-effort and should not block project deletion.
+            }
+          }
+
           if (thread.session?.sessionId) {
             try {
               await api.providers.stopSession({
@@ -376,7 +419,7 @@ export default function Sidebar() {
 
       dispatch({ type: "DELETE_PROJECT", projectId });
     },
-    [api, dispatch, state.projects, state.threads],
+    [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
   );
 
   useEffect(() => {
