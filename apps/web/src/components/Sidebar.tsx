@@ -344,19 +344,17 @@ export default function Sidebar() {
       if (!project) return;
 
       const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
-      const linkedWorktreeCount = new Set(
-        projectThreads
-          .map((thread) => thread.worktreePath?.trim() ?? "")
-          .filter((worktreePath) => worktreePath.length > 0),
-      ).size;
+      if (projectThreads.length > 0) {
+        toastManager.add({
+          type: "warning",
+          title: "Project is not empty",
+          description: "Delete all threads in this project before deleting it.",
+        });
+        return;
+      }
+
       const confirmed = await api.dialogs.confirm(
-        [
-          `Delete project "${project.name}"?`,
-          `This will delete ${projectThreads.length} thread${projectThreads.length === 1 ? "" : "s"}.`,
-          linkedWorktreeCount > 0
-            ? `Linked worktrees to remove: ${linkedWorktreeCount}.`
-            : "No linked worktrees detected.",
-        ].join("\n"),
+        [`Delete project "${project.name}"?`, "This action cannot be undone."].join("\n"),
       );
       if (!confirmed) return;
 
@@ -376,50 +374,9 @@ export default function Sidebar() {
         }
       }
 
-      const retainedThreads = state.threads.filter((thread) => thread.projectId !== projectId);
-      const removedWorktreePaths = new Set<string>();
-      await Promise.all(
-        projectThreads.map(async (thread) => {
-          const orphanedWorktreePath = getOrphanedWorktreePathForThread(
-            [thread, ...retainedThreads],
-            thread.id,
-          );
-          if (orphanedWorktreePath && !removedWorktreePaths.has(orphanedWorktreePath)) {
-            removedWorktreePaths.add(orphanedWorktreePath);
-            try {
-              await removeWorktreeMutation.mutateAsync({
-                cwd: project.cwd,
-                path: orphanedWorktreePath,
-              });
-            } catch {
-              // Worktree deletion is best-effort and should not block project deletion.
-            }
-          }
-
-          if (thread.session?.sessionId) {
-            try {
-              await api.providers.stopSession({
-                sessionId: thread.session.sessionId,
-              });
-            } catch {
-              // Session may already be stopped
-            }
-          }
-
-          try {
-            await api.terminal.close({
-              threadId: thread.id,
-              deleteHistory: true,
-            });
-          } catch {
-            // Terminal may already be closed
-          }
-        }),
-      );
-
       dispatch({ type: "DELETE_PROJECT", projectId });
     },
-    [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
+    [api, dispatch, state.projects, state.threads],
   );
 
   useEffect(() => {
