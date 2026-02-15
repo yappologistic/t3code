@@ -587,11 +587,8 @@ export class GitCoreService {
       timeoutMs: 10_000,
       fallbackErrorMessage: "git checkout failed",
     });
-    try {
-      await this.refreshCheckedOutBranchUpstream(input.cwd);
-    } catch {
-      // Best effort: checkout already succeeded, so avoid surfacing refresh failures.
-    }
+    // Refresh upstream refs in the background so checkout remains responsive.
+    void this.refreshCheckedOutBranchUpstream(input.cwd).catch(() => undefined);
   }
 
   async initRepo(input: GitInitInput): Promise<void> {

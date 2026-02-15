@@ -272,11 +272,12 @@ describe("git integration", () => {
 
       await checkoutGitBranch({ cwd: source.path, branch: featureBranch });
       const core = new GitCoreService();
-      const details = await core.statusDetails(source.path);
-
-      expect(details.branch).toBe(featureBranch);
-      expect(details.aheadCount).toBe(0);
-      expect(details.behindCount).toBe(1);
+      await vi.waitFor(async () => {
+        const details = await core.statusDetails(source.path);
+        expect(details.branch).toBe(featureBranch);
+        expect(details.aheadCount).toBe(0);
+        expect(details.behindCount).toBe(1);
+      });
     });
 
     it("keeps checkout successful when upstream refresh fails", async () => {
@@ -320,7 +321,9 @@ describe("git integration", () => {
       await expect(core.checkoutBranch({ cwd: source.path, branch: featureBranch })).resolves.toBe(
         undefined,
       );
-      expect(core.refreshFetchAttempts).toBe(1);
+      await vi.waitFor(() => {
+        expect(core.refreshFetchAttempts).toBe(1);
+      });
       expect(await git(source.path, "branch --show-current")).toBe(featureBranch);
     });
 
@@ -362,6 +365,9 @@ describe("git integration", () => {
 
       const core = new FetchRecordingGitCoreService();
       await core.checkoutBranch({ cwd: source.path, branch: featureBranch });
+      await vi.waitFor(() => {
+        expect(core.fetchArgs).not.toBeNull();
+      });
 
       expect(await git(source.path, "branch --show-current")).toBe(featureBranch);
       expect(core.fetchArgs).toEqual([
@@ -371,6 +377,67 @@ describe("git integration", () => {
         "origin",
         `+refs/heads/${featureBranch}:refs/remotes/origin/${featureBranch}`,
       ]);
+    });
+
+    it("returns checkout result before background upstream refresh completes", async () => {
+      await using remote = await makeTmpDir();
+      await using source = await makeTmpDir();
+      await git(remote.path, "init --bare");
+
+      await initRepoWithCommit(source.path);
+      const defaultBranch = (await listGitBranches({ cwd: source.path })).branches.find(
+        (branch) => branch.current,
+      )!.name;
+      await git(source.path, `remote add origin ${JSON.stringify(remote.path)}`);
+      await git(source.path, `push -u origin ${defaultBranch}`);
+
+      const featureBranch = "feature/background-refresh";
+      await git(source.path, `checkout -b ${featureBranch}`);
+      await writeFile(path.join(source.path, "feature.txt"), "feature base\n");
+      await git(source.path, "add feature.txt");
+      await git(source.path, "commit -m 'feature base'");
+      await git(source.path, `push -u origin ${featureBranch}`);
+      await git(source.path, `checkout ${defaultBranch}`);
+
+      class SlowRefreshGitCoreService extends GitCoreService {
+        fetchStarted = false;
+        private readonly waitForReleasePromise: Promise<void>;
+        private releaseWait: () => void = () => undefined;
+
+        constructor() {
+          super();
+          this.waitForReleasePromise = new Promise<void>((resolve) => {
+            this.releaseWait = resolve;
+          });
+        }
+
+        releaseFetch(): void {
+          this.releaseWait();
+        }
+
+        override async git(
+          cwd: string,
+          args: readonly string[],
+          allowNonZeroExit = false,
+        ): Promise<void> {
+          if (args[0] === "fetch") {
+            this.fetchStarted = true;
+            await this.waitForReleasePromise;
+            return;
+          }
+          await super.git(cwd, args, allowNonZeroExit);
+        }
+      }
+
+      const core = new SlowRefreshGitCoreService();
+      await expect(core.checkoutBranch({ cwd: source.path, branch: featureBranch })).resolves.toBe(
+        undefined,
+      );
+      await vi.waitFor(() => {
+        expect(core.fetchStarted).toBe(true);
+      });
+      expect(await git(source.path, "branch --show-current")).toBe(featureBranch);
+      core.releaseFetch();
     });
 
     it("throws when branch does not exist", async () => {
