@@ -333,6 +333,52 @@ export default function Sidebar() {
     [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
   );
 
+  const handleProjectContextMenu = useCallback(
+    async (projectId: string, position: { x: number; y: number }) => {
+      if (!api) return;
+      const clicked = await api.contextMenu.show([{ id: "delete", label: "Delete" }], position);
+      if (clicked !== "delete") return;
+
+      const project = state.projects.find((entry) => entry.id === projectId);
+      if (!project) return;
+
+      if (isElectron) {
+        try {
+          await api.projects.remove({ id: projectId });
+        } catch {
+          return;
+        }
+      }
+
+      const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
+      await Promise.all(
+        projectThreads.map(async (thread) => {
+          if (thread.session?.sessionId) {
+            try {
+              await api.providers.stopSession({
+                sessionId: thread.session.sessionId,
+              });
+            } catch {
+              // Session may already be stopped
+            }
+          }
+
+          try {
+            await api.terminal.close({
+              threadId: thread.id,
+              deleteHistory: true,
+            });
+          } catch {
+            // Terminal may already be closed
+          }
+        }),
+      );
+
+      dispatch({ type: "DELETE_PROJECT", projectId });
+    },
+    [api, dispatch, state.projects, state.threads],
+  );
+
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (!isChatNewShortcut(event, keybindings)) return;
@@ -413,6 +459,13 @@ export default function Sidebar() {
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent"
                 onClick={() => dispatch({ type: "TOGGLE_PROJECT", projectId: project.id })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  void handleProjectContextMenu(project.id, {
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
               >
                 <span className="text-[10px] text-muted-foreground/70">
                   {project.expanded ? "▼" : "▶"}

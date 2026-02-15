@@ -28,6 +28,7 @@ type Action =
   | { type: "ADD_PROJECT"; project: Project }
   | { type: "SYNC_PROJECTS"; projects: Project[] }
   | { type: "TOGGLE_PROJECT"; projectId: string }
+  | { type: "DELETE_PROJECT"; projectId: string }
   | { type: "ADD_THREAD"; thread: Thread }
   | { type: "SET_ACTIVE_THREAD"; threadId: string }
   | { type: "TOGGLE_THREAD_TERMINAL"; threadId: string }
@@ -472,6 +473,25 @@ export function reducer(state: AppState, action: Action): AppState {
           p.id === action.projectId ? { ...p, expanded: !p.expanded } : p,
         ),
       };
+
+    case "DELETE_PROJECT": {
+      const projects = state.projects.filter((project) => project.id !== action.projectId);
+      if (projects.length === state.projects.length) {
+        return state;
+      }
+
+      const threads = state.threads.filter((thread) => thread.projectId !== action.projectId);
+      const activeThreadId = threads.some((thread) => thread.id === state.activeThreadId)
+        ? state.activeThreadId
+        : (threads[0]?.id ?? null);
+
+      return {
+        ...state,
+        projects,
+        threads,
+        activeThreadId,
+      };
+    }
 
     case "ADD_THREAD": {
       const nextThread = normalizeThreadTerminals({
