@@ -4,19 +4,6 @@ T3 Code reads keybindings from:
 
 - `~/.t3/keybindings.json`
 
-Schema source of truth:
-
-- [`packages/contracts/src/keybindings.ts`](packages/contracts/src/keybindings.ts)
-- [`packages/contracts/src/server.ts`](packages/contracts/src/server.ts)
-
-Server-side parsing/default resolution/merging:
-
-- [`apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
-
-Server wiring (`server.getConfig`):
-
-- [`apps/server/src/wsServer.ts`](apps/server/src/wsServer.ts)
-
 The file must be a JSON array of rules:
 
 ```json
@@ -26,7 +13,25 @@ The file must be a JSON array of rules:
 ]
 ```
 
-## Rule Shape
+See the full schema for more details: [`packages/contracts/src/keybindings.ts`](packages/contracts/src/keybindings.ts)
+
+## Defaults
+
+```json
+[
+  { "key": "mod+j", "command": "terminal.toggle" },
+  { "key": "mod+d", "command": "terminal.split", "when": "terminalFocus" },
+  { "key": "mod+shift+d", "command": "terminal.new", "when": "terminalFocus" },
+  { "key": "mod+shift+o", "command": "chat.new" },
+  { "key": "mod+o", "command": "editor.openFavorite" }
+]
+```
+
+For most up to date defaults, see [`DEFAULT_KEYBINDINGS` in `apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
+
+## Configuration
+
+### Rule Shape
 
 Each entry supports:
 
@@ -36,7 +41,7 @@ Each entry supports:
 
 Invalid rules are ignored. Invalid config files are ignored. Warnings are logged by the server.
 
-## Available Commands
+### Available Commands
 
 - `terminal.toggle`: open/close terminal drawer
 - `terminal.split`: split terminal (in focused terminal context by default)
@@ -44,7 +49,7 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 - `chat.new`: create a new chat thread for the active project
 - `editor.openFavorite`: open current project/worktree in the last-used editor
 
-## Key Syntax
+### Key Syntax
 
 Supported modifiers:
 
@@ -61,7 +66,7 @@ Examples:
 - `ctrl+l`
 - `cmd+k`
 
-## `when` Conditions
+### `when` Conditions
 
 Currently available context keys:
 
@@ -83,31 +88,7 @@ Examples:
 
 Unknown condition keys evaluate to `false`.
 
-## Defaults
-
-Built-in defaults are resolved on the server and sent to the web client via `server.getConfig`:
-
-- Source of truth: [`DEFAULT_KEYBINDINGS` in `apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
-
-If you define any rules for a command, the default rule for that command is removed on the server.
-
-## Server-Resolved Payload
-
-`~/.t3/keybindings.json` is parsed and compiled on the server. The web client receives resolved rules and does not parse raw keybinding strings.
-
-Resolved rule payload fields:
-
-- `command`
-- `shortcut`
-- `whenAst` (optional)
-
-See:
-
-- [`packages/contracts/src/keybindings.ts`](packages/contracts/src/keybindings.ts)
-- [`apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
-- [`apps/server/src/wsServer.ts`](apps/server/src/wsServer.ts)
-
-## Precedence
+### Precedence
 
 - Rules are evaluated in array order.
 - For a key event, the last rule where both `key` matches and `when` evaluates to `true` wins.
