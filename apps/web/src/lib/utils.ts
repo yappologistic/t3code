@@ -10,5 +10,5 @@ export function isMacPlatform(platform: string): boolean {
 }
 
 export function isWindowsPlatform(platform: string): boolean {
-  return /win|windows/i.test(platform);
+  return /^win(dows)?/i.test(platform);
 }

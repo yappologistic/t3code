@@ -16,5 +16,6 @@ export function serverConfigQueryOptions(api: NativeApi | undefined) {
       return api.server.getConfig();
     },
     enabled: !!api && !!api.server && typeof api.server.getConfig === "function",
+    staleTime: Infinity,
   });
 }
