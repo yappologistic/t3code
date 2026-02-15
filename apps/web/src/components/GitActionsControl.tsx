@@ -215,13 +215,16 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       action,
       commitMessage,
       forcePushOnlyProgress = false,
+      onConfirmed,
     }: {
       action: GitStackedAction;
       commitMessage?: string;
       forcePushOnlyProgress?: boolean;
+      onConfirmed?: () => void;
     }) => {
       const confirmed = await maybeConfirmPushToDefaultBranch(action);
       if (!confirmed) return;
+      onConfirmed?.();
 
       const progressStages = buildGitActionProgressStages({
         action,
@@ -274,19 +277,19 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
           title: resultToast.title,
           description: resultToast.description,
           timeout: 0,
-          ...(shouldOfferPushCta
-            ? {
-                actionProps: {
-                  children: "Push",
-                  onClick: () => {
-                    closeResultToast();
-                    void runGitActionWithToast({
-                      action: "commit_push",
-                      forcePushOnlyProgress: true,
-                    });
-                  },
-                },
-              }
+              ...(shouldOfferPushCta
+                ? {
+                    actionProps: {
+                      children: "Push",
+                      onClick: () => {
+                        void runGitActionWithToast({
+                          action: "commit_push",
+                          forcePushOnlyProgress: true,
+                          onConfirmed: closeResultToast,
+                        });
+                      },
+                    },
+                  }
             : shouldOfferOpenPrCta
               ? {
                   actionProps: {
