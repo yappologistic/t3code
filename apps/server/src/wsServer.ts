@@ -9,9 +9,6 @@ import {
   EDITORS,
   WS_CHANNELS,
   WS_METHODS,
-  keybindingRuleSchema,
-  type KeybindingsConfig,
-  type ResolvedKeybindingsConfig,
   type TerminalEvent,
   type WsPush,
   type WsRequest,
@@ -34,7 +31,7 @@ import {
   removeGitWorktree,
 } from "./git";
 import { TerminalManager } from "./terminalManager";
-import { compileResolvedKeybindingRule } from "./keybindings";
+import { loadResolvedKeybindingsConfig } from "./keybindings";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -72,109 +69,6 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
-const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
-  { key: "mod+j", command: "terminal.toggle" },
-  { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-  { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-  { key: "mod+shift+o", command: "chat.new" },
-  { key: "mod+o", command: "editor.openFavorite" },
-];
-
-function compileDefaultKeybindings(): ResolvedKeybindingsConfig {
-  const resolved: ResolvedKeybindingsConfig = [];
-  for (const rule of DEFAULT_KEYBINDINGS) {
-    const compiled = compileResolvedKeybindingRule(rule);
-    if (!compiled) {
-      throw new Error(`Invalid default keybinding: ${rule.command} (${rule.key})`);
-    }
-    resolved.push(compiled);
-  }
-  return resolved;
-}
-
-const DEFAULT_RESOLVED_KEYBINDINGS = compileDefaultKeybindings();
-
-function mergeWithDefaultKeybindings(
-  custom: ResolvedKeybindingsConfig,
-): ResolvedKeybindingsConfig {
-  if (custom.length === 0) {
-    return [...DEFAULT_RESOLVED_KEYBINDINGS];
-  }
-
-  const overriddenCommands = new Set(custom.map((binding) => binding.command));
-  const retainedDefaults = DEFAULT_RESOLVED_KEYBINDINGS.filter(
-    (binding) => !overriddenCommands.has(binding.command),
-  );
-  const merged = [...retainedDefaults, ...custom];
-
-  if (merged.length <= 256) {
-    return merged;
-  }
-
-  // Keep the latest rules when the config exceeds max size; later rules have higher precedence.
-  return merged.slice(-256);
-}
-
-function readKeybindingsConfig(
-  logger: ReturnType<typeof createLogger>,
-): ResolvedKeybindingsConfig {
-  const configPath = path.join(os.homedir(), ".t3", "keybindings.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      logger.warn("ignoring keybindings config with unsupported format; expected array", {
-        path: configPath,
-      });
-      return [...DEFAULT_RESOLVED_KEYBINDINGS];
-    }
-
-    const sanitized: ResolvedKeybindingsConfig = [];
-    let invalidEntries = 0;
-    for (const entry of parsed) {
-      const result = keybindingRuleSchema.safeParse(entry);
-      if (result.success) {
-        const compiled = compileResolvedKeybindingRule(result.data);
-        if (!compiled) {
-          invalidEntries += 1;
-          continue;
-        }
-        sanitized.push(compiled);
-        continue;
-      }
-      invalidEntries += 1;
-    }
-    if (invalidEntries > 0) {
-      logger.warn("ignoring invalid keybinding entries", {
-        path: configPath,
-        invalidEntries,
-        totalEntries: parsed.length,
-      });
-    }
-    const overriddenCommands = new Set(sanitized.map((entry) => entry.command));
-    const mergedBeforeCapLength =
-      DEFAULT_RESOLVED_KEYBINDINGS.filter((binding) => !overriddenCommands.has(binding.command))
-        .length + sanitized.length;
-    const merged = mergeWithDefaultKeybindings(sanitized);
-    if (mergedBeforeCapLength > 256) {
-      logger.warn("truncating merged keybindings config to max entries", {
-        path: configPath,
-        maxEntries: 256,
-      });
-    }
-    return merged;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return [...DEFAULT_RESOLVED_KEYBINDINGS];
-    }
-    logger.warn("ignoring malformed keybindings config", {
-      path: configPath,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-  return [...DEFAULT_RESOLVED_KEYBINDINGS];
-}
-
 export function createServer(options: ServerOptions) {
   const {
     port,
@@ -197,7 +91,7 @@ export function createServer(options: ServerOptions) {
   const logger = createLogger("ws");
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
-  const keybindingsConfig = readKeybindingsConfig(logger);
+  const keybindingsConfig = loadResolvedKeybindingsConfig(logger);
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;

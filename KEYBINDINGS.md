@@ -12,6 +12,9 @@ Schema source of truth:
 Server-side parsing/default resolution/merging:
 
 - [`apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
+
+Server wiring (`server.getConfig`):
+
 - [`apps/server/src/wsServer.ts`](apps/server/src/wsServer.ts)
 
 The file must be a JSON array of rules:

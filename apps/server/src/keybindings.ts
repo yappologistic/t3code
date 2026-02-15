@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import type {
   KeybindingRule,
   KeybindingsConfig,
@@ -6,6 +10,11 @@ import type {
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { keybindingRuleSchema } from "@t3tools/contracts";
+
+interface KeybindingsLogger {
+  warn(message: string, context?: Record<string, unknown>): void;
+}
 
 type WhenToken =
   | { type: "identifier"; value: string }
@@ -14,6 +23,14 @@ type WhenToken =
   | { type: "or" }
   | { type: "lparen" }
   | { type: "rparen" };
+
+const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
+  { key: "mod+j", command: "terminal.toggle" },
+  { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+  { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+  { key: "mod+shift+o", command: "chat.new" },
+  { key: "mod+o", command: "editor.openFavorite" },
+];
 
 function normalizeKeyToken(token: string): string {
   if (token === "space") return " ";
@@ -238,4 +255,99 @@ export function compileResolvedKeybindingsConfig(
     compiled.push(resolved);
   }
   return compiled;
+}
+
+function compileDefaultKeybindings(): ResolvedKeybindingsConfig {
+  const resolved: ResolvedKeybindingsConfig = [];
+  for (const rule of DEFAULT_KEYBINDINGS) {
+    const compiled = compileResolvedKeybindingRule(rule);
+    if (!compiled) {
+      throw new Error(`Invalid default keybinding: ${rule.command} (${rule.key})`);
+    }
+    resolved.push(compiled);
+  }
+  return resolved;
+}
+
+const DEFAULT_RESOLVED_KEYBINDINGS = compileDefaultKeybindings();
+
+function mergeWithDefaultKeybindings(
+  custom: ResolvedKeybindingsConfig,
+): ResolvedKeybindingsConfig {
+  if (custom.length === 0) {
+    return [...DEFAULT_RESOLVED_KEYBINDINGS];
+  }
+
+  const overriddenCommands = new Set(custom.map((binding) => binding.command));
+  const retainedDefaults = DEFAULT_RESOLVED_KEYBINDINGS.filter(
+    (binding) => !overriddenCommands.has(binding.command),
+  );
+  const merged = [...retainedDefaults, ...custom];
+
+  if (merged.length <= 256) {
+    return merged;
+  }
+
+  // Keep the latest rules when the config exceeds max size; later rules have higher precedence.
+  return merged.slice(-256);
+}
+
+export function loadResolvedKeybindingsConfig(
+  logger: KeybindingsLogger,
+): ResolvedKeybindingsConfig {
+  const configPath = path.join(os.homedir(), ".t3", "keybindings.json");
+  try {
+    const raw = fs.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      logger.warn("ignoring keybindings config with unsupported format; expected array", {
+        path: configPath,
+      });
+      return [...DEFAULT_RESOLVED_KEYBINDINGS];
+    }
+
+    const sanitized: ResolvedKeybindingsConfig = [];
+    let invalidEntries = 0;
+    for (const entry of parsed) {
+      const result = keybindingRuleSchema.safeParse(entry);
+      if (result.success) {
+        const compiled = compileResolvedKeybindingRule(result.data);
+        if (!compiled) {
+          invalidEntries += 1;
+          continue;
+        }
+        sanitized.push(compiled);
+        continue;
+      }
+      invalidEntries += 1;
+    }
+    if (invalidEntries > 0) {
+      logger.warn("ignoring invalid keybinding entries", {
+        path: configPath,
+        invalidEntries,
+        totalEntries: parsed.length,
+      });
+    }
+    const overriddenCommands = new Set(sanitized.map((entry) => entry.command));
+    const mergedBeforeCapLength =
+      DEFAULT_RESOLVED_KEYBINDINGS.filter((binding) => !overriddenCommands.has(binding.command))
+        .length + sanitized.length;
+    const merged = mergeWithDefaultKeybindings(sanitized);
+    if (mergedBeforeCapLength > 256) {
+      logger.warn("truncating merged keybindings config to max entries", {
+        path: configPath,
+        maxEntries: 256,
+      });
+    }
+    return merged;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return [...DEFAULT_RESOLVED_KEYBINDINGS];
+    }
+    logger.warn("ignoring malformed keybindings config", {
+      path: configPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return [...DEFAULT_RESOLVED_KEYBINDINGS];
 }
