@@ -110,6 +110,24 @@ describe("split/new terminal shortcuts", () => {
       }),
     );
   });
+
+  it("supports when boolean literals", () => {
+    const keybindings: KeybindingsConfig = [
+      { key: "mod+n", command: "terminal.new", when: "true" },
+      { key: "mod+m", command: "terminal.new", when: "false" },
+    ];
+
+    assert.isTrue(
+      isTerminalNewShortcut(event({ key: "n", ctrlKey: true }), keybindings, {
+        platform: "Linux",
+      }),
+    );
+    assert.isFalse(
+      isTerminalNewShortcut(event({ key: "m", ctrlKey: true }), keybindings, {
+        platform: "Linux",
+      }),
+    );
+  });
 });
 
 describe("shortcutLabelForCommand", () => {
@@ -220,6 +238,11 @@ describe("formatShortcutLabel", () => {
   it("formats labels for non-macOS", () => {
     assert.strictEqual(formatShortcutLabel("mod+shift+d", "Linux"), "Ctrl+Shift+D");
   });
+
+  it("formats labels for plus key", () => {
+    assert.strictEqual(formatShortcutLabel("mod++", "MacIntel"), "⌘+");
+    assert.strictEqual(formatShortcutLabel("mod++", "Linux"), "Ctrl++");
+  });
 });
 
 describe("isTerminalClearShortcut", () => {
@@ -230,5 +253,21 @@ describe("isTerminalClearShortcut", () => {
 
   it("matches Cmd+K on macOS", () => {
     assert.isTrue(isTerminalClearShortcut(event({ key: "k", metaKey: true }), "MacIntel"));
+  });
+});
+
+describe("plus key parsing", () => {
+  it("matches the plus key shortcut", () => {
+    const plusBindings: KeybindingsConfig = [{ key: "mod++", command: "terminal.toggle" }];
+    assert.isTrue(
+      isTerminalToggleShortcut(event({ key: "+", metaKey: true }), plusBindings, {
+        platform: "MacIntel",
+      }),
+    );
+    assert.isTrue(
+      isTerminalToggleShortcut(event({ key: "+", ctrlKey: true }), plusBindings, {
+        platform: "Linux",
+      }),
+    );
   });
 });

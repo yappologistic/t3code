@@ -402,6 +402,92 @@ describe("WebSocket Server", () => {
     ).toBe(true);
   });
 
+  it("warns and ignores keybindings with malformed when expressions", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fakeHome = makeTempDir("t3code-home-invalid-when-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "keybindings.json"),
+      JSON.stringify([{ key: "mod+j", command: "terminal.toggle", when: "terminalFocus && (" }]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: [
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
+      ],
+    });
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("ignoring invalid keybinding entries"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reads keybindings once at startup and caches the resolved config", async () => {
+    const fakeHome = makeTempDir("t3code-home-cached-config-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    const keybindingsPath = path.join(configDir, "keybindings.json");
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([{ key: "cmd+j", command: "terminal.toggle" }]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const firstResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(firstResponse.error).toBeUndefined();
+    expect(firstResponse.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: [
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+shift+o", command: "chat.new" },
+        { key: "mod+o", command: "editor.openFavorite" },
+        { key: "cmd+j", command: "terminal.toggle" },
+      ],
+    });
+
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([{ key: "cmd+k", command: "terminal.toggle" }]),
+      "utf8",
+    );
+
+    const secondResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(secondResponse.error).toBeUndefined();
+    expect(secondResponse.result).toEqual(firstResponse.result);
+  });
+
   it("warns and ignores unsupported keybindings config format", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fakeHome = makeTempDir("t3code-home-unsupported-format-");

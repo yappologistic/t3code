@@ -45,6 +45,7 @@ type WhenToken =
   | { type: "rparen" };
 
 const WHEN_AST_CACHE = new Map<string, WhenNode | null>();
+const MAX_WHEN_AST_CACHE_ENTRIES = 512;
 
 function isMacPlatform(platform: string): boolean {
   return /mac|iphone|ipad|ipod/i.test(platform);
@@ -57,11 +58,19 @@ function normalizeKeyToken(token: string): string {
 }
 
 function parseShortcutValue(value: string): ParsedShortcut | null {
-  const tokens = value
-    .toLowerCase()
-    .split("+")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const rawTokens = value.toLowerCase().split("+").map((token) => token.trim());
+  const tokens = [...rawTokens];
+  let trailingEmptyCount = 0;
+  while (tokens[tokens.length - 1] === "") {
+    trailingEmptyCount += 1;
+    tokens.pop();
+  }
+  if (trailingEmptyCount > 0) {
+    tokens.push("+");
+  }
+  if (tokens.some((token) => token.length === 0)) {
+    return null;
+  }
   if (tokens.length === 0) return null;
 
   let key: string | null = null;
@@ -264,6 +273,8 @@ function parseWhenExpression(expression: string): WhenNode | null {
 function evaluateWhenNode(node: WhenNode, context: ShortcutMatchContext): boolean {
   switch (node.type) {
     case "identifier":
+      if (node.name === "true") return true;
+      if (node.name === "false") return false;
       return Boolean(context[node.name]);
     case "not":
       return !evaluateWhenNode(node.node, context);
@@ -280,6 +291,9 @@ function matchesWhenExpression(when: string | undefined, context: ShortcutMatchC
   if (normalized.length === 0) return true;
 
   if (!WHEN_AST_CACHE.has(normalized)) {
+    if (WHEN_AST_CACHE.size >= MAX_WHEN_AST_CACHE_ENTRIES) {
+      WHEN_AST_CACHE.clear();
+    }
     WHEN_AST_CACHE.set(normalized, parseWhenExpression(normalized));
   }
   const ast = WHEN_AST_CACHE.get(normalized);

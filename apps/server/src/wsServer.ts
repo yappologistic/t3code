@@ -78,6 +78,122 @@ const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
   { key: "mod+o", command: "editor.openFavorite" },
 ];
 
+type WhenTokenType = "identifier" | "not" | "and" | "or" | "lparen" | "rparen";
+
+interface WhenToken {
+  type: WhenTokenType;
+}
+
+function tokenizeWhenExpression(expression: string): WhenToken[] | null {
+  const tokens: WhenToken[] = [];
+  let index = 0;
+
+  while (index < expression.length) {
+    const current = expression[index];
+    if (!current) break;
+
+    if (/\s/.test(current)) {
+      index += 1;
+      continue;
+    }
+    if (expression.startsWith("&&", index)) {
+      tokens.push({ type: "and" });
+      index += 2;
+      continue;
+    }
+    if (expression.startsWith("||", index)) {
+      tokens.push({ type: "or" });
+      index += 2;
+      continue;
+    }
+    if (current === "!") {
+      tokens.push({ type: "not" });
+      index += 1;
+      continue;
+    }
+    if (current === "(") {
+      tokens.push({ type: "lparen" });
+      index += 1;
+      continue;
+    }
+    if (current === ")") {
+      tokens.push({ type: "rparen" });
+      index += 1;
+      continue;
+    }
+
+    const identifier = /^[A-Za-z_][A-Za-z0-9_.-]*/.exec(expression.slice(index));
+    if (!identifier) {
+      return null;
+    }
+    tokens.push({ type: "identifier" });
+    index += identifier[0].length;
+  }
+
+  return tokens;
+}
+
+function isValidWhenExpression(when: string): boolean {
+  const tokens = tokenizeWhenExpression(when);
+  if (!tokens || tokens.length === 0) return false;
+  let index = 0;
+
+  const parsePrimary = (): boolean => {
+    const token = tokens[index];
+    if (!token) return false;
+
+    if (token.type === "identifier") {
+      index += 1;
+      return true;
+    }
+
+    if (token.type === "lparen") {
+      index += 1;
+      const parsed = parseOr();
+      const close = tokens[index];
+      if (!parsed || !close || close.type !== "rparen") return false;
+      index += 1;
+      return true;
+    }
+
+    return false;
+  };
+
+  const parseUnary = (): boolean => {
+    const token = tokens[index];
+    if (token?.type === "not") {
+      index += 1;
+      return parseUnary();
+    }
+    return parsePrimary();
+  };
+
+  const parseAnd = (): boolean => {
+    if (!parseUnary()) return false;
+
+    while (tokens[index]?.type === "and") {
+      index += 1;
+      if (!parseUnary()) return false;
+    }
+
+    return true;
+  };
+
+  const parseOr = (): boolean => {
+    if (!parseAnd()) return false;
+
+    while (tokens[index]?.type === "or") {
+      index += 1;
+      if (!parseAnd()) return false;
+    }
+
+    return true;
+  };
+
+  if (!parseOr()) return false;
+  return index === tokens.length;
+}
+
 function mergeWithDefaultKeybindings(custom: KeybindingsConfig): KeybindingsConfig {
   if (custom.length === 0) {
     return [...DEFAULT_KEYBINDINGS];
@@ -114,6 +230,10 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
     for (const entry of parsed) {
       const result = keybindingRuleSchema.safeParse(entry);
       if (result.success) {
+        if (result.data.when && !isValidWhenExpression(result.data.when)) {
+          invalidEntries += 1;
+          continue;
+        }
         sanitized.push(result.data);
         continue;
       }
@@ -174,6 +294,7 @@ export function createServer(options: ServerOptions) {
   const logger = createLogger("ws");
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
+  const keybindingsConfig = readKeybindingsConfig(logger);
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;
@@ -496,7 +617,7 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.serverGetConfig:
         return {
           cwd,
-          keybindings: readKeybindingsConfig(logger),
+          keybindings: keybindingsConfig,
         };
 
       default:
