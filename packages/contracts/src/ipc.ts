@@ -7,6 +7,8 @@ import type {
   GitInitInput,
   GitListBranchesInput,
   GitListBranchesResult,
+  GitPullInput,
+  GitPullResult,
   GitRemoveWorktreeInput,
   GitRunStackedActionInput,
   GitRunStackedActionResult,
@@ -101,6 +103,7 @@ export interface NativeApi {
     checkout: (input: GitCheckoutInput) => Promise<void>;
     init: (input: GitInitInput) => Promise<void>;
     // Stacked action API
+    pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
     runStackedAction: (
       input: GitRunStackedActionInput,

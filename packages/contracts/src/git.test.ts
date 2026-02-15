@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  gitPullInputSchema,
+  gitPullResultSchema,
   gitRunStackedActionInputSchema,
   gitRunStackedActionResultSchema,
   gitStackedActionSchema,
@@ -11,6 +13,11 @@ import {
 describe("git contracts", () => {
   it("parses git status input and trims cwd", () => {
     const parsed = gitStatusInputSchema.parse({ cwd: "  /tmp/repo  " });
+    expect(parsed.cwd).toBe("/tmp/repo");
+  });
+
+  it("parses git pull input and trims cwd", () => {
+    const parsed = gitPullInputSchema.parse({ cwd: "  /tmp/repo  " });
     expect(parsed.cwd).toBe("/tmp/repo");
   });
 
@@ -78,5 +85,15 @@ describe("git contracts", () => {
 
     expect(parsed.commit.status).toBe("created");
     expect(parsed.pr.number).toBe(123);
+  });
+
+  it("parses git pull result", () => {
+    const parsed = gitPullResultSchema.parse({
+      status: "pulled",
+      branch: "feature/my-branch",
+      upstreamBranch: "origin/feature/my-branch",
+    });
+    expect(parsed.status).toBe("pulled");
+    expect(parsed.branch).toBe("feature/my-branch");
   });
 });

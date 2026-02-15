@@ -11,6 +11,7 @@ import {
   createGitWorktree,
   initGitRepo,
   listGitBranches,
+  pullGitBranch,
   removeGitWorktree,
   runTerminalCommand,
 } from "./git";
@@ -602,6 +603,42 @@ describe("git integration", () => {
 
       const skipped = await core.pushCurrentBranch(tmp.path, null);
       expect(skipped.status).toBe("skipped_up_to_date");
+    });
+
+    it("pulls behind branch and then reports up-to-date", async () => {
+      await using remote = await makeTmpDir();
+      await using source = await makeTmpDir();
+      await using clone = await makeTmpDir();
+      await git(remote.path, "init --bare");
+
+      await initRepoWithCommit(source.path);
+      const initialBranch = (await listGitBranches({ cwd: source.path })).branches.find(
+        (branch) => branch.current,
+      )!.name;
+      await git(source.path, `remote add origin ${JSON.stringify(remote.path)}`);
+      await git(source.path, `push -u origin ${initialBranch}`);
+
+      await git(clone.path, `clone ${JSON.stringify(remote.path)} .`);
+      await git(clone.path, "config user.email 'test@test.com'");
+      await git(clone.path, "config user.name 'Test'");
+      await writeFile(path.join(clone.path, "CHANGELOG.md"), "remote change\n");
+      await git(clone.path, "add CHANGELOG.md");
+      await git(clone.path, "commit -m 'remote update'");
+      await git(clone.path, `push origin ${initialBranch}`);
+
+      const core = new GitCoreService();
+      const pulled = await core.pullCurrentBranch(source.path);
+      expect(pulled.status).toBe("pulled");
+      expect((await core.statusDetails(source.path)).behindCount).toBe(0);
+
+      const skipped = await core.pullCurrentBranch(source.path);
+      expect(skipped.status).toBe("skipped_up_to_date");
+    });
+
+    it("top-level pullGitBranch rejects when no upstream exists", async () => {
+      await using tmp = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      await expect(pullGitBranch({ cwd: tmp.path })).rejects.toThrow("no upstream");
     });
 
     it("lists branches when recency lookup fails", async () => {

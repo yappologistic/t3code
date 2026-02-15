@@ -27,6 +27,7 @@ import {
   createGitWorktree,
   initGitRepo,
   listGitBranches,
+  pullGitBranch,
   removeGitWorktree,
 } from "./git";
 import { TerminalManager } from "./terminalManager";
@@ -362,6 +363,9 @@ export function createServer(options: ServerOptions) {
 
       case WS_METHODS.gitStatus:
         return gitManager.status(request.params as never);
+
+      case WS_METHODS.gitPull:
+        return pullGitBranch(request.params as never);
 
       case WS_METHODS.gitRunStackedAction:
         return gitManager.runStackedAction(request.params as never);

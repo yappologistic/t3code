@@ -545,6 +545,11 @@ describe("WebSocket Server", () => {
     });
     expect(afterInit.error).toBeUndefined();
     expect((afterInit.result as { isRepo: boolean }).isRepo).toBe(true);
+
+    const pullResponse = await sendRequest(ws, WS_METHODS.gitPull, { cwd: repoCwd });
+    expect(pullResponse.result).toBeUndefined();
+    expect(pullResponse.error?.message).toBeDefined();
+    expect(pullResponse.error?.message).not.toContain("Unknown method");
   });
 
   it("responds to git.status via the git manager", async () => {

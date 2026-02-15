@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  gitPullInputSchema,
+  gitPullResultSchema,
   gitStatusInputSchema,
   gitStatusResultSchema,
   type GitCheckoutInput,
@@ -12,6 +14,8 @@ import {
   type GitInitInput,
   type GitListBranchesInput,
   type GitListBranchesResult,
+  type GitPullInput,
+  type GitPullResult,
   type GitRemoveWorktreeInput,
   type GitStatusInput,
   type GitStatusResult,
@@ -291,6 +295,29 @@ export class GitCoreService {
     };
   }
 
+  async pullCurrentBranch(cwd: string): Promise<GitPullResult> {
+    const details = await this.statusDetails(cwd);
+    const branch = details.branch;
+    if (!branch) {
+      throw new Error("Cannot pull from detached HEAD.");
+    }
+    if (!details.hasUpstream) {
+      throw new Error("Current branch has no upstream configured. Push with upstream first.");
+    }
+    const beforeSha = trimStdout(await this.gitStdout(cwd, ["rev-parse", "HEAD"], true));
+    await executeGit(cwd, ["pull", "--ff-only"], {
+      timeoutMs: 30_000,
+      fallbackErrorMessage: "git pull failed",
+    });
+    const afterSha = trimStdout(await this.gitStdout(cwd, ["rev-parse", "HEAD"], true));
+    const refreshed = await this.statusDetails(cwd);
+    return gitPullResultSchema.parse({
+      status: beforeSha.length > 0 && beforeSha === afterSha ? "skipped_up_to_date" : "pulled",
+      branch,
+      ...(refreshed.upstreamRef ? { upstreamBranch: refreshed.upstreamRef } : {}),
+    });
+  }
+
   async readRangeContext(cwd: string, baseBranch: string): Promise<GitRangeContext> {
     const range = `${baseBranch}..HEAD`;
     const [commitSummary, diffSummary, diffPatch] = await Promise.all([
@@ -509,6 +536,11 @@ export async function runTerminalCommand(
 
 export async function listGitBranches(input: GitListBranchesInput): Promise<GitListBranchesResult> {
   return defaultGitCoreService.listBranches(input);
+}
+
+export async function pullGitBranch(raw: GitPullInput): Promise<GitPullResult> {
+  const input = gitPullInputSchema.parse(raw);
+  return defaultGitCoreService.pullCurrentBranch(input.cwd);
 }
 
 export async function createGitWorktree(

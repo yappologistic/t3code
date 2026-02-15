@@ -68,6 +68,10 @@ export const gitStatusInputSchema = z.object({
   cwd: z.string().trim().min(1),
 });
 
+export const gitPullInputSchema = z.object({
+  cwd: z.string().trim().min(1),
+});
+
 export const gitStatusResultSchema = z.object({
   branch: z.string().min(1).nullable(),
   hasWorkingTreeChanges: z.boolean(),
@@ -133,7 +137,16 @@ export const gitRunStackedActionResultSchema = z.object({
 });
 
 export type GitStatusInput = z.input<typeof gitStatusInputSchema>;
+export type GitPullInput = z.input<typeof gitPullInputSchema>;
 export type GitStatusResult = z.infer<typeof gitStatusResultSchema>;
 export type GitStackedAction = z.infer<typeof gitStackedActionSchema>;
 export type GitRunStackedActionInput = z.input<typeof gitRunStackedActionInputSchema>;
 export type GitRunStackedActionResult = z.infer<typeof gitRunStackedActionResultSchema>;
+
+export const gitPullResultSchema = z.object({
+  status: z.enum(["pulled", "skipped_up_to_date"]),
+  branch: z.string().min(1),
+  upstreamBranch: z.string().min(1).optional(),
+});
+
+export type GitPullResult = z.infer<typeof gitPullResultSchema>;
