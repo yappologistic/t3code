@@ -37,6 +37,7 @@ describe("git contracts", () => {
       aheadCount: 0,
       behindCount: 0,
       openPr: null,
+      mergedPr: null,
     });
     expect(parsed.branch).toBe("feature/git-actions");
     expect(parsed.hasWorkingTreeChanges).toBe(true);

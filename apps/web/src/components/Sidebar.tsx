@@ -1,6 +1,7 @@
 import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import type { GitStatusResult } from "@t3tools/contracts";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
@@ -13,7 +14,7 @@ import {
   type Thread,
 } from "../types";
 import { useNativeApi } from "../hooks/useNativeApi";
-import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
+import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
@@ -35,7 +36,7 @@ function inferProjectName(cwd: string): string {
 }
 
 interface ThreadStatusPill {
-  label: "Working" | "Connecting" | "Completed" | "Awaiting response";
+  label: "Working" | "Connecting" | "Completed" | "Awaiting response" | "Merged";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -58,7 +59,11 @@ function hasUnseenCompletion(thread: Thread): boolean {
   return completedAt > lastVisitedAt;
 }
 
-function threadStatusPill(thread: Thread, hasPendingApprovals: boolean): ThreadStatusPill | null {
+function threadStatusPill(
+  thread: Thread,
+  hasPendingApprovals: boolean,
+  hasMergedPr: boolean,
+): ThreadStatusPill | null {
   if (hasPendingApprovals) {
     return {
       label: "Awaiting response",
@@ -83,6 +88,15 @@ function threadStatusPill(thread: Thread, hasPendingApprovals: boolean): ThreadS
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
+    };
+  }
+
+  if (hasMergedPr) {
+    return {
+      label: "Merged",
+      colorClass: "text-violet-600 dark:text-violet-300/90",
+      dotClass: "bg-violet-500 dark:bg-violet-300/90",
+      pulse: false,
     };
   }
 
@@ -126,6 +140,42 @@ export default function Sidebar() {
     }
     return map;
   }, [state.threads]);
+  const projectCwdById = useMemo(
+    () => new Map(state.projects.map((project) => [project.id, project.cwd] as const)),
+    [state.projects],
+  );
+  const threadGitTargets = useMemo(
+    () =>
+      state.threads.map((thread) => ({
+        threadId: thread.id,
+        branch: thread.branch,
+        cwd: thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null,
+      })),
+    [projectCwdById, state.threads],
+  );
+  const threadGitStatusQueries = useQueries({
+    queries: threadGitTargets.map((target) => {
+      const base = gitStatusQueryOptions(api, target.cwd);
+      return {
+        ...base,
+        enabled: Boolean(base.enabled && target.branch !== null),
+        staleTime: 30_000,
+        refetchInterval: 60_000,
+      };
+    }),
+  });
+  const mergedPrByThreadId = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (let index = 0; index < threadGitTargets.length; index += 1) {
+      const target = threadGitTargets[index];
+      if (!target) continue;
+      const status = threadGitStatusQueries[index]?.data as GitStatusResult | undefined;
+      const branchMatches =
+        target.branch !== null && status?.branch !== null && status?.branch === target.branch;
+      map.set(target.threadId, branchMatches && status?.openPr === null && status?.mergedPr !== null);
+    }
+    return map;
+  }, [threadGitStatusQueries, threadGitTargets]);
 
   const handleNewThread = useCallback(
     (projectId: string) => {
@@ -426,6 +476,7 @@ export default function Sidebar() {
                     const threadStatus = threadStatusPill(
                       thread,
                       pendingApprovalByThreadId.get(thread.id) === true,
+                      mergedPrByThreadId.get(thread.id) === true,
                     );
                     const terminalStatus = terminalStatusIndicator(thread);
                     return (

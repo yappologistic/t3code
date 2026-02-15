@@ -192,11 +192,17 @@ export class GitManager {
     const details = await this.gitCore.statusDetails(input.cwd);
 
     let openPr: ReturnType<typeof toStatusOpenPr> | null = null;
-    if (details.branch && details.hasUpstream) {
+    let mergedPr: ReturnType<typeof toStatusOpenPr> | null = null;
+    if (details.branch) {
       try {
         const existing = await this.findOpenPr(input.cwd, details.branch);
         if (existing) {
           openPr = toStatusOpenPr(existing);
+        } else {
+          const merged = await this.findMergedPr(input.cwd, details.branch);
+          if (merged) {
+            mergedPr = toStatusOpenPr(merged);
+          }
         }
       } catch {
         // PR lookup is best-effort for status rendering.
@@ -211,6 +217,7 @@ export class GitManager {
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,
       openPr,
+      mergedPr,
     };
   }
 
@@ -388,6 +395,34 @@ export class GitManager {
       branch,
       "--state",
       "open",
+      "--limit",
+      "1",
+      "--json",
+      "number,title,url,baseRefName,headRefName",
+    ]);
+
+    const raw = trimStdout(stdout);
+    if (raw.length === 0) return null;
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(raw);
+    } catch {
+      throw new Error("GitHub CLI returned invalid PR list JSON.");
+    }
+
+    const parsed = parseOpenPrList(parsedJson);
+    return parsed[0] ?? null;
+  }
+
+  private async findMergedPr(cwd: string, branch: string): Promise<OpenPrInfo | null> {
+    const stdout = await this.runGhStdout(cwd, [
+      "pr",
+      "list",
+      "--head",
+      branch,
+      "--state",
+      "merged",
       "--limit",
       "1",
       "--json",

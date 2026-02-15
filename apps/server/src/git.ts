@@ -31,7 +31,7 @@ export interface TerminalCommandInput {
 
 export type TerminalCommandResult = ProcessRunResult;
 
-export interface GitStatusDetails extends Omit<GitStatusResult, "openPr"> {
+export interface GitStatusDetails extends Omit<GitStatusResult, "openPr" | "mergedPr"> {
   upstreamRef: string | null;
 }
 
@@ -227,6 +227,7 @@ export class GitCoreService {
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,
       openPr: null,
+      mergedPr: null,
     });
   }
 

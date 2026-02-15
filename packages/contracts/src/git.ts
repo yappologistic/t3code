@@ -98,6 +98,15 @@ export const gitStatusResultSchema = z.object({
       headBranch: z.string().min(1),
     })
     .nullable(),
+  mergedPr: z
+    .object({
+      number: z.number().int().positive(),
+      title: z.string().min(1),
+      url: z.string().url(),
+      baseBranch: z.string().min(1),
+      headBranch: z.string().min(1),
+    })
+    .nullable(),
 });
 
 export const gitStackedActionSchema = z.enum(["commit", "commit_push", "commit_push_pr"]);
