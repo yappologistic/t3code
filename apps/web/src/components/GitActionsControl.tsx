@@ -194,11 +194,6 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
     ? (quickAction.hint ?? "This action is currently unavailable.")
     : null;
 
-  const refreshGitStatus = useCallback(async () => {
-    if (!api || !gitCwd) return;
-    await invalidateGitQueries(queryClient);
-  }, [api, gitCwd, queryClient]);
-
   const maybeConfirmPushToDefaultBranch = useCallback(
     async (action: GitStackedAction): Promise<boolean> => {
       if (!api) return false;
@@ -479,7 +474,11 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
             </Button>
           )}
           <GroupSeparator />
-          <Menu>
+          <Menu
+            onOpenChange={(open) => {
+              if (open) void invalidateGitQueries(queryClient);
+            }}
+          >
             <MenuTrigger
               render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
               disabled={isGitActionRunning}
