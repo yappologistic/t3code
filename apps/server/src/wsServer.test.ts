@@ -17,7 +17,7 @@ import {
   type WsResponse,
 } from "@t3tools/contracts";
 import { ProjectRegistry } from "./projectRegistry";
-import { compileResolvedKeybindingRule } from "./keybindings";
+import { compileResolvedKeybindingRule, DEFAULT_KEYBINDINGS } from "./keybindings";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -207,6 +207,20 @@ function compileKeybindings(bindings: KeybindingsConfig): ResolvedKeybindingsCon
   return resolved;
 }
 
+const DEFAULT_RESOLVED_KEYBINDINGS = compileKeybindings([...DEFAULT_KEYBINDINGS]);
+
+function mergeWithDefaultsForTest(custom: KeybindingsConfig): ResolvedKeybindingsConfig {
+  if (custom.length === 0) {
+    return DEFAULT_RESOLVED_KEYBINDINGS;
+  }
+
+  const overriddenCommands = new Set(custom.map((binding) => binding.command));
+  const retainedDefaults = DEFAULT_KEYBINDINGS.filter(
+    (binding) => !overriddenCommands.has(binding.command),
+  );
+  return compileKeybindings([...retainedDefaults, ...custom].slice(-256));
+}
+
 describe("WebSocket Server", () => {
   let server: ReturnType<typeof createServer> | null = null;
   const connections: WebSocket[] = [];
@@ -324,13 +338,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
-      ]),
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
   });
 
@@ -363,9 +371,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
+      keybindings: mergeWithDefaultsForTest([
         { key: "cmd+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
         { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
@@ -402,11 +408,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
+      keybindings: mergeWithDefaultsForTest([
         { key: "mod+j", command: "terminal.toggle" },
       ]),
     });
@@ -443,13 +445,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
-      ]),
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>
@@ -483,11 +479,7 @@ describe("WebSocket Server", () => {
     expect(firstResponse.error).toBeUndefined();
     expect(firstResponse.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
+      keybindings: mergeWithDefaultsForTest([
         { key: "cmd+j", command: "terminal.toggle" },
       ]),
     });
@@ -529,13 +521,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
-      ]),
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>
@@ -566,13 +552,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: compileKeybindings([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-        { key: "mod+shift+o", command: "chat.new" },
-        { key: "mod+o", command: "editor.openFavorite" },
-      ]),
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>

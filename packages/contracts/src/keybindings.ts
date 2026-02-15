@@ -26,7 +26,7 @@ export const keybindingShortcutSchema = z.object({
   shiftKey: z.boolean(),
   altKey: z.boolean(),
   modKey: z.boolean(),
-});
+}).strict();
 
 export type KeybindingWhenNode =
   | { type: "identifier"; name: string }
@@ -61,7 +61,7 @@ export const resolvedKeybindingRuleSchema = z.object({
   command: keybindingCommandSchema,
   shortcut: keybindingShortcutSchema,
   whenAst: keybindingWhenNodeSchema.optional(),
-});
+}).strict();
 
 export const resolvedKeybindingsConfigSchema = z.array(resolvedKeybindingRuleSchema).max(256);
 

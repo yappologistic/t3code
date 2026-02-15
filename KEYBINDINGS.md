@@ -21,11 +21,8 @@ The file must be a JSON array of rules:
 
 ```json
 [
-  { "key": "mod+j", "command": "terminal.toggle" },
-  { "key": "mod+d", "command": "terminal.split", "when": "terminalFocus" },
-  { "key": "mod+shift+d", "command": "terminal.new", "when": "terminalFocus" },
-  { "key": "mod+shift+o", "command": "chat.new" },
-  { "key": "mod+o", "command": "editor.openFavorite" }
+  { "key": "mod+g", "command": "terminal.toggle" },
+  { "key": "mod+shift+g", "command": "terminal.new", "when": "terminalFocus" }
 ]
 ```
 
@@ -90,11 +87,7 @@ Unknown condition keys evaluate to `false`.
 
 Built-in defaults are resolved on the server and sent to the web client via `server.getConfig`:
 
-- `terminal.toggle`: `mod+j`
-- `terminal.split`: `mod+d` when `terminalFocus`
-- `terminal.new`: `mod+shift+d` when `terminalFocus`
-- `chat.new`: `mod+shift+o`
-- `editor.openFavorite`: `mod+o`
+- Source of truth: [`DEFAULT_KEYBINDINGS` in `apps/server/src/keybindings.ts`](apps/server/src/keybindings.ts)
 
 If you define any rules for a command, the default rule for that command is removed on the server.
 

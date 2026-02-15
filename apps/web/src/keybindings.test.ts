@@ -29,73 +29,19 @@ function event(overrides: Partial<ShortcutEventLike> = {}): ShortcutEventLike {
   };
 }
 
-function parseShortcut(value: string): KeybindingShortcut | null {
-  const rawTokens = value.toLowerCase().split("+").map((token) => token.trim());
-  const tokens = [...rawTokens];
-  let trailingEmptyCount = 0;
-  while (tokens[tokens.length - 1] === "") {
-    trailingEmptyCount += 1;
-    tokens.pop();
-  }
-  if (trailingEmptyCount > 0) {
-    tokens.push("+");
-  }
-  if (tokens.some((token) => token.length === 0)) {
-    return null;
-  }
-  if (tokens.length === 0) return null;
-
-  let key: string | null = null;
-  let metaKey = false;
-  let ctrlKey = false;
-  let shiftKey = false;
-  let altKey = false;
-  let modKey = false;
-
-  for (const token of tokens) {
-    switch (token) {
-      case "cmd":
-      case "meta":
-        metaKey = true;
-        break;
-      case "ctrl":
-      case "control":
-        ctrlKey = true;
-        break;
-      case "shift":
-        shiftKey = true;
-        break;
-      case "alt":
-      case "option":
-        altKey = true;
-        break;
-      case "mod":
-        modKey = true;
-        break;
-      default: {
-        if (key !== null) return null;
-        key = token;
-      }
-    }
-  }
-
-  if (key === null) return null;
+function modShortcut(
+  key: string,
+  overrides: Partial<Omit<KeybindingShortcut, "key">> = {},
+): KeybindingShortcut {
   return {
     key,
-    metaKey,
-    ctrlKey,
-    shiftKey,
-    altKey,
-    modKey,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    modKey: true,
+    ...overrides,
   };
-}
-
-function shortcut(value: string): KeybindingShortcut {
-  const parsed = parseShortcut(value);
-  if (!parsed) {
-    throw new Error(`invalid shortcut in test fixture: ${value}`);
-  }
-  return parsed;
 }
 
 function whenIdentifier(name: string): KeybindingWhenNode {
@@ -111,48 +57,33 @@ function whenAnd(left: KeybindingWhenNode, right: KeybindingWhenNode): Keybindin
 }
 
 interface TestBinding {
-  key: string;
+  shortcut: KeybindingShortcut;
   command: KeybindingCommand;
   whenAst?: KeybindingWhenNode;
 }
 
 function compile(bindings: TestBinding[]): ResolvedKeybindingsConfig {
-  const resolved: ResolvedKeybindingsConfig = [];
-  for (const binding of bindings) {
-    const parsedShortcut = parseShortcut(binding.key);
-    if (!parsedShortcut) {
-      throw new Error(`invalid shortcut in test fixture: ${binding.key}`);
-    }
-    if (binding.whenAst) {
-      resolved.push({
-        command: binding.command,
-        shortcut: parsedShortcut,
-        whenAst: binding.whenAst,
-      });
-      continue;
-    }
-    resolved.push({
-      command: binding.command,
-      shortcut: parsedShortcut,
-    });
-  }
-  return resolved;
+  return bindings.map((binding) => ({
+    command: binding.command,
+    shortcut: binding.shortcut,
+    ...(binding.whenAst ? { whenAst: binding.whenAst } : {}),
+  }));
 }
 
 const DEFAULT_BINDINGS = compile([
-  { key: "mod+j", command: "terminal.toggle" },
+  { shortcut: modShortcut("j"), command: "terminal.toggle" },
   {
-    key: "mod+d",
+    shortcut: modShortcut("d"),
     command: "terminal.split",
     whenAst: whenIdentifier("terminalFocus"),
   },
   {
-    key: "mod+shift+d",
+    shortcut: modShortcut("d", { shiftKey: true }),
     command: "terminal.new",
     whenAst: whenIdentifier("terminalFocus"),
   },
-  { key: "mod+shift+o", command: "chat.new" },
-  { key: "mod+o", command: "editor.openFavorite" },
+  { shortcut: modShortcut("o", { shiftKey: true }), command: "chat.new" },
+  { shortcut: modShortcut("o"), command: "editor.openFavorite" },
 ]);
 
 describe("isTerminalToggleShortcut", () => {
@@ -203,16 +134,16 @@ describe("split/new terminal shortcuts", () => {
   it("supports when expressions", () => {
     const keybindings = compile([
       {
-        key: "mod+\\",
+        shortcut: modShortcut("\\"),
         command: "terminal.split",
         whenAst: whenAnd(whenIdentifier("terminalOpen"), whenNot(whenIdentifier("terminalFocus"))),
       },
       {
-        key: "mod+shift+n",
+        shortcut: modShortcut("n", { shiftKey: true }),
         command: "terminal.new",
         whenAst: whenAnd(whenIdentifier("terminalOpen"), whenNot(whenIdentifier("terminalFocus"))),
       },
-      { key: "mod+j", command: "terminal.toggle" },
+      { shortcut: modShortcut("j"), command: "terminal.toggle" },
     ]);
     assert.isTrue(
       isTerminalSplitShortcut(event({ key: "\\", ctrlKey: true }), keybindings, {
@@ -236,8 +167,8 @@ describe("split/new terminal shortcuts", () => {
 
   it("supports when boolean literals", () => {
     const keybindings = compile([
-      { key: "mod+n", command: "terminal.new", whenAst: whenIdentifier("true") },
-      { key: "mod+m", command: "terminal.new", whenAst: whenIdentifier("false") },
+      { shortcut: modShortcut("n"), command: "terminal.new", whenAst: whenIdentifier("true") },
+      { shortcut: modShortcut("m"), command: "terminal.new", whenAst: whenIdentifier("false") },
     ]);
 
     assert.isTrue(
@@ -257,12 +188,12 @@ describe("shortcutLabelForCommand", () => {
   it("returns the most recent binding label", () => {
     const bindings = compile([
       {
-        key: "mod+\\",
+        shortcut: modShortcut("\\"),
         command: "terminal.split",
         whenAst: whenIdentifier("terminalFocus"),
       },
       {
-        key: "mod+shift+\\",
+        shortcut: modShortcut("\\", { shiftKey: true }),
         command: "terminal.split",
         whenAst: whenNot(whenIdentifier("terminalFocus")),
       },
@@ -310,9 +241,9 @@ describe("chat/editor shortcuts", () => {
 describe("cross-command precedence", () => {
   it("uses when + order so a later focused rule overrides a global rule", () => {
     const keybindings = compile([
-      { key: "mod+n", command: "chat.new" },
+      { shortcut: modShortcut("n"), command: "chat.new" },
       {
-        key: "mod+n",
+        shortcut: modShortcut("n"),
         command: "terminal.new",
         whenAst: whenIdentifier("terminalFocus"),
       },
@@ -347,11 +278,11 @@ describe("cross-command precedence", () => {
   it("still lets a later global rule win when both rules match", () => {
     const keybindings = compile([
       {
-        key: "mod+n",
+        shortcut: modShortcut("n"),
         command: "terminal.new",
         whenAst: whenIdentifier("terminalFocus"),
       },
-      { key: "mod+n", command: "chat.new" },
+      { shortcut: modShortcut("n"), command: "chat.new" },
     ]);
 
     assert.isFalse(
@@ -371,16 +302,16 @@ describe("cross-command precedence", () => {
 
 describe("formatShortcutLabel", () => {
   it("formats labels for macOS", () => {
-    assert.strictEqual(formatShortcutLabel(shortcut("mod+shift+d"), "MacIntel"), "⇧⌘D");
+    assert.strictEqual(formatShortcutLabel(modShortcut("d", { shiftKey: true }), "MacIntel"), "⇧⌘D");
   });
 
   it("formats labels for non-macOS", () => {
-    assert.strictEqual(formatShortcutLabel(shortcut("mod+shift+d"), "Linux"), "Ctrl+Shift+D");
+    assert.strictEqual(formatShortcutLabel(modShortcut("d", { shiftKey: true }), "Linux"), "Ctrl+Shift+D");
   });
 
   it("formats labels for plus key", () => {
-    assert.strictEqual(formatShortcutLabel(shortcut("mod++"), "MacIntel"), "⌘+");
-    assert.strictEqual(formatShortcutLabel(shortcut("mod++"), "Linux"), "Ctrl++");
+    assert.strictEqual(formatShortcutLabel(modShortcut("+"), "MacIntel"), "⌘+");
+    assert.strictEqual(formatShortcutLabel(modShortcut("+"), "Linux"), "Ctrl++");
   });
 });
 
@@ -397,7 +328,7 @@ describe("isTerminalClearShortcut", () => {
 
 describe("plus key parsing", () => {
   it("matches the plus key shortcut", () => {
-    const plusBindings = compile([{ key: "mod++", command: "terminal.toggle" }]);
+    const plusBindings = compile([{ shortcut: modShortcut("+"), command: "terminal.toggle" }]);
     assert.isTrue(
       isTerminalToggleShortcut(event({ key: "+", metaKey: true }), plusBindings, {
         platform: "MacIntel",

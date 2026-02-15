@@ -61,7 +61,6 @@ describe("keybindings contracts", () => {
   it("parses resolved keybindings arrays", () => {
     const parsed = resolvedKeybindingsConfigSchema.parse([
       {
-        key: "mod+j",
         command: "terminal.toggle",
         shortcut: {
           key: "j",
@@ -74,5 +73,22 @@ describe("keybindings contracts", () => {
       },
     ]);
     assert.lengthOf(parsed, 1);
+  });
+
+  it("rejects unknown fields in resolved keybinding rules", () => {
+    assert.throws(() =>
+      resolvedKeybindingRuleSchema.parse({
+        command: "terminal.toggle",
+        shortcut: {
+          key: "j",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+          modKey: true,
+        },
+        key: "mod+j",
+      }),
+    );
   });
 });

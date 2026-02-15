@@ -24,7 +24,7 @@ type WhenToken =
   | { type: "lparen" }
   | { type: "rparen" };
 
-const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
+export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+j", command: "terminal.toggle" },
   { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
   { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
