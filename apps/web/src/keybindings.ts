@@ -1,4 +1,4 @@
-import type { KeybindingCommand, KeybindingsConfig } from "@t3tools/contracts";
+import type { KeybindingCommand, KeybindingRule, KeybindingsConfig } from "@t3tools/contracts";
 
 export interface ShortcutEventLike {
   key: string;
@@ -14,13 +14,8 @@ export interface ShortcutMatchContext {
   [key: string]: boolean;
 }
 
-export interface ResolvedTerminalKeybinding {
-  key: string;
-  command: KeybindingCommand;
-  when?: string | undefined;
-}
-
-export type ResolvedTerminalKeybindings = ResolvedTerminalKeybinding[];
+export type ResolvedTerminalKeybinding = KeybindingRule;
+export type ResolvedTerminalKeybindings = KeybindingsConfig;
 
 export const DEFAULT_TERMINAL_KEYBINDINGS: ResolvedTerminalKeybindings = [
   { key: "mod+j", command: "terminal.toggle" },
@@ -312,7 +307,7 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
 }
 
 function normalizeConfiguredKeybinding(
-  keybinding: KeybindingsConfig[number],
+  keybinding: KeybindingRule,
 ): ResolvedTerminalKeybinding | null {
   const key = keybinding.key.trim();
   if (key.length === 0) return null;
