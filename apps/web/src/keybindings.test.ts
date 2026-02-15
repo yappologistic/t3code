@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type { KeybindingsConfig } from "@t3tools/contracts";
 import {
-  DEFAULT_TERMINAL_KEYBINDINGS,
   formatShortcutLabel,
   isTerminalClearShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalToggleShortcut,
-  resolveTerminalKeybindings,
   shortcutLabelForCommand,
   type ShortcutEventLike,
 } from "./keybindings";
@@ -23,65 +22,55 @@ function event(overrides: Partial<ShortcutEventLike> = {}): ShortcutEventLike {
   };
 }
 
+const DEFAULT_BINDINGS: KeybindingsConfig = [
+  { key: "mod+j", command: "terminal.toggle" },
+  { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+  { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+];
+
 describe("isTerminalToggleShortcut", () => {
   it("matches Cmd+J on macOS", () => {
-    expect(
-      isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_TERMINAL_KEYBINDINGS, {
-        platform: "MacIntel",
-      }),
-    ).toBe(true);
+    expect(isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_BINDINGS, { platform: "MacIntel" })).toBe(true);
   });
 
   it("matches Ctrl+J on non-macOS", () => {
-    expect(
-      isTerminalToggleShortcut(event({ ctrlKey: true }), DEFAULT_TERMINAL_KEYBINDINGS, {
-        platform: "Win32",
-      }),
-    ).toBe(true);
+    expect(isTerminalToggleShortcut(event({ ctrlKey: true }), DEFAULT_BINDINGS, { platform: "Win32" })).toBe(true);
   });
 });
 
 describe("split/new terminal shortcuts", () => {
   it("requires terminalFocus for default split/new bindings", () => {
     expect(
-      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_TERMINAL_KEYBINDINGS, {
+      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: false },
       }),
     ).toBe(false);
     expect(
-      isTerminalNewShortcut(
-        event({ key: "d", ctrlKey: true, shiftKey: true }),
-        DEFAULT_TERMINAL_KEYBINDINGS,
-        {
-          platform: "Linux",
-          context: { terminalFocus: false },
-        },
-      ),
+      isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
     ).toBe(false);
   });
 
   it("matches split/new when terminalFocus is true", () => {
     expect(
-      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_TERMINAL_KEYBINDINGS, {
+      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: true },
       }),
     ).toBe(true);
     expect(
-      isTerminalNewShortcut(
-        event({ key: "d", ctrlKey: true, shiftKey: true }),
-        DEFAULT_TERMINAL_KEYBINDINGS,
-        {
-          platform: "Linux",
-          context: { terminalFocus: true },
-        },
-      ),
+      isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
     ).toBe(true);
   });
 
-  it("supports configured overrides with when expressions", () => {
-    const keybindings = resolveTerminalKeybindings([
+  it("supports when expressions", () => {
+    const keybindings: KeybindingsConfig = [
       {
         key: "mod+\\",
         command: "terminal.split",
@@ -92,7 +81,8 @@ describe("split/new terminal shortcuts", () => {
         command: "terminal.new",
         when: "terminalOpen && !terminalFocus",
       },
-    ]);
+      { key: "mod+j", command: "terminal.toggle" },
+    ];
     expect(
       isTerminalSplitShortcut(event({ key: "\\", ctrlKey: true }), keybindings, {
         platform: "Win32",
@@ -114,41 +104,13 @@ describe("split/new terminal shortcuts", () => {
   });
 });
 
-describe("resolveTerminalKeybindings", () => {
-  it("uses defaults when config is empty", () => {
-    expect(resolveTerminalKeybindings(undefined)).toEqual(DEFAULT_TERMINAL_KEYBINDINGS);
-  });
-
-  it("replaces defaults for commands configured by user", () => {
-    const resolved = resolveTerminalKeybindings([
-      { key: "mod+\\", command: "terminal.split", when: "terminalFocus" },
-    ]);
-
-    expect(resolved).toEqual([
-      { key: "mod+j", command: "terminal.toggle" },
-      { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-      { key: "mod+\\", command: "terminal.split", when: "terminalFocus" },
-    ]);
-  });
-
-  it("ignores invalid configured values", () => {
-    expect(
-      resolveTerminalKeybindings([
-        { key: " ", command: "terminal.toggle" },
-        { key: "mod+d+f", command: "terminal.split" },
-      ]),
-    ).toEqual(DEFAULT_TERMINAL_KEYBINDINGS);
-  });
-});
-
 describe("shortcutLabelForCommand", () => {
   it("returns the most recent binding label", () => {
-    const resolved = resolveTerminalKeybindings([
+    const bindings: KeybindingsConfig = [
       { key: "mod+\\", command: "terminal.split", when: "terminalFocus" },
       { key: "mod+shift+\\", command: "terminal.split", when: "!terminalFocus" },
-    ]);
-
-    expect(shortcutLabelForCommand(resolved, "terminal.split", "Linux")).toBe("Ctrl+Shift+\\");
+    ];
+    expect(shortcutLabelForCommand(bindings, "terminal.split", "Linux")).toBe("Ctrl+Shift+\\");
   });
 });
 

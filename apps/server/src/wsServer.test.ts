@@ -309,7 +309,11 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: [],
+      keybindings: [
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+      ],
     });
   });
 
@@ -379,7 +383,11 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: [{ key: "mod+j", command: "terminal.toggle" }],
+      keybindings: [
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+        { key: "mod+j", command: "terminal.toggle" },
+      ],
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>
@@ -414,7 +422,11 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: [],
+      keybindings: [
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+      ],
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>
@@ -445,7 +457,11 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: [],
+      keybindings: [
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+      ],
     });
     expect(
       warnSpy.mock.calls.some(([message]) =>

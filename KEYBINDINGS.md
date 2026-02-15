@@ -4,6 +4,15 @@ T3 Code reads keybindings from:
 
 - `~/.t3/keybindings.json`
 
+Schema source of truth:
+
+- `packages/contracts/src/keybindings.ts`
+- `packages/contracts/src/server.ts`
+
+Server-side default resolution/merging:
+
+- `apps/server/src/wsServer.ts`
+
 The file must be a JSON array of rules:
 
 ```json
@@ -71,13 +80,13 @@ Unknown condition keys evaluate to `false`.
 
 ## Defaults
 
-Built-in defaults:
+Built-in defaults are resolved on the server and sent to the web client via `server.getConfig`:
 
 - `terminal.toggle`: `mod+j`
 - `terminal.split`: `mod+d` when `terminalFocus`
 - `terminal.new`: `mod+shift+d` when `terminalFocus`
 
-If you define any rules for a command, the default rule for that command is removed.
+If you define any rules for a command, the default rule for that command is removed on the server.
 
 ## Precedence
 

@@ -52,11 +52,10 @@ import type { ChatImageAttachment } from "../types";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
 import {
-  DEFAULT_TERMINAL_KEYBINDINGS,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalToggleShortcut,
-  resolveTerminalKeybindings,
+  type ResolvedTerminalKeybindings,
   shortcutLabelForCommand,
 } from "../keybindings";
 import ChatMarkdown from "./ChatMarkdown";
@@ -152,7 +151,7 @@ export default function ChatView() {
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
-  const [terminalKeybindings, setTerminalKeybindings] = useState(DEFAULT_TERMINAL_KEYBINDINGS);
+  const [terminalKeybindings, setTerminalKeybindings] = useState<ResolvedTerminalKeybindings>([]);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -282,7 +281,7 @@ export default function ChatView() {
 
   useEffect(() => {
     if (!api || !api.server || typeof api.server.getConfig !== "function") {
-      setTerminalKeybindings(DEFAULT_TERMINAL_KEYBINDINGS);
+      setTerminalKeybindings([]);
       return;
     }
 
@@ -292,11 +291,11 @@ export default function ChatView() {
       .getConfig()
       .then((config) => {
         if (disposed) return;
-        setTerminalKeybindings(resolveTerminalKeybindings(config.keybindings));
+        setTerminalKeybindings(config.keybindings);
       })
       .catch(() => {
         if (disposed) return;
-        setTerminalKeybindings(DEFAULT_TERMINAL_KEYBINDINGS);
+        setTerminalKeybindings([]);
       });
 
     return () => {

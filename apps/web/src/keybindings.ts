@@ -1,4 +1,4 @@
-import type { KeybindingCommand, KeybindingRule, KeybindingsConfig } from "@t3tools/contracts";
+import type { KeybindingCommand, KeybindingsConfig } from "@t3tools/contracts";
 
 export interface ShortcutEventLike {
   key: string;
@@ -14,14 +14,7 @@ export interface ShortcutMatchContext {
   [key: string]: boolean;
 }
 
-export type ResolvedTerminalKeybinding = KeybindingRule;
 export type ResolvedTerminalKeybindings = KeybindingsConfig;
-
-export const DEFAULT_TERMINAL_KEYBINDINGS: ResolvedTerminalKeybindings = [
-  { key: "mod+j", command: "terminal.toggle" },
-  { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-  { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
-];
 
 interface ParsedShortcut {
   key: string;
@@ -306,21 +299,6 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
   };
 }
 
-function normalizeConfiguredKeybinding(
-  keybinding: KeybindingRule,
-): ResolvedTerminalKeybinding | null {
-  const key = keybinding.key.trim();
-  if (key.length === 0) return null;
-  if (!parseShortcutValue(key)) return null;
-
-  const when = keybinding.when?.trim();
-  return {
-    key,
-    command: keybinding.command,
-    ...(when ? { when } : {}),
-  };
-}
-
 function matchesCommandShortcut(
   event: ShortcutEventLike,
   keybindings: ResolvedTerminalKeybindings,
@@ -338,27 +316,6 @@ function matchesCommandShortcut(
     return true;
   }
   return false;
-}
-
-export function resolveTerminalKeybindings(
-  input: KeybindingsConfig | null | undefined,
-): ResolvedTerminalKeybindings {
-  if (!input || input.length === 0) {
-    return [...DEFAULT_TERMINAL_KEYBINDINGS];
-  }
-
-  const normalizedInput = input
-    .map((binding) => normalizeConfiguredKeybinding(binding))
-    .filter((binding): binding is ResolvedTerminalKeybinding => binding !== null);
-  if (normalizedInput.length === 0) {
-    return [...DEFAULT_TERMINAL_KEYBINDINGS];
-  }
-
-  const overriddenCommands = new Set(normalizedInput.map((binding) => binding.command));
-  const retainedDefaults = DEFAULT_TERMINAL_KEYBINDINGS.filter(
-    (binding) => !overriddenCommands.has(binding.command),
-  );
-  return [...retainedDefaults, ...normalizedInput];
 }
 
 function formatShortcutKeyLabel(key: string): string {
@@ -413,7 +370,7 @@ export function shortcutLabelForCommand(
 
 export function isTerminalToggleShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings = DEFAULT_TERMINAL_KEYBINDINGS,
+  keybindings: ResolvedTerminalKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.toggle", options);
@@ -421,7 +378,7 @@ export function isTerminalToggleShortcut(
 
 export function isTerminalSplitShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings = DEFAULT_TERMINAL_KEYBINDINGS,
+  keybindings: ResolvedTerminalKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.split", options);
@@ -429,7 +386,7 @@ export function isTerminalSplitShortcut(
 
 export function isTerminalNewShortcut(
   event: ShortcutEventLike,
-  keybindings: ResolvedTerminalKeybindings = DEFAULT_TERMINAL_KEYBINDINGS,
+  keybindings: ResolvedTerminalKeybindings,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "terminal.new", options);

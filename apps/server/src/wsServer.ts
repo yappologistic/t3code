@@ -70,6 +70,31 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+const DEFAULT_KEYBINDINGS: KeybindingsConfig = [
+  { key: "mod+j", command: "terminal.toggle" },
+  { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+  { key: "mod+shift+d", command: "terminal.new", when: "terminalFocus" },
+];
+
+function mergeWithDefaultKeybindings(custom: KeybindingsConfig): KeybindingsConfig {
+  if (custom.length === 0) {
+    return [...DEFAULT_KEYBINDINGS];
+  }
+
+  const overriddenCommands = new Set(custom.map((binding) => binding.command));
+  const retainedDefaults = DEFAULT_KEYBINDINGS.filter(
+    (binding) => !overriddenCommands.has(binding.command),
+  );
+  const merged = [...retainedDefaults, ...custom];
+
+  if (merged.length <= 256) {
+    return merged;
+  }
+
+  // Keep the latest rules when the config exceeds max size; later rules have higher precedence.
+  return merged.slice(-256);
+}
+
 function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): KeybindingsConfig {
   const configPath = path.join(os.homedir(), ".t3", "keybindings.json");
   try {
@@ -79,7 +104,7 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
       logger.warn("ignoring keybindings config with unsupported format; expected array", {
         path: configPath,
       });
-      return [];
+      return [...DEFAULT_KEYBINDINGS];
     }
 
     const sanitized: KeybindingsConfig = [];
@@ -88,13 +113,6 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
       const result = keybindingRuleSchema.safeParse(entry);
       if (result.success) {
         sanitized.push(result.data);
-        if (sanitized.length >= 256) {
-          logger.warn("truncating keybindings config to max entries", {
-            path: configPath,
-            maxEntries: 256,
-          });
-          break;
-        }
         continue;
       }
       invalidEntries += 1;
@@ -106,17 +124,30 @@ function readKeybindingsConfig(logger: ReturnType<typeof createLogger>): Keybind
         totalEntries: parsed.length,
       });
     }
-    return sanitized;
+    const mergedBeforeCap = [
+      ...DEFAULT_KEYBINDINGS.filter(
+        (binding) => !new Set(sanitized.map((entry) => entry.command)).has(binding.command),
+      ),
+      ...sanitized,
+    ];
+    const merged = mergeWithDefaultKeybindings(sanitized);
+    if (mergedBeforeCap.length > 256) {
+      logger.warn("truncating merged keybindings config to max entries", {
+        path: configPath,
+        maxEntries: 256,
+      });
+    }
+    return merged;
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return [];
+      return [...DEFAULT_KEYBINDINGS];
     }
     logger.warn("ignoring malformed keybindings config", {
       path: configPath,
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  return [];
+  return [...DEFAULT_KEYBINDINGS];
 }
 
 export function createServer(options: ServerOptions) {
