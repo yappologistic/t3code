@@ -45,6 +45,7 @@ import {
   formatElapsed,
   formatTimestamp,
 } from "../session-logic";
+import { isScrollContainerNearBottom } from "../chat-scroll";
 import { useStore } from "../store";
 import type { ChatImageAttachment } from "../types";
 import BranchToolbar from "./BranchToolbar";
@@ -145,6 +146,7 @@ export default function ChatView() {
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const dragDepthRef = useRef(0);
@@ -366,19 +368,30 @@ export default function ChatView() {
   // Auto-scroll on new messages
   const messageCount = activeThread?.messages.length ?? 0;
   const workLogCount = workLogEntries.length;
-  useLayoutEffect(() => {
-    if (!activeThread?.id) return;
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
-    scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }, [activeThread?.id]);
+    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior });
+    shouldAutoScrollRef.current = true;
+  }, []);
+  const onMessagesScroll = useCallback(() => {
+    const scrollContainer = messagesScrollRef.current;
+    if (!scrollContainer) return;
+    shouldAutoScrollRef.current = isScrollContainerNearBottom(scrollContainer);
+  }, []);
+  useLayoutEffect(() => {
+    if (!activeThread?.id) return;
+    scrollMessagesToBottom();
+  }, [activeThread?.id, scrollMessagesToBottom]);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messageCount]);
+    if (!shouldAutoScrollRef.current) return;
+    scrollMessagesToBottom("smooth");
+  }, [messageCount, scrollMessagesToBottom]);
   useEffect(() => {
     if (phase !== "running") return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [phase, workLogCount]);
+    if (!shouldAutoScrollRef.current) return;
+    scrollMessagesToBottom("smooth");
+  }, [phase, workLogCount, scrollMessagesToBottom]);
 
   useEffect(() => {
     setExpandedWorkGroups({});
@@ -943,7 +956,11 @@ export default function ChatView() {
       )}
 
       {/* Messages */}
-      <div ref={messagesScrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div
+        ref={messagesScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        onScroll={onMessagesScroll}
+      >
         {activeThread.messages.length === 0 && !isWorking ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-muted-foreground/30">
