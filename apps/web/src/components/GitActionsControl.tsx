@@ -271,6 +271,9 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
           (action === "commit_push" || action === "commit_push_pr") && !!prUrl;
         const shouldOfferCreatePrCta =
           action === "commit_push" && !prUrl && result.push.status === "pushed";
+        const closeResultToast = () => {
+          toastManager.close(progressToastId);
+        };
 
         toastManager.update(progressToastId, {
           type: "success",
@@ -281,21 +284,30 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
             ? {
                 actionProps: {
                   children: "Push",
-                  onClick: () => void runGitActionWithToast({ action: "commit_push" }),
+                  onClick: () => {
+                    closeResultToast();
+                    void runGitActionWithToast({ action: "commit_push" });
+                  },
                 },
               }
             : shouldOfferOpenPrCta
               ? {
                   actionProps: {
                     children: "Open PR",
-                    onClick: () => void api?.shell.openExternal(prUrl),
+                    onClick: () => {
+                      closeResultToast();
+                      void api?.shell.openExternal(prUrl);
+                    },
                   },
                 }
               : shouldOfferCreatePrCta
                 ? {
                     actionProps: {
                       children: "Create PR",
-                      onClick: () => setActiveDialogAction("create_pr"),
+                      onClick: () => {
+                        closeResultToast();
+                        setActiveDialogAction("create_pr");
+                      },
                     },
                   }
                 : {}),
