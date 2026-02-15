@@ -269,17 +269,17 @@ function closeThreadTerminal(thread: Thread, terminalId: string): Thread {
 
   const remainingTerminalIds = thread.terminalIds.filter((id) => id !== terminalId);
   if (remainingTerminalIds.length === 0) {
-    const nextTerminalId = terminalId;
-    const nextTerminalGroupId = fallbackGroupId(nextTerminalId);
+    const nextTerminalGroupId = fallbackGroupId(DEFAULT_THREAD_TERMINAL_ID);
     return normalizeThreadTerminals({
       ...thread,
-      terminalIds: [nextTerminalId],
+      terminalOpen: false,
+      terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
       runningTerminalIds: [],
-      activeTerminalId: nextTerminalId,
+      activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
       terminalGroups: [
         {
           id: nextTerminalGroupId,
-          terminalIds: [nextTerminalId],
+          terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
         },
       ],
       activeTerminalGroupId: nextTerminalGroupId,

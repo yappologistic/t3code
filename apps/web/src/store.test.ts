@@ -287,7 +287,7 @@ describe("store reducer thread continuity", () => {
     ]);
   });
 
-  it("closes the final terminal and keeps the drawer visibility unchanged", () => {
+  it("closes the final terminal and hides the drawer", () => {
     const state = makeState(
       makeThread({
         terminalOpen: true,
@@ -300,7 +300,7 @@ describe("store reducer thread continuity", () => {
       terminalId: DEFAULT_THREAD_TERMINAL_ID,
     });
 
-    expect(next.threads[0]?.terminalOpen).toBe(true);
+    expect(next.threads[0]?.terminalOpen).toBe(false);
     expect(next.threads[0]?.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID]);
     expect(next.threads[0]?.runningTerminalIds).toEqual([]);
     expect(next.threads[0]?.activeTerminalId).toBe(DEFAULT_THREAD_TERMINAL_ID);
