@@ -557,6 +557,11 @@ describe("WebSocket Server", () => {
       status: vi.fn().mockResolvedValue({
         branch: "feature/test",
         hasWorkingTreeChanges: true,
+        workingTree: {
+          files: [{ path: "src/index.ts", insertions: 7, deletions: 2 }],
+          insertions: 7,
+          deletions: 2,
+        },
         hasUpstream: false,
         aheadCount: 0,
         behindCount: 0,
@@ -581,6 +586,11 @@ describe("WebSocket Server", () => {
     expect(response.result).toEqual({
       branch: "feature/test",
       hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [{ path: "src/index.ts", insertions: 7, deletions: 2 }],
+        insertions: 7,
+        deletions: 2,
+      },
       hasUpstream: false,
       aheadCount: 0,
       behindCount: 0,

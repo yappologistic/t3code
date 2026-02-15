@@ -61,7 +61,7 @@ export function buildMenuItems(
     hasBranch &&
     !hasChanges &&
     !isBehind &&
-    (gitStatus.aheadCount > 0 || !gitStatus.hasUpstream);
+    gitStatus.aheadCount > 0;
   const canCreatePr =
     !isBusy &&
     hasBranch &&
@@ -111,14 +111,15 @@ export function buildMenuItems(
 export function resolveQuickAction(
   gitStatus: GitStatusResult | null,
   isBusy: boolean,
+  isDefaultBranch = false,
 ): GitQuickAction {
   if (isBusy) {
-    return { label: "Running...", disabled: true, kind: "show_hint", hint: "Git action in progress." };
+    return { label: "Commit", disabled: true, kind: "show_hint", hint: "Git action in progress." };
   }
 
   if (!gitStatus) {
     return {
-      label: "Git actions",
+      label: "Commit",
       disabled: true,
       kind: "show_hint",
       hint: "Git status is unavailable.",
@@ -128,14 +129,31 @@ export function resolveQuickAction(
   const hasBranch = gitStatus.branch !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
   const hasOpenPr = gitStatus.openPr !== null;
+  const isAhead = gitStatus.aheadCount > 0;
   const isBehind = gitStatus.behindCount > 0;
-  const canPush = hasBranch && !hasChanges && !isBehind;
 
-  if (!hasChanges && hasOpenPr && gitStatus.aheadCount === 0 && !isBehind) {
-    return { label: "Open PR", disabled: false, kind: "open_pr" };
+  if (!hasBranch) {
+    return {
+      label: "Commit",
+      disabled: true,
+      kind: "show_hint",
+      hint: "Create and checkout a branch before pushing or opening a PR.",
+    };
   }
 
-  if (!hasChanges && isBehind) {
+  if (hasChanges) {
+    if (hasOpenPr || isDefaultBranch) {
+      return { label: "Commit & push", disabled: false, kind: "run_action", action: "commit_push" };
+    }
+    return {
+      label: "Commit, push & create PR",
+      disabled: false,
+      kind: "run_action",
+      action: "commit_push_pr",
+    };
+  }
+
+  if (isBehind) {
     return {
       label: "Pull",
       disabled: false,
@@ -143,8 +161,8 @@ export function resolveQuickAction(
     };
   }
 
-  if (!hasChanges && canPush && (gitStatus.aheadCount > 0 || !gitStatus.hasUpstream)) {
-    if (hasOpenPr) {
+  if (isAhead) {
+    if (hasOpenPr || isDefaultBranch) {
       return { label: "Push", disabled: false, kind: "run_action", action: "commit_push" };
     }
     return {
@@ -155,36 +173,16 @@ export function resolveQuickAction(
     };
   }
 
-  if (hasChanges) {
-    return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
-  }
-
-  if (hasOpenPr) {
+  if (hasOpenPr && gitStatus.hasUpstream) {
     return { label: "Open PR", disabled: false, kind: "open_pr" };
   }
 
-  if (hasBranch && gitStatus.hasUpstream && !isBehind) {
-    if (gitStatus.aheadCount > 0) {
-      return { label: "Create PR", disabled: false, kind: "run_action", action: "commit_push_pr" };
-    }
-    return {
-      label: "Commit",
-      disabled: true,
-      kind: "show_hint",
-      hint: "Branch is up to date. Nothing to commit, push, pull, or open as a PR.",
-    };
-  }
-
-  if (!hasBranch) {
-    return {
-      label: "Detached HEAD",
-      disabled: false,
-      kind: "show_hint",
-      hint: "Create and checkout a branch before pushing or opening a PR.",
-    };
-  }
-
-  return { label: "Commit", disabled: true, kind: "show_hint", hint: "No git action needed." };
+  return {
+    label: "Commit",
+    disabled: true,
+    kind: "show_hint",
+    hint: "Branch is up to date. Nothing to commit, push, pull, or open as a PR.",
+  };
 }
 
 export function requiresDefaultBranchConfirmation(

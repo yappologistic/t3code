@@ -10,6 +10,11 @@ function status(overrides: Partial<GitStatusResult> = {}): GitStatusResult {
   return {
     branch: "feature/test",
     hasWorkingTreeChanges: false,
+    workingTree: {
+      files: [],
+      insertions: 0,
+      deletions: 0,
+    },
     hasUpstream: true,
     aheadCount: 0,
     behindCount: 0,
@@ -81,7 +86,7 @@ describe("when: actions are busy", () => {
     const quick = resolveQuickAction(status(), true);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Running...",
+      label: "Commit",
       disabled: true,
       hint: "Git action in progress.",
     });
@@ -123,7 +128,7 @@ describe("when: git status is unavailable", () => {
     const quick = resolveQuickAction(null, false);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Git actions",
+      label: "Commit",
       disabled: true,
       hint: "Git status is unavailable.",
     });
@@ -314,9 +319,34 @@ describe("when: branch is behind upstream", () => {
 });
 
 describe("when: working tree has local changes", () => {
-  it("resolveQuickAction returns commit", () => {
+  it("resolveQuickAction returns commit, push, and create PR", () => {
     const quick = resolveQuickAction(status({ hasWorkingTreeChanges: true }), false);
-    assert.deepInclude(quick, { kind: "run_action", action: "commit", label: "Commit" });
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push_pr",
+      label: "Commit, push & create PR",
+    });
+  });
+
+  it("resolveQuickAction returns commit and push when open PR exists", () => {
+    const quick = resolveQuickAction(
+      status({
+        hasWorkingTreeChanges: true,
+        openPr: {
+          number: 16,
+          title: "Existing PR",
+          url: "https://example.com/pr/16",
+          baseBranch: "main",
+          headBranch: "feature/test",
+        },
+      }),
+      false,
+    );
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push",
+      label: "Commit & push",
+    });
   });
 
   it("buildMenuItems enables commit and disables push and PR", () => {
@@ -350,10 +380,36 @@ describe("when: working tree has local changes", () => {
   });
 });
 
+describe("when: on default branch without open PR", () => {
+  it("resolveQuickAction returns commit and push when local changes exist", () => {
+    const quick = resolveQuickAction(status({ branch: "main", hasWorkingTreeChanges: true }), false, true);
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push",
+      label: "Commit & push",
+      disabled: false,
+    });
+  });
+
+  it("resolveQuickAction returns push when branch is ahead", () => {
+    const quick = resolveQuickAction(status({ branch: "main", aheadCount: 2, openPr: null }), false, true);
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push",
+      label: "Push",
+      disabled: false,
+    });
+  });
+});
+
 describe("when: working tree has local changes and branch is behind upstream", () => {
-  it("resolveQuickAction still prefers commit", () => {
+  it("resolveQuickAction still prefers commit, push, and create PR", () => {
     const quick = resolveQuickAction(status({ hasWorkingTreeChanges: true, behindCount: 1 }), false);
-    assert.deepInclude(quick, { kind: "run_action", action: "commit", label: "Commit" });
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push_pr",
+      label: "Commit, push & create PR",
+    });
   });
 
   it("buildMenuItems enables commit and keeps push and PR disabled", () => {
@@ -393,7 +449,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       status({ branch: null, hasWorkingTreeChanges: false, hasUpstream: false }),
       false,
     );
-    assert.deepInclude(quick, { kind: "show_hint", label: "Detached HEAD", disabled: false });
+    assert.deepInclude(quick, { kind: "show_hint", label: "Commit", disabled: true });
   });
 
   it("buildMenuItems keeps commit, push, and PR disabled", () => {
@@ -428,17 +484,16 @@ describe("when: HEAD is detached and there are no local changes", () => {
 });
 
 describe("when: branch has no upstream configured", () => {
-  it("resolveQuickAction runs push and create PR when clean and no open PR", () => {
+  it("resolveQuickAction returns disabled commit state when clean and no commits are ahead", () => {
     const quick = resolveQuickAction(status({ hasUpstream: false, openPr: null, aheadCount: 0 }), false);
     assert.deepInclude(quick, {
-      kind: "run_action",
-      action: "commit_push_pr",
-      label: "Push & create PR",
-      disabled: false,
+      kind: "show_hint",
+      label: "Commit",
+      disabled: true,
     });
   });
 
-  it("resolveQuickAction opens PR when clean, no upstream, and no local commits ahead", () => {
+  it("resolveQuickAction remains disabled when clean, no upstream, and no local commits ahead", () => {
     const quick = resolveQuickAction(
       status({
         hasUpstream: false,
@@ -454,9 +509,9 @@ describe("when: branch has no upstream configured", () => {
       false,
     );
     assert.deepInclude(quick, {
-      kind: "open_pr",
-      label: "Open PR",
-      disabled: false,
+      kind: "show_hint",
+      label: "Commit",
+      disabled: true,
     });
   });
 
@@ -483,7 +538,7 @@ describe("when: branch has no upstream configured", () => {
     });
   });
 
-  it("buildMenuItems enables push and disables create PR", () => {
+  it("buildMenuItems disables push and create PR when no commits are ahead", () => {
     const items = buildMenuItems(status({ hasUpstream: false, openPr: null, aheadCount: 0 }), false);
     assert.deepEqual(items, [
       {
@@ -497,7 +552,7 @@ describe("when: branch has no upstream configured", () => {
       {
         id: "push",
         label: "Push",
-        disabled: false,
+        disabled: true,
         icon: "push",
         kind: "open_dialog",
         dialogAction: "push",

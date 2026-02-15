@@ -3,6 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { useNativeApi } from "../hooks/useNativeApi";
+import {
+  gitBranchesQueryOptions,
+  gitCheckoutMutationOptions,
+  gitCreateBranchAndCheckoutMutationOptions,
+} from "../lib/gitReactQuery";
 import { useStore } from "../store";
 import { Button } from "./ui/button";
 import {
@@ -37,28 +42,19 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   const activeThreadId = activeThread?.id;
   const activeThreadBranch = activeThread?.branch ?? null;
   const activeWorktreePath = activeThread?.worktreePath ?? null;
-  const branchCwd = activeWorktreePath ?? activeProject?.cwd;
+  const branchCwd = activeWorktreePath ?? activeProject?.cwd ?? null;
 
   // ── Queries ───────────────────────────────────────────────────────────
 
-  const branchesQuery = useQuery({
-    queryKey: ["git", "branches", branchCwd],
-    queryFn: () => api!.git.listBranches({ cwd: branchCwd! }),
-    enabled: !!api && !!branchCwd,
-  });
+  const branchesQuery = useQuery(gitBranchesQueryOptions(api, branchCwd));
 
   const branches = branchesQuery.data?.branches ?? [];
   const branchNames = branches.map((branch) => branch.name);
   const branchByName = new Map(branches.map((branch) => [branch.name, branch]));
-  // Default to true while loading — showing "Initialize git" during a fetch is wrong,
-  // and worktrees are inherently git repos.
-  const isRepo = branchesQuery.data?.isRepo ?? !branchesQuery.isLoading;
-
   // ── Mutations ─────────────────────────────────────────────────────────
 
   const checkoutMutation = useMutation({
-    mutationFn: (branch: string) => api!.git.checkout({ cwd: branchCwd!, branch }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["git", "branches", branchCwd] }),
+    ...gitCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
     onError: (error) => {
       setThreadError(error instanceof Error ? error.message : "Failed to checkout branch.");
       setIsBranchMenuOpen(true);
@@ -66,23 +62,9 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
   });
 
   const createBranchMutation = useMutation({
-    mutationFn: (branch: string) =>
-      api!.git
-        .createBranch({ cwd: branchCwd!, branch })
-        .then(() => api!.git.checkout({ cwd: branchCwd!, branch })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["git", "branches", branchCwd] }),
+    ...gitCreateBranchAndCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
     onError: (error) =>
       setThreadError(error instanceof Error ? error.message : "Failed to create branch."),
-  });
-
-  const initMutation = useMutation({
-    mutationFn: () => api!.git.init({ cwd: branchCwd! }),
-    onSuccess: () => {
-      setThreadError(null);
-      queryClient.invalidateQueries({ queryKey: ["git", "branches", branchCwd] });
-    },
-    onError: (error) =>
-      setThreadError(error instanceof Error ? error.message : "Failed to initialize git repo."),
   });
 
   // ── Effects ───────────────────────────────────────────────────────────
@@ -194,134 +176,118 @@ export default function BranchToolbar({ envMode, onEnvModeChange, envLocked }: B
         )}
       </div>
 
-      {!isRepo ? (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-[12px] text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={!branchCwd || initMutation.isPending}
-          onClick={() => initMutation.mutate()}
+      <Combobox
+        items={branchNames}
+        autoHighlight
+        onOpenChange={(open) => setIsBranchMenuOpen(open)}
+        open={isBranchMenuOpen}
+        value={activeThread.branch}
+      >
+        <ComboboxTrigger
+          render={<Button variant="ghost" size="xs" />}
+          className="text-muted-foreground/70 hover:text-foreground/80"
+          disabled={branchesQuery.isLoading}
         >
-          {initMutation.isPending ? "Initializing\u2026" : "Initialize git"}
-        </button>
-      ) : (
-        <Combobox
-          items={branchNames}
-          autoHighlight
-          onOpenChange={(open) => setIsBranchMenuOpen(open)}
-          open={isBranchMenuOpen}
-          value={activeThread.branch}
-        >
-          <ComboboxTrigger
-            render={<Button variant="ghost" size="xs" />}
-            className="text-muted-foreground/70 hover:text-foreground/80"
-            disabled={branchesQuery.isLoading}
-          >
-            <span className="max-w-[240px] truncate">
-              {activeThread.branch
-                ? envMode === "worktree" && !activeWorktreePath
-                  ? `From ${activeThread.branch}`
-                  : activeThread.branch
-                : "Select branch"}
-            </span>
-            <ChevronDownIcon />
-          </ComboboxTrigger>
-          <ComboboxPopup align="end" side="top" className="w-64">
-            <div className="border-b">
-              <ComboboxInput
-                className="rounded-b-none before:rounded-b-none [&_input]:font-sans"
-                placeholder="Search branches..."
-                showClear
-                showTrigger={false}
-                size="sm"
-              />
-            </div>
-            <ComboboxEmpty>No branches found.</ComboboxEmpty>
+          <span className="max-w-[240px] truncate">
+            {activeThread.branch
+              ? envMode === "worktree" && !activeWorktreePath
+                ? `From ${activeThread.branch}`
+                : activeThread.branch
+              : "Select branch"}
+          </span>
+          <ChevronDownIcon />
+        </ComboboxTrigger>
+        <ComboboxPopup align="end" side="top" className="w-64">
+          <div className="border-b">
+            <ComboboxInput
+              className="rounded-b-none before:rounded-b-none [&_input]:font-sans"
+              placeholder="Search branches..."
+              showClear
+              showTrigger={false}
+              size="sm"
+            />
+          </div>
+          <ComboboxEmpty>No branches found.</ComboboxEmpty>
 
-            <ComboboxList className="max-h-56">
-              {(branchName) => {
-                const branch = branchByName.get(branchName);
-                if (!branch) return null;
+          <ComboboxList className="max-h-56">
+            {(branchName) => {
+              const branch = branchByName.get(branchName);
+              if (!branch) return null;
 
-                const hasSecondaryWorktree =
-                  branch.worktreePath && branch.worktreePath !== activeProject.cwd;
-                return (
-                  <ComboboxItem
-                    hideIndicator
-                    key={branchName}
-                    value={branchName}
-                    className={branchName === activeThread.branch ? "bg-accent text-foreground" : undefined}
-                    onClick={() => selectBranch(branch)}
-                  >
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="truncate">{branchName}</span>
-                      {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
-                        <span className="shrink-0 text-[10px] text-muted-foreground/45">
-                          {branch.current
-                            ? "current"
-                            : hasSecondaryWorktree
-                              ? "worktree"
-                              : "default"}
-                        </span>
-                      )}
-                    </div>
-                  </ComboboxItem>
-                );
-              }}
-            </ComboboxList>
-            {envMode === "local" && (
-              <>
-                {isCreatingBranch ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      createBranch();
-                    }}
-                  >
-                    <InputGroup className="rounded-t-none before:rounded-t-none">
-                      <InputGroupInput
-                        className="[&_input]:font-sans"
-                        size="sm"
-                        placeholder="branch-name"
-                        type="text"
-                        value={newBranchName}
-                        onChange={(event) => setNewBranchName(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") {
-                            event.stopPropagation();
-                            setIsCreatingBranch(false);
-                            setNewBranchName("");
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <InputGroupAddon align="inline-end">
-                        <Button
-                          size="xs"
-                          variant="secondary"
-                          type="submit"
-                          disabled={!newBranchName.trim() || createBranchMutation.isPending}
-                        >
-                          Create
-                        </Button>
-                      </InputGroupAddon>
-                    </InputGroup>
-                  </form>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="w-full justify-start h-9 rounded-t-none rounded-b-lg before:rounded-t-none"
-                    variant="outline"
-                    onClick={() => setIsCreatingBranch(true)}
-                  >
-                    <PlusIcon />
-                    New branch
-                  </Button>
-                )}
-              </>
-            )}
-          </ComboboxPopup>
-        </Combobox>
-      )}
+              const hasSecondaryWorktree = branch.worktreePath && branch.worktreePath !== activeProject.cwd;
+              return (
+                <ComboboxItem
+                  hideIndicator
+                  key={branchName}
+                  value={branchName}
+                  className={branchName === activeThread.branch ? "bg-accent text-foreground" : undefined}
+                  onClick={() => selectBranch(branch)}
+                >
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span className="truncate">{branchName}</span>
+                    {(branch.current || branch.isDefault || hasSecondaryWorktree) && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground/45">
+                        {branch.current ? "current" : hasSecondaryWorktree ? "worktree" : "default"}
+                      </span>
+                    )}
+                  </div>
+                </ComboboxItem>
+              );
+            }}
+          </ComboboxList>
+          {envMode === "local" && (
+            <>
+              {isCreatingBranch ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    createBranch();
+                  }}
+                >
+                  <InputGroup className="rounded-t-none before:rounded-t-none">
+                    <InputGroupInput
+                      className="[&_input]:font-sans"
+                      size="sm"
+                      placeholder="branch-name"
+                      type="text"
+                      value={newBranchName}
+                      onChange={(event) => setNewBranchName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.stopPropagation();
+                          setIsCreatingBranch(false);
+                          setNewBranchName("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        type="submit"
+                        disabled={!newBranchName.trim() || createBranchMutation.isPending}
+                      >
+                        Create
+                      </Button>
+                    </InputGroupAddon>
+                  </InputGroup>
+                </form>
+              ) : (
+                <Button
+                  size="sm"
+                  className="w-full justify-start h-9 rounded-t-none rounded-b-lg before:rounded-t-none"
+                  variant="outline"
+                  onClick={() => setIsCreatingBranch(true)}
+                >
+                  <PlusIcon />
+                  New branch
+                </Button>
+              )}
+            </>
+          )}
+        </ComboboxPopup>
+      </Combobox>
     </div>
   );
 }

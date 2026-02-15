@@ -25,6 +25,14 @@ describe("git contracts", () => {
     const parsed = gitStatusResultSchema.parse({
       branch: "feature/git-actions",
       hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [
+          { path: "src/git.ts", insertions: 8, deletions: 2 },
+          { path: "src/git.test.ts", insertions: 4, deletions: 1 },
+        ],
+        insertions: 12,
+        deletions: 3,
+      },
       hasUpstream: false,
       aheadCount: 0,
       behindCount: 0,
@@ -32,6 +40,8 @@ describe("git contracts", () => {
     });
     expect(parsed.branch).toBe("feature/git-actions");
     expect(parsed.hasWorkingTreeChanges).toBe(true);
+    expect(parsed.workingTree.files[0]?.insertions).toBe(8);
+    expect(parsed.workingTree.files).toHaveLength(2);
   });
 
   it("accepts supported stacked actions", () => {

@@ -94,6 +94,51 @@ function parseBranchAb(value: string): { ahead: number; behind: number } {
   };
 }
 
+function parseNumstatEntries(
+  stdout: string,
+): Array<{ path: string; insertions: number; deletions: number }> {
+  const entries: Array<{ path: string; insertions: number; deletions: number }> = [];
+  for (const line of stdout.split(/\r?\n/g)) {
+    if (line.trim().length === 0) continue;
+    const [addedRaw, deletedRaw, ...pathParts] = line.split("\t");
+    const rawPath = pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
+    if (rawPath.length === 0) continue;
+    const added = Number.parseInt(addedRaw ?? "0", 10);
+    const deleted = Number.parseInt(deletedRaw ?? "0", 10);
+    const renameArrowIndex = rawPath.indexOf(" => ");
+    const normalizedPath =
+      renameArrowIndex >= 0 ? rawPath.slice(renameArrowIndex + " => ".length).trim() : rawPath;
+    entries.push({
+      path: normalizedPath.length > 0 ? normalizedPath : rawPath,
+      insertions: Number.isFinite(added) ? added : 0,
+      deletions: Number.isFinite(deleted) ? deleted : 0,
+    });
+  }
+  return entries;
+}
+
+function parsePorcelainPath(line: string): string | null {
+  if (line.startsWith("? ") || line.startsWith("! ")) {
+    const simple = line.slice(2).trim();
+    return simple.length > 0 ? simple : null;
+  }
+
+  if (!(line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u "))) {
+    return null;
+  }
+
+  const tabIndex = line.indexOf("\t");
+  if (tabIndex >= 0) {
+    const fromTab = line.slice(tabIndex + 1);
+    const [path] = fromTab.split("\t");
+    return path?.trim().length ? path.trim() : null;
+  }
+
+  const parts = line.trim().split(/\s+/g);
+  const path = parts.at(-1) ?? "";
+  return path.length > 0 ? path : null;
+}
+
 function commandLabel(args: readonly string[]): string {
   return `git ${args.join(" ")}`;
 }
@@ -176,6 +221,7 @@ export class GitCoreService {
     return gitStatusResultSchema.parse({
       branch: details.branch,
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
+      workingTree: details.workingTree,
       hasUpstream: details.hasUpstream,
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,
@@ -184,15 +230,20 @@ export class GitCoreService {
   }
 
   async statusDetails(cwd: string): Promise<GitStatusDetails> {
-    const stdout = await this.gitStdout(cwd, ["status", "--porcelain=2", "--branch"]);
+    const [statusStdout, unstagedNumstatStdout, stagedNumstatStdout] = await Promise.all([
+      this.gitStdout(cwd, ["status", "--porcelain=2", "--branch"]),
+      this.gitStdout(cwd, ["diff", "--numstat"]),
+      this.gitStdout(cwd, ["diff", "--cached", "--numstat"]),
+    ]);
 
     let branch: string | null = null;
     let upstreamRef: string | null = null;
     let aheadCount = 0;
     let behindCount = 0;
     let hasWorkingTreeChanges = false;
+    const changedFilesWithoutNumstat = new Set<string>();
 
-    for (const line of stdout.split(/\r?\n/g)) {
+    for (const line of statusStdout.split(/\r?\n/g)) {
       if (line.startsWith("# branch.head ")) {
         const value = line.slice("# branch.head ".length).trim();
         branch = value.startsWith("(") ? null : value;
@@ -212,13 +263,45 @@ export class GitCoreService {
       }
       if (line.trim().length > 0 && !line.startsWith("#")) {
         hasWorkingTreeChanges = true;
+        const pathValue = parsePorcelainPath(line);
+        if (pathValue) changedFilesWithoutNumstat.add(pathValue);
       }
     }
+    const stagedEntries = parseNumstatEntries(stagedNumstatStdout);
+    const unstagedEntries = parseNumstatEntries(unstagedNumstatStdout);
+    const fileStatMap = new Map<string, { insertions: number; deletions: number }>();
+    for (const entry of [...stagedEntries, ...unstagedEntries]) {
+      const existing = fileStatMap.get(entry.path) ?? { insertions: 0, deletions: 0 };
+      existing.insertions += entry.insertions;
+      existing.deletions += entry.deletions;
+      fileStatMap.set(entry.path, existing);
+    }
+
+    let insertions = 0;
+    let deletions = 0;
+    const files = Array.from(fileStatMap.entries())
+      .map(([path, stat]) => {
+        insertions += stat.insertions;
+        deletions += stat.deletions;
+        return { path, insertions: stat.insertions, deletions: stat.deletions };
+      })
+      .toSorted((a, b) => a.path.localeCompare(b.path));
+
+    for (const filePath of changedFilesWithoutNumstat) {
+      if (fileStatMap.has(filePath)) continue;
+      files.push({ path: filePath, insertions: 0, deletions: 0 });
+    }
+    files.sort((a, b) => a.path.localeCompare(b.path));
 
     return {
       branch,
       upstreamRef,
       hasWorkingTreeChanges,
+      workingTree: {
+        files,
+        insertions,
+        deletions,
+      },
       hasUpstream: upstreamRef !== null,
       aheadCount,
       behindCount,

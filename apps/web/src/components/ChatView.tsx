@@ -19,6 +19,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { gitBranchesQueryOptions } from "~/lib/gitReactQuery";
 
 import { EDITORS, type EditorId } from "@t3tools/contracts";
 import { isElectron } from "../env";
@@ -244,6 +246,9 @@ export default function ChatView() {
           sandboxMode: "workspace-write",
         } as const);
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
+  const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
+  // Default true while loading to avoid toolbar flicker.
+  const isGitRepo = branchesQuery.data?.isRepo ?? true;
 
   const envLocked = Boolean(
     activeThread &&
@@ -1123,7 +1128,7 @@ export default function ChatView() {
       </div>
 
       {/* Input bar */}
-      <div className="px-5 pb-1 pt-2">
+      <div className={cn("px-5 pt-2", isGitRepo ? "pb-1" : "pb-4")}>
         <form onSubmit={onSend} className="mx-auto max-w-3xl">
           <div
             className={`group rounded-[20px] border bg-card transition-colors duration-200 focus-within:border-ring ${
@@ -1299,7 +1304,7 @@ export default function ChatView() {
         </form>
       </div>
 
-      <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />
+      {isGitRepo && <BranchToolbar envMode={envMode} onEnvModeChange={setEnvMode} envLocked={envLocked} />}
 
       {activeThread.terminalOpen && api && activeProject && (
         <ThreadTerminalDrawer
@@ -1436,8 +1441,8 @@ function OpenInPicker() {
 
   const api = useNativeApi();
   const { state } = useStore();
-  const activeProject = state.projects.find((p) => p.id === state.activeThreadId);
   const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
+  const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
 
   const openInEditor = useCallback(
     (editorId: EditorId | null) => {

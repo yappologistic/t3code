@@ -218,6 +218,7 @@ export class GitManager {
     return {
       branch: details.branch,
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
+      workingTree: details.workingTree,
       hasUpstream: details.hasUpstream,
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,

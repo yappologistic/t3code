@@ -75,6 +75,17 @@ export const gitPullInputSchema = z.object({
 export const gitStatusResultSchema = z.object({
   branch: z.string().min(1).nullable(),
   hasWorkingTreeChanges: z.boolean(),
+  workingTree: z.object({
+    files: z.array(
+      z.object({
+        path: z.string().min(1),
+        insertions: z.number().int().nonnegative(),
+        deletions: z.number().int().nonnegative(),
+      }),
+    ),
+    insertions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+  }),
   hasUpstream: z.boolean(),
   aheadCount: z.number().int().nonnegative(),
   behindCount: z.number().int().nonnegative(),
