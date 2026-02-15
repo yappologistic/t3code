@@ -295,7 +295,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
           type: "success",
           title: resultToast.title,
           description: resultToast.description,
-          timeout: 10_000,
+          timeout: 5_000,
           ...(shouldOfferPushCta
             ? {
                 actionProps: {
