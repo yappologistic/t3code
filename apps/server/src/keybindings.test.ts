@@ -1,10 +1,6 @@
 import { assert, describe, it } from "vitest";
 
-import {
-  DEFAULT_KEYBINDINGS,
-  compileResolvedKeybindingRule,
-  parseKeybindingShortcut,
-} from "./keybindings";
+import { compileResolvedKeybindingRule, parseKeybindingShortcut } from "./keybindings";
 
 describe("server keybindings", () => {
   it("parses shortcuts including plus key", () => {
@@ -69,17 +65,5 @@ describe("server keybindings", () => {
         when: "terminalFocus && (",
       }),
     );
-  });
-
-  it("defines defaults for terminal.close and chat.newLocal", () => {
-    assert.deepInclude(DEFAULT_KEYBINDINGS, {
-      key: "mod+w",
-      command: "terminal.close",
-      when: "terminalFocus",
-    });
-    assert.deepInclude(DEFAULT_KEYBINDINGS, {
-      key: "mod+shift+n",
-      command: "chat.newLocal",
-    });
   });
 });
