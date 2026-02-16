@@ -7,6 +7,7 @@ import {
 import { isMacPlatform } from "./lib/utils";
 
 export interface ShortcutEventLike {
+  type?: string;
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
@@ -209,6 +210,10 @@ export function isTerminalClearShortcut(
   event: ShortcutEventLike,
   platform = navigator.platform,
 ): boolean {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return false;
+  }
+
   const key = event.key.toLowerCase();
 
   if (key === "l" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
@@ -229,6 +234,10 @@ export function terminalNavigationShortcutData(
   event: ShortcutEventLike,
   platform = navigator.platform,
 ): string | null {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return null;
+  }
+
   if (event.shiftKey) return null;
 
   const key = normalizeEventKey(event.key);

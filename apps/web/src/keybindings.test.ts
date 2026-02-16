@@ -325,6 +325,10 @@ describe("isTerminalClearShortcut", () => {
   it("matches Cmd+K on macOS", () => {
     assert.isTrue(isTerminalClearShortcut(event({ key: "k", metaKey: true }), "MacIntel"));
   });
+
+  it("ignores non-keydown events", () => {
+    assert.isFalse(isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"));
+  });
 });
 
 describe("terminalNavigationShortcutData", () => {
@@ -370,6 +374,15 @@ describe("terminalNavigationShortcutData", () => {
     );
     assert.isNull(terminalNavigationShortcutData(event({ key: "ArrowLeft", metaKey: true }), "Linux"));
     assert.isNull(terminalNavigationShortcutData(event({ key: "a", altKey: true }), "MacIntel"));
+  });
+
+  it("ignores non-keydown events", () => {
+    assert.isNull(
+      terminalNavigationShortcutData(
+        event({ type: "keyup", key: "ArrowLeft", altKey: true }),
+        "MacIntel",
+      ),
+    );
   });
 });
 
