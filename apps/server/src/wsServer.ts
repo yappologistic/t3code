@@ -31,7 +31,7 @@ import {
   removeGitWorktree,
 } from "./git";
 import { TerminalManager } from "./terminalManager";
-import { loadResolvedKeybindingsConfig } from "./keybindings";
+import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
 
 const MIME_TYPES: Record<string, string> = {
@@ -92,7 +92,7 @@ export function createServer(options: ServerOptions) {
   const logger = createLogger("ws");
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
-  const keybindingsConfig = loadResolvedKeybindingsConfig(logger);
+  let keybindingsConfig = loadResolvedKeybindingsConfig(logger);
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;
@@ -420,6 +420,12 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.serverGetConfig:
         return {
           cwd,
+          keybindings: keybindingsConfig,
+        };
+
+      case WS_METHODS.serverUpsertKeybinding:
+        keybindingsConfig = upsertKeybindingRule(logger, request.params);
+        return {
           keybindings: keybindingsConfig,
         };
 

@@ -491,6 +491,59 @@ describe("WebSocket Server", () => {
     expect(secondResponse.result).toEqual(firstResponse.result);
   });
 
+  it("upserts keybinding rules and updates cached server config", async () => {
+    const fakeHome = makeTempDir("t3code-home-upsert-keybinding-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    const keybindingsPath = path.join(configDir, "keybindings.json");
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([{ key: "mod+j", command: "terminal.toggle" }]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const upsertResponse = await sendRequest(ws, WS_METHODS.serverUpsertKeybinding, {
+      key: "mod+shift+r",
+      command: "script.run-tests.run",
+    });
+    expect(upsertResponse.error).toBeUndefined();
+    expect(upsertResponse.result).toEqual({
+      keybindings: mergeWithDefaultsForTest([
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+shift+r", command: "script.run-tests.run" },
+      ]),
+    });
+
+    const persistedConfig = JSON.parse(fs.readFileSync(keybindingsPath, "utf8")) as Array<{
+      key: string;
+      command: string;
+    }>;
+    expect(persistedConfig).toEqual([
+      { key: "mod+j", command: "terminal.toggle" },
+      { key: "mod+shift+r", command: "script.run-tests.run" },
+    ]);
+
+    const configResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(configResponse.error).toBeUndefined();
+    expect(configResponse.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: mergeWithDefaultsForTest([
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+shift+r", command: "script.run-tests.run" },
+      ]),
+    });
+  });
+
   it("warns and ignores unsupported keybindings config format", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fakeHome = makeTempDir("t3code-home-unsupported-format-");

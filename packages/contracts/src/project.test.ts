@@ -105,6 +105,23 @@ describe("project contracts", () => {
     expect(parsed.scripts[0]?.id).toBe("test");
   });
 
+  it("parses debug icon in scripts", () => {
+    const parsed = projectUpdateScriptsInputSchema.parse({
+      id: "project-1",
+      scripts: [
+        {
+          id: "debug",
+          name: "Debug",
+          command: "bun --inspect test",
+          icon: "debug",
+          runOnWorktreeCreate: false,
+        },
+      ],
+    });
+
+    expect(parsed.scripts[0]?.icon).toBe("debug");
+  });
+
   it("parses update scripts result", () => {
     const parsed = projectUpdateScriptsResultSchema.parse({
       project: {

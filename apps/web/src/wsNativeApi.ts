@@ -143,6 +143,7 @@ export function createWsNativeApi(): NativeApi {
     },
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
+      upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
     },
   };
 

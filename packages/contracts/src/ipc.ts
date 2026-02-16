@@ -46,6 +46,7 @@ import type {
   TerminalWriteInput,
 } from "./terminal";
 import type { NewTodoInput, Todo } from "./todo";
+import type { ServerUpsertKeybindingInput, ServerUpsertKeybindingResult } from "./server";
 
 export const EDITORS = [
   { id: "cursor", label: "Cursor", command: "cursor" },
@@ -122,5 +123,6 @@ export interface NativeApi {
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
+    upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
   };
 }

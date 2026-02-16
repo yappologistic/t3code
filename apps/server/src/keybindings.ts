@@ -274,6 +274,58 @@ function compileDefaultKeybindings(): ResolvedKeybindingsConfig {
 }
 
 const DEFAULT_RESOLVED_KEYBINDINGS = compileDefaultKeybindings();
+const KEYBINDINGS_CONFIG_PATH = path.join(".t3", "keybindings.json");
+const MAX_KEYBINDINGS = 256;
+
+function resolveKeybindingsConfigPath(): string {
+  return path.join(os.homedir(), KEYBINDINGS_CONFIG_PATH);
+}
+
+function loadCustomKeybindingsConfig(logger: KeybindingsLogger): KeybindingsConfig {
+  const configPath = resolveKeybindingsConfigPath();
+  try {
+    const raw = fs.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      logger.warn("ignoring keybindings config with unsupported format; expected array", {
+        path: configPath,
+      });
+      return [];
+    }
+
+    const sanitized: KeybindingsConfig = [];
+    let invalidEntries = 0;
+    for (const entry of parsed) {
+      const result = keybindingRuleSchema.safeParse(entry);
+      if (result.success) {
+        if (!compileResolvedKeybindingRule(result.data)) {
+          invalidEntries += 1;
+          continue;
+        }
+        sanitized.push(result.data);
+        continue;
+      }
+      invalidEntries += 1;
+    }
+    if (invalidEntries > 0) {
+      logger.warn("ignoring invalid keybinding entries", {
+        path: configPath,
+        invalidEntries,
+        totalEntries: parsed.length,
+      });
+    }
+    return sanitized;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return [];
+    }
+    logger.warn("ignoring malformed keybindings config", {
+      path: configPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
 
 function mergeWithDefaultKeybindings(custom: ResolvedKeybindingsConfig): ResolvedKeybindingsConfig {
   if (custom.length === 0) {
@@ -286,70 +338,58 @@ function mergeWithDefaultKeybindings(custom: ResolvedKeybindingsConfig): Resolve
   );
   const merged = [...retainedDefaults, ...custom];
 
-  if (merged.length <= 256) {
+  if (merged.length <= MAX_KEYBINDINGS) {
     return merged;
   }
 
   // Keep the latest rules when the config exceeds max size; later rules have higher precedence.
-  return merged.slice(-256);
+  return merged.slice(-MAX_KEYBINDINGS);
 }
 
 export function loadResolvedKeybindingsConfig(
   logger: KeybindingsLogger,
 ): ResolvedKeybindingsConfig {
-  const configPath = path.join(os.homedir(), ".t3", "keybindings.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      logger.warn("ignoring keybindings config with unsupported format; expected array", {
-        path: configPath,
-      });
-      return [...DEFAULT_RESOLVED_KEYBINDINGS];
-    }
-
-    const sanitized: ResolvedKeybindingsConfig = [];
-    let invalidEntries = 0;
-    for (const entry of parsed) {
-      const result = keybindingRuleSchema.safeParse(entry);
-      if (result.success) {
-        const compiled = compileResolvedKeybindingRule(result.data);
-        if (!compiled) {
-          invalidEntries += 1;
-          continue;
-        }
-        sanitized.push(compiled);
-        continue;
-      }
-      invalidEntries += 1;
-    }
-    if (invalidEntries > 0) {
-      logger.warn("ignoring invalid keybinding entries", {
-        path: configPath,
-        invalidEntries,
-        totalEntries: parsed.length,
-      });
-    }
-    const overriddenCommands = new Set(sanitized.map((entry) => entry.command));
-    const mergedBeforeCapLength =
-      DEFAULT_RESOLVED_KEYBINDINGS.filter((binding) => !overriddenCommands.has(binding.command))
-        .length + sanitized.length;
-    const merged = mergeWithDefaultKeybindings(sanitized);
-    if (mergedBeforeCapLength > 256) {
-      logger.warn("truncating merged keybindings config to max entries", {
-        path: configPath,
-        maxEntries: 256,
-      });
-    }
-    return merged;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return [...DEFAULT_RESOLVED_KEYBINDINGS];
-    }
-    logger.warn("ignoring malformed keybindings config", {
-      path: configPath,
-      error: error instanceof Error ? error.message : String(error),
+  const customConfig = loadCustomKeybindingsConfig(logger);
+  const compiledCustomConfig = compileResolvedKeybindingsConfig(customConfig);
+  const overriddenCommands = new Set(compiledCustomConfig.map((entry) => entry.command));
+  const mergedBeforeCapLength =
+    DEFAULT_RESOLVED_KEYBINDINGS.filter((binding) => !overriddenCommands.has(binding.command))
+      .length + compiledCustomConfig.length;
+  const merged = mergeWithDefaultKeybindings(compiledCustomConfig);
+  if (mergedBeforeCapLength > MAX_KEYBINDINGS) {
+    logger.warn("truncating merged keybindings config to max entries", {
+      path: resolveKeybindingsConfigPath(),
+      maxEntries: MAX_KEYBINDINGS,
     });
   }
-  return [...DEFAULT_RESOLVED_KEYBINDINGS];
+  return merged;
+}
+
+export function upsertKeybindingRule(
+  logger: KeybindingsLogger,
+  rawRule: unknown,
+): ResolvedKeybindingsConfig {
+  const rule = keybindingRuleSchema.parse(rawRule);
+  if (!compileResolvedKeybindingRule(rule)) {
+    throw new Error(`Invalid keybinding shortcut: "${rule.key}"`);
+  }
+
+  const configPath = resolveKeybindingsConfigPath();
+  const customConfig = loadCustomKeybindingsConfig(logger);
+  const nextConfig = [...customConfig.filter((entry) => entry.command !== rule.command), rule];
+  const cappedConfig =
+    nextConfig.length > MAX_KEYBINDINGS ? nextConfig.slice(-MAX_KEYBINDINGS) : nextConfig;
+
+  if (nextConfig.length > MAX_KEYBINDINGS) {
+    logger.warn("truncating keybindings config to max entries", {
+      path: configPath,
+      maxEntries: MAX_KEYBINDINGS,
+    });
+  }
+
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, `${JSON.stringify(cappedConfig, null, 2)}\n`, "utf8");
+
+  const compiledCustomConfig = compileResolvedKeybindingsConfig(cappedConfig);
+  return mergeWithDefaultKeybindings(compiledCustomConfig);
 }

@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-export const PROJECT_SCRIPT_ICON_VALUES = ["play", "test", "lint", "configure", "build"] as const;
+export const PROJECT_SCRIPT_ICON_VALUES = [
+  "play",
+  "test",
+  "lint",
+  "configure",
+  "build",
+  "debug",
+] as const;
 
 export const projectScriptIconSchema = z.enum(PROJECT_SCRIPT_ICON_VALUES);
 

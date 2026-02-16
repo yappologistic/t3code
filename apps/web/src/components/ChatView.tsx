@@ -31,7 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
-import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
+import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 
 import { isElectron } from "../env";
 import { buildBootstrapInput } from "../historyBootstrap";
@@ -97,8 +97,10 @@ import { Badge } from "./ui/badge";
 import { Command, CommandInput, CommandItem, CommandList } from "./ui/command";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {
+  commandForProjectScript,
   injectEnvIntoShellCommand,
   nextProjectScriptId,
+  projectScriptRuntimeEnv,
   projectScriptIdFromCommand,
   setupProjectScript,
 } from "~/projectScripts";
@@ -109,6 +111,7 @@ function formatMessageMeta(createdAt: string, duration: string | null): string {
 }
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
+const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
@@ -124,6 +127,24 @@ const SEARCHABLE_MODEL_OPTIONS = MODEL_OPTIONS.map(({ slug, name }) => ({
 }));
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
+
+function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
+  const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
+  if (!stored) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === "string" && typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -330,6 +351,9 @@ export default function ChatView() {
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerCursor, setComposerCursor] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useState<
+    Record<string, string>
+  >(() => readLastInvokedScriptByProjectFromStorage());
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -635,6 +659,10 @@ export default function ChatView() {
       },
     ) => {
       if (!api || !activeThreadId || !activeProject || !activeThread) return;
+      setLastInvokedScriptByProjectId((current) => {
+        if (current[activeProject.id] === script.id) return current;
+        return { ...current, [activeProject.id]: script.id };
+      });
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
       const baseTerminalId = activeThread.activeTerminalId;
       const isBaseTerminalBusy = activeThread.runningTerminalIds.includes(baseTerminalId);
@@ -663,12 +691,20 @@ export default function ChatView() {
       }
       setTerminalFocusRequestId((value) => value + 1);
 
-      const scriptEnv =
-        options?.env ??
-        (script.runOnWorktreeCreate ? { T3CODE_PROJECT_ROOT: activeProject.cwd } : undefined);
-      const resolvedCommand = scriptEnv
-        ? injectEnvIntoShellCommand(script.command, scriptEnv)
-        : script.command;
+      const resolvedCommand = injectEnvIntoShellCommand(
+        script.command,
+        projectScriptRuntimeEnv({
+          project: {
+            id: activeProject.id,
+            name: activeProject.name,
+            cwd: activeProject.cwd,
+          },
+          script,
+          threadId: activeThreadId,
+          worktreePath: activeThread.worktreePath ?? null,
+          extraEnv: options?.env,
+        }),
+      );
 
       try {
         await api.terminal.open({
@@ -723,17 +759,45 @@ export default function ChatView() {
       });
 
       if (!isElectron || !api) return;
+      let scriptsPersisted = false;
       try {
         const updated = await api.projects.updateScripts({
           id: activeProject.id,
           scripts: nextScripts,
         });
+        scriptsPersisted = true;
+
+        if (input.keybinding) {
+          const keybindingUpdate = await api.server.upsertKeybinding({
+            key: input.keybinding,
+            command: commandForProjectScript(nextId),
+          });
+          queryClient.setQueryData(
+            serverQueryKeys.config(),
+            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
+              current
+                ? { ...current, keybindings: keybindingUpdate.keybindings }
+                : {
+                    cwd: activeProject.cwd,
+                    keybindings: keybindingUpdate.keybindings,
+                  },
+          );
+        }
+
         dispatch({
           type: "SET_PROJECT_SCRIPTS",
           projectId: updated.project.id,
           scripts: updated.project.scripts,
         });
       } catch (error) {
+        if (scriptsPersisted) {
+          await api.projects
+            .updateScripts({
+              id: activeProject.id,
+              scripts: activeProject.scripts,
+            })
+            .catch(() => undefined);
+        }
         dispatch({
           type: "SET_PROJECT_SCRIPTS",
           projectId: activeProject.id,
@@ -742,7 +806,86 @@ export default function ChatView() {
         throw error;
       }
     },
-    [activeProject, api, dispatch],
+    [activeProject, api, dispatch, queryClient],
+  );
+  const updateProjectScript = useCallback(
+    async (scriptId: string, input: NewProjectScriptInput) => {
+      if (!activeProject) return;
+      const existingScript = activeProject.scripts.find((script) => script.id === scriptId);
+      if (!existingScript) {
+        throw new Error("Script not found.");
+      }
+
+      const updatedScript: ProjectScript = {
+        ...existingScript,
+        name: input.name,
+        command: input.command,
+        icon: input.icon,
+        runOnWorktreeCreate: input.runOnWorktreeCreate,
+      };
+      const nextScripts = activeProject.scripts.map((script) =>
+        script.id === scriptId
+          ? updatedScript
+          : input.runOnWorktreeCreate
+            ? { ...script, runOnWorktreeCreate: false }
+            : script,
+      );
+
+      dispatch({
+        type: "SET_PROJECT_SCRIPTS",
+        projectId: activeProject.id,
+        scripts: nextScripts,
+      });
+
+      if (!isElectron || !api) return;
+      let scriptsPersisted = false;
+      try {
+        const updated = await api.projects.updateScripts({
+          id: activeProject.id,
+          scripts: nextScripts,
+        });
+        scriptsPersisted = true;
+
+        if (input.keybinding) {
+          const keybindingUpdate = await api.server.upsertKeybinding({
+            key: input.keybinding,
+            command: commandForProjectScript(scriptId),
+          });
+          queryClient.setQueryData(
+            serverQueryKeys.config(),
+            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
+              current
+                ? { ...current, keybindings: keybindingUpdate.keybindings }
+                : {
+                    cwd: activeProject.cwd,
+                    keybindings: keybindingUpdate.keybindings,
+                  },
+          );
+        }
+
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: updated.project.id,
+          scripts: updated.project.scripts,
+        });
+      } catch (error) {
+        if (scriptsPersisted) {
+          await api.projects
+            .updateScripts({
+              id: activeProject.id,
+              scripts: activeProject.scripts,
+            })
+            .catch(() => undefined);
+        }
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: activeProject.id,
+          scripts: activeProject.scripts,
+        });
+        throw error;
+      }
+    },
+    [activeProject, api, dispatch, queryClient],
   );
 
   const handleRuntimeModeChange = async (mode: "approval-required" | "full-access") => {
@@ -767,6 +910,21 @@ export default function ChatView() {
       setIsSwitchingRuntimeMode(false);
     }
   };
+
+  useEffect(() => {
+    try {
+      if (Object.keys(lastInvokedScriptByProjectId).length === 0) {
+        localStorage.removeItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
+        return;
+      }
+      localStorage.setItem(
+        LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
+        JSON.stringify(lastInvokedScriptByProjectId),
+      );
+    } catch {
+      // Ignore storage write failures (private mode, quota exceeded, etc.)
+    }
+  }, [lastInvokedScriptByProjectId]);
 
   // Auto-scroll on new messages
   const messageCount = activeThread?.messages.length ?? 0;
@@ -1192,7 +1350,6 @@ export default function ChatView() {
         if (setupScript) {
           void runProjectScript(setupScript, {
             cwd: result.worktree.path,
-            env: { T3CODE_PROJECT_ROOT: activeProject.cwd },
           });
         }
       } catch (err) {
@@ -1474,6 +1631,9 @@ export default function ChatView() {
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
           activeProjectScripts={activeProject?.scripts}
+          preferredScriptId={
+            activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+          }
           keybindings={keybindings}
           api={api}
           gitCwd={gitCwd}
@@ -1482,6 +1642,7 @@ export default function ChatView() {
             void runProjectScript(script);
           }}
           onAddProjectScript={saveProjectScript}
+          onUpdateProjectScript={updateProjectScript}
           onToggleDiff={onToggleDiff}
         />
       </header>
@@ -1806,12 +1967,14 @@ interface ChatHeaderProps {
   activeThreadTitle: string;
   activeProjectName: string | undefined;
   activeProjectScripts: ProjectScript[] | undefined;
+  preferredScriptId: string | null;
   keybindings: ResolvedKeybindingsConfig;
   api: NativeApi | undefined;
   gitCwd: string | null;
   diffOpen: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
+  onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onToggleDiff: () => void;
 }
 
@@ -1819,12 +1982,14 @@ const ChatHeader = memo(function ChatHeader({
   activeThreadTitle,
   activeProjectName,
   activeProjectScripts,
+  preferredScriptId,
   keybindings,
   api,
   gitCwd,
   diffOpen,
   onRunProjectScript,
   onAddProjectScript,
+  onUpdateProjectScript,
   onToggleDiff,
 }: ChatHeaderProps) {
   return (
@@ -1840,8 +2005,10 @@ const ChatHeader = memo(function ChatHeader({
           <ProjectScriptsControl
             scripts={activeProjectScripts}
             keybindings={keybindings}
+            preferredScriptId={preferredScriptId}
             onRunScript={onRunProjectScript}
             onAddScript={onAddProjectScript}
+            onUpdateScript={onUpdateProjectScript}
           />
         )}
         {activeProjectName && <OpenInPicker keybindings={keybindings} />}

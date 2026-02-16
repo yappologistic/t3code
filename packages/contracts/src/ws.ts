@@ -42,6 +42,7 @@ export const WS_METHODS = {
 
   // Server meta
   serverGetConfig: "server.getConfig",
+  serverUpsertKeybinding: "server.upsertKeybinding",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────

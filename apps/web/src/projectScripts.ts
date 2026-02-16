@@ -82,6 +82,38 @@ export function injectEnvIntoShellCommand(
   return `env ${assignments} ${command}`;
 }
 
+interface ProjectScriptRuntimeEnvInput {
+  project: {
+    id: string;
+    name: string;
+    cwd: string;
+  };
+  script: Pick<ProjectScript, "id" | "name" | "icon" | "runOnWorktreeCreate">;
+  threadId: string;
+  worktreePath?: string | null;
+  extraEnv?: Record<string, string>;
+}
+
+export function projectScriptRuntimeEnv(input: ProjectScriptRuntimeEnvInput): Record<string, string> {
+  const env: Record<string, string> = {
+    T3CODE_PROJECT_ROOT: input.project.cwd,
+    T3CODE_PROJECT_ID: input.project.id,
+    T3CODE_PROJECT_NAME: input.project.name,
+    T3CODE_THREAD_ID: input.threadId,
+    T3CODE_SCRIPT_ID: input.script.id,
+    T3CODE_SCRIPT_NAME: input.script.name,
+    T3CODE_SCRIPT_ICON: input.script.icon,
+    T3CODE_SCRIPT_IS_SETUP: input.script.runOnWorktreeCreate ? "1" : "0",
+  };
+  if (input.worktreePath) {
+    env.T3CODE_WORKTREE_PATH = input.worktreePath;
+  }
+  if (input.extraEnv) {
+    return { ...env, ...input.extraEnv };
+  }
+  return env;
+}
+
 export function primaryProjectScript(scripts: ProjectScript[]): ProjectScript | null {
   const regular = scripts.find((script) => !script.runOnWorktreeCreate);
   return regular ?? scripts[0] ?? null;
