@@ -31,6 +31,7 @@ import {
   removeGitWorktree,
 } from "./git";
 import { TerminalManager } from "./terminalManager";
+import { loadResolvedKeybindingsConfig } from "./keybindings";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -90,6 +91,7 @@ export function createServer(options: ServerOptions) {
   const logger = createLogger("ws");
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
+  const keybindingsConfig = loadResolvedKeybindingsConfig(logger);
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;
@@ -410,7 +412,10 @@ export function createServer(options: ServerOptions) {
         return undefined;
 
       case WS_METHODS.serverGetConfig:
-        return { cwd };
+        return {
+          cwd,
+          keybindings: keybindingsConfig,
+        };
 
       default:
         throw new Error(`Unknown method: ${request.method}`);

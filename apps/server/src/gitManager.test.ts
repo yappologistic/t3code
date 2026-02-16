@@ -190,15 +190,15 @@ describe("GitManager", () => {
 
     const status = await manager.status({ cwd: repoDir });
     expect(status.branch).toBe("feature/status-open-pr");
-    expect(status.openPr).toEqual({
+    expect(status.pr).toEqual({
       number: 13,
       title: "Existing PR",
       url: "https://github.com/pingdotgg/codething-mvp/pull/13",
       baseBranch: "main",
       headBranch: "feature/status-open-pr",
+      state: "open",
     });
-    expect(status.mergedPr).toBeNull();
-    expect(ghCalls.some((call) => call.includes("--state merged"))).toBe(false);
+    expect(ghCalls.some((call) => call.includes("--state all"))).toBe(true);
   });
 
   it("status includes merged PR metadata when there is no open PR", async () => {
@@ -211,7 +211,6 @@ describe("GitManager", () => {
 
     const { runner, ghCalls } = createRunnerWithFakeGh({
       prListSequence: [
-        "[]",
         JSON.stringify([
           {
             number: 26,
@@ -219,6 +218,9 @@ describe("GitManager", () => {
             url: "https://github.com/pingdotgg/codething-mvp/pull/26",
             baseRefName: "main",
             headRefName: "feature/status-merged-pr",
+            state: "CLOSED",
+            mergedAt: "2026-02-14T10:00:00Z",
+            updatedAt: "2026-02-14T10:00:00Z",
           },
         ]),
       ],
@@ -231,18 +233,18 @@ describe("GitManager", () => {
 
     const status = await manager.status({ cwd: repoDir });
     expect(status.branch).toBe("feature/status-merged-pr");
-    expect(status.openPr).toBeNull();
-    expect(status.mergedPr).toEqual({
+    expect(status.pr).toEqual({
       number: 26,
       title: "Merged PR",
       url: "https://github.com/pingdotgg/codething-mvp/pull/26",
       baseBranch: "main",
       headBranch: "feature/status-merged-pr",
+      state: "merged",
     });
-    expect(ghCalls.some((call) => call.includes("--state merged"))).toBe(true);
+    expect(ghCalls.some((call) => call.includes("--state all"))).toBe(true);
   });
 
-  it("status skips open PR lookup for branches without upstream", async () => {
+  it("status checks all PR states for branches without upstream", async () => {
     const repoDir = makeTempDir("t3code-git-manager-");
     await initRepo(repoDir);
     await runGit(repoDir, ["checkout", "-b", "feature/local-only"]);
@@ -258,13 +260,11 @@ describe("GitManager", () => {
 
     const status = await manager.status({ cwd: repoDir });
     expect(status.branch).toBe("feature/local-only");
-    expect(status.openPr).toBeNull();
-    expect(status.mergedPr).toBeNull();
-    expect(ghCalls.some((call) => call.includes("--state open"))).toBe(false);
-    expect(ghCalls.some((call) => call.includes("--state merged"))).toBe(true);
+    expect(status.pr).toBeNull();
+    expect(ghCalls.some((call) => call.includes("--state all"))).toBe(true);
   });
 
-  it("status is resilient to gh lookup failures and returns openPr/mergedPr null", async () => {
+  it("status is resilient to gh lookup failures and returns pr null", async () => {
     const repoDir = makeTempDir("t3code-git-manager-");
     await initRepo(repoDir);
     await runGit(repoDir, ["checkout", "-b", "feature/status-no-gh"]);
@@ -282,8 +282,7 @@ describe("GitManager", () => {
 
     const status = await manager.status({ cwd: repoDir });
     expect(status.branch).toBe("feature/status-no-gh");
-    expect(status.openPr).toBeNull();
-    expect(status.mergedPr).toBeNull();
+    expect(status.pr).toBeNull();
   });
 
   it("creates a commit when working tree is dirty", async () => {

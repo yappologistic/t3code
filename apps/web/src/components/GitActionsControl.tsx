@@ -57,7 +57,7 @@ function getMenuActionDisabledReason(
 
   const hasBranch = gitStatus.branch !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
-  const hasOpenPr = gitStatus.openPr !== null;
+  const hasOpenPr = gitStatus.pr?.state === "open";
   const isAhead = gitStatus.aheadCount > 0;
   const isBehind = gitStatus.behindCount > 0;
 
@@ -217,7 +217,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       });
       return;
     }
-    const prUrl = gitStatusForActions?.openPr?.url ?? null;
+    const prUrl = gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr.url : null;
     if (!prUrl) {
       toastManager.add({
         type: "error",
@@ -237,7 +237,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       }),
     });
     void promise.catch(() => undefined);
-  }, [api, gitStatusForActions?.openPr?.url, threadToastData]);
+  }, [api, gitStatusForActions?.pr, threadToastData]);
 
   const runGitActionWithToast = useCallback(
     async ({
@@ -297,7 +297,9 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
         stopProgressUpdates();
         const resultToast = summarizeGitResult(result);
 
-        const prUrl = result.pr.url ?? gitStatusForActions?.openPr?.url;
+        const existingOpenPrUrl =
+          gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr.url : undefined;
+        const prUrl = result.pr.url ?? existingOpenPrUrl;
         const shouldOfferPushCta = action === "commit" && result.commit.status === "created";
         const shouldOfferOpenPrCta =
           (action === "commit_push" || action === "commit_push_pr") && !!prUrl && !isDefaultBranch;
@@ -312,7 +314,10 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
           title: resultToast.title,
           description: resultToast.description,
           timeout: 0,
-          data: threadToastData,
+          data: {
+            ...threadToastData,
+            dismissAfterVisibleMs: 10_000,
+          },
           ...(shouldOfferPushCta
             ? {
                 actionProps: {
@@ -362,7 +367,7 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       api,
       gitStatusForActions?.branch,
       gitStatusForActions?.hasWorkingTreeChanges,
-      gitStatusForActions?.openPr?.url,
+      gitStatusForActions?.pr,
       isDefaultBranch,
       maybeConfirmPushToDefaultBranch,
       runImmediateGitActionMutation,

@@ -67,8 +67,7 @@ function parsePullRequestList(raw: unknown): PullRequestInfo[] {
       typeof title !== "string" ||
       typeof url !== "string" ||
       typeof baseRefName !== "string" ||
-      typeof headRefName !== "string" ||
-      typeof state !== "string"
+      typeof headRefName !== "string"
     ) {
       continue;
     }
@@ -76,7 +75,7 @@ function parsePullRequestList(raw: unknown): PullRequestInfo[] {
     let normalizedState: GitStatusPrState;
     if ((typeof mergedAt === "string" && mergedAt.trim().length > 0) || state === "MERGED") {
       normalizedState = "merged";
-    } else if (state === "OPEN") {
+    } else if (state === "OPEN" || state === undefined || state === null) {
       normalizedState = "open";
     } else if (state === "CLOSED") {
       normalizedState = "closed";

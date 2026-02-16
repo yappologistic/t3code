@@ -1,12 +1,20 @@
-import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
+import {
+  GitPullRequestIcon,
+  MonitorIcon,
+  MoonIcon,
+  SunIcon,
+  TerminalIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitStatusResultSchema, type GitStatusResult } from "@t3tools/contracts";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
 import { derivePendingApprovals } from "../session-logic";
 import { useStore } from "../store";
+import { isChatNewLocalShortcut, isChatNewShortcut } from "../keybindings";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -15,9 +23,13 @@ import {
 } from "../types";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
+import { serverConfigQueryOptions } from "../lib/serverReactQuery";
+import { toastManager } from "./ui/toast";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 
 const THEME_CYCLE = { system: "light", light: "dark", dark: "system" } as const;
+const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
+
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60_000);
@@ -36,7 +48,7 @@ function inferProjectName(cwd: string): string {
 }
 
 interface ThreadStatusPill {
-  label: "Working" | "Connecting" | "Completed" | "Awaiting response" | "Merged";
+  label: "Working" | "Connecting" | "Completed" | "Awaiting response";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -47,6 +59,13 @@ interface TerminalStatusIndicator {
   colorClass: string;
   pulse: boolean;
 }
+
+interface PrStatusIndicator {
+  label: "PR open" | "PR closed" | "PR merged";
+  colorClass: string;
+}
+
+type ThreadPrState = NonNullable<GitStatusResult["pr"]>["state"] | null;
 
 function hasUnseenCompletion(thread: Thread): boolean {
   if (!thread.latestTurnCompletedAt) return false;
@@ -62,7 +81,6 @@ function hasUnseenCompletion(thread: Thread): boolean {
 function threadStatusPill(
   thread: Thread,
   hasPendingApprovals: boolean,
-  hasMergedPr: boolean,
 ): ThreadStatusPill | null {
   if (hasPendingApprovals) {
     return {
@@ -91,15 +109,6 @@ function threadStatusPill(
     };
   }
 
-  if (hasMergedPr) {
-    return {
-      label: "Merged",
-      colorClass: "text-violet-600 dark:text-violet-300/90",
-      dotClass: "bg-violet-500 dark:bg-violet-300/90",
-      pulse: false,
-    };
-  }
-
   if (hasUnseenCompletion(thread)) {
     return {
       label: "Completed",
@@ -109,6 +118,28 @@ function threadStatusPill(
     };
   }
 
+  return null;
+}
+
+function prStatusIndicator(prState: ThreadPrState): PrStatusIndicator | null {
+  if (prState === "open") {
+    return {
+      label: "PR open",
+      colorClass: "text-emerald-600 dark:text-emerald-300/90",
+    };
+  }
+  if (prState === "closed") {
+    return {
+      label: "PR closed",
+      colorClass: "text-zinc-500 dark:text-zinc-400/80",
+    };
+  }
+  if (prState === "merged") {
+    return {
+      label: "PR merged",
+      colorClass: "text-violet-600 dark:text-violet-300/90",
+    };
+  }
   return null;
 }
 
@@ -126,8 +157,14 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
 export default function Sidebar() {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
+  const { data: keybindings = EMPTY_KEYBINDINGS } = useQuery({
+    ...serverConfigQueryOptions(api),
+    select: (config) => config.keybindings,
+  });
   const queryClient = useQueryClient();
-  const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ api, queryClient }));
+  const removeWorktreeMutation = useMutation(
+    gitRemoveWorktreeMutationOptions({ api, queryClient }),
+  );
   const { theme, setTheme } = useTheme();
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");
@@ -176,7 +213,7 @@ export default function Sidebar() {
       };
     }),
   });
-  const mergedPrByThreadId = useMemo(() => {
+  const prStateByThreadId = useMemo(() => {
     const statusByCwd = new Map<string, GitStatusResult>();
     for (let index = 0; index < threadGitStatusCwds.length; index += 1) {
       const cwd = threadGitStatusCwds[index];
@@ -187,18 +224,24 @@ export default function Sidebar() {
       }
     }
 
-    const map = new Map<string, boolean>();
+    const map = new Map<string, ThreadPrState>();
     for (const target of threadGitTargets) {
       const status = target.cwd ? statusByCwd.get(target.cwd) : undefined;
       const branchMatches =
         target.branch !== null && status?.branch !== null && status?.branch === target.branch;
-      map.set(target.threadId, branchMatches && status?.openPr === null && status?.mergedPr !== null);
+      map.set(target.threadId, branchMatches ? status?.pr?.state ?? null : null);
     }
     return map;
   }, [threadGitStatusCwds, threadGitStatusQueries, threadGitTargets]);
 
   const handleNewThread = useCallback(
-    (projectId: string) => {
+    (
+      projectId: string,
+      options?: {
+        branch?: string | null;
+        worktreePath?: string | null;
+      },
+    ) => {
       dispatch({
         type: "ADD_THREAD",
         thread: {
@@ -224,8 +267,8 @@ export default function Sidebar() {
           events: [],
           error: null,
           createdAt: new Date().toISOString(),
-          branch: null,
-          worktreePath: null,
+          branch: options?.branch ?? null,
+          worktreePath: options?.worktreePath ?? null,
         },
       });
     },
@@ -392,29 +435,77 @@ export default function Sidebar() {
     [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
   );
 
+  const handleProjectContextMenu = useCallback(
+    async (projectId: string, position: { x: number; y: number }) => {
+      if (!api) return;
+      const clicked = await api.contextMenu.show([{ id: "delete", label: "Delete" }], position);
+      if (clicked !== "delete") return;
+
+      const project = state.projects.find((entry) => entry.id === projectId);
+      if (!project) return;
+
+      const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
+      if (projectThreads.length > 0) {
+        toastManager.add({
+          type: "warning",
+          title: "Project is not empty",
+          description: "Delete all threads in this project before deleting it.",
+        });
+        return;
+      }
+
+      const confirmed = await api.dialogs.confirm(
+        [`Delete project "${project.name}"?`, "This action cannot be undone."].join("\n"),
+      );
+      if (!confirmed) return;
+
+      if (isElectron) {
+        try {
+          await api.projects.remove({ id: projectId });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown error deleting project.";
+          console.error("Failed to remove project", { projectId, error });
+          toastManager.add({
+            type: "error",
+            title: `Failed to delete "${project.name}"`,
+            description: message,
+          });
+          return;
+        }
+      }
+
+      dispatch({ type: "DELETE_PROJECT", projectId });
+    },
+    [api, dispatch, state.projects, state.threads],
+  );
+
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      const isNewThreadShortcut =
-        event.metaKey &&
-        event.shiftKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        event.key.toLowerCase() === "o";
-      if (!isNewThreadShortcut) return;
-
       const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
+      if (isChatNewLocalShortcut(event, keybindings)) {
+        const projectId = activeThread?.projectId ?? state.projects[0]?.id;
+        if (!projectId) return;
+        event.preventDefault();
+        handleNewThread(projectId);
+        return;
+      }
+
+      if (!isChatNewShortcut(event, keybindings)) return;
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
       if (!projectId) return;
-
       event.preventDefault();
-      handleNewThread(projectId);
+      handleNewThread(projectId, {
+        branch: activeThread?.branch ?? null,
+        worktreePath: activeThread?.worktreePath ?? null,
+      });
     };
 
     window.addEventListener("keydown", onWindowKeyDown);
     return () => {
       window.removeEventListener("keydown", onWindowKeyDown);
     };
-  }, [handleNewThread, state.activeThreadId, state.projects, state.threads]);
+  }, [handleNewThread, keybindings, state.activeThreadId, state.projects, state.threads]);
 
   return (
     <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
@@ -478,6 +569,13 @@ export default function Sidebar() {
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent"
                 onClick={() => dispatch({ type: "TOGGLE_PROJECT", projectId: project.id })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  void handleProjectContextMenu(project.id, {
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
               >
                 <span className="text-[10px] text-muted-foreground/70">
                   {project.expanded ? "▼" : "▶"}
@@ -496,9 +594,9 @@ export default function Sidebar() {
                     const threadStatus = threadStatusPill(
                       thread,
                       pendingApprovalByThreadId.get(thread.id) === true,
-                      mergedPrByThreadId.get(thread.id) === true,
                     );
                     const terminalStatus = terminalStatusIndicator(thread);
+                    const prStatus = prStatusIndicator(prStateByThreadId.get(thread.id) ?? null);
                     return (
                       <button
                         key={thread.id}
@@ -538,6 +636,16 @@ export default function Sidebar() {
                           <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
                         </div>
                         <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                          {prStatus && (
+                            <span
+                              role="img"
+                              aria-label={prStatus.label}
+                              title={prStatus.label}
+                              className={`inline-flex items-center justify-center ${prStatus.colorClass}`}
+                            >
+                              <GitPullRequestIcon className="size-3" />
+                            </span>
+                          )}
                           {terminalStatus && (
                             <span
                               role="img"

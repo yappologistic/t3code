@@ -11,10 +11,13 @@ import {
   DEFAULT_TERMINAL_ID,
   WS_CHANNELS,
   WS_METHODS,
+  type KeybindingsConfig,
+  type ResolvedKeybindingsConfig,
   type WsPush,
   type WsResponse,
 } from "@t3tools/contracts";
 import { ProjectRegistry } from "./projectRegistry";
+import { compileResolvedKeybindingRule, DEFAULT_KEYBINDINGS } from "./keybindings";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -192,6 +195,32 @@ async function sendRequest(ws: WebSocket, method: string, params?: unknown): Pro
   }
 }
 
+function compileKeybindings(bindings: KeybindingsConfig): ResolvedKeybindingsConfig {
+  const resolved: ResolvedKeybindingsConfig = [];
+  for (const binding of bindings) {
+    const compiled = compileResolvedKeybindingRule(binding);
+    if (!compiled) {
+      throw new Error(`Unexpected invalid keybinding in test setup: ${binding.command}`);
+    }
+    resolved.push(compiled);
+  }
+  return resolved;
+}
+
+const DEFAULT_RESOLVED_KEYBINDINGS = compileKeybindings([...DEFAULT_KEYBINDINGS]);
+
+function mergeWithDefaultsForTest(custom: KeybindingsConfig): ResolvedKeybindingsConfig {
+  if (custom.length === 0) {
+    return DEFAULT_RESOLVED_KEYBINDINGS;
+  }
+
+  const overriddenCommands = new Set(custom.map((binding) => binding.command));
+  const retainedDefaults = DEFAULT_KEYBINDINGS.filter(
+    (binding) => !overriddenCommands.has(binding.command),
+  );
+  return compileKeybindings([...retainedDefaults, ...custom].slice(-256));
+}
+
 describe("WebSocket Server", () => {
   let server: ReturnType<typeof createServer> | null = null;
   const connections: WebSocket[] = [];
@@ -307,7 +336,225 @@ describe("WebSocket Server", () => {
 
     const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
     expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({ cwd: "/my/workspace" });
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+  });
+
+  it("reads keybindings from ~/.t3/keybindings.json", async () => {
+    const fakeHome = makeTempDir("t3code-home-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "keybindings.json"),
+      JSON.stringify([
+        { key: "cmd+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
+      ]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: mergeWithDefaultsForTest([
+        { key: "cmd+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
+      ]),
+    });
+  });
+
+  it("warns and ignores invalid keybinding entries", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fakeHome = makeTempDir("t3code-home-invalid-entry-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "keybindings.json"),
+      JSON.stringify([
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+z", command: "invalid.command", when: "terminalFocus" },
+      ]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: mergeWithDefaultsForTest([{ key: "mod+j", command: "terminal.toggle" }]),
+    });
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("ignoring invalid keybinding entries"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns and ignores keybindings with malformed when expressions", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fakeHome = makeTempDir("t3code-home-invalid-when-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "keybindings.json"),
+      JSON.stringify([{ key: "mod+j", command: "terminal.toggle", when: "terminalFocus && (" }]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("ignoring invalid keybinding entries"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reads keybindings once at startup and caches the resolved config", async () => {
+    const fakeHome = makeTempDir("t3code-home-cached-config-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    const keybindingsPath = path.join(configDir, "keybindings.json");
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([{ key: "cmd+j", command: "terminal.toggle" }]),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const firstResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(firstResponse.error).toBeUndefined();
+    expect(firstResponse.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: mergeWithDefaultsForTest([{ key: "cmd+j", command: "terminal.toggle" }]),
+    });
+
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([{ key: "cmd+k", command: "terminal.toggle" }]),
+      "utf8",
+    );
+
+    const secondResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(secondResponse.error).toBeUndefined();
+    expect(secondResponse.result).toEqual(firstResponse.result);
+  });
+
+  it("warns and ignores unsupported keybindings config format", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fakeHome = makeTempDir("t3code-home-unsupported-format-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "keybindings.json"),
+      JSON.stringify({ "terminal.toggle": "mod+j" }),
+      "utf8",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("unsupported format; expected array"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns and ignores malformed keybindings config files", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fakeHome = makeTempDir("t3code-home-invalid-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "keybindings.json"), "{not-json", "utf8");
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    server = createTestServer({ cwd: "/my/workspace" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("ignoring malformed keybindings config"),
+      ),
+    ).toBe(true);
   });
 
   it("returns error for unknown methods", async () => {

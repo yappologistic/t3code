@@ -486,6 +486,51 @@ describe("store reducer thread continuity", () => {
     expect(next.activeThreadId).toBe("thread-a");
   });
 
+  it("deletes a project and all of its threads", () => {
+    const state: AppState = {
+      projects: [
+        {
+          id: "project-1",
+          name: "One",
+          cwd: "/tmp/one",
+          model: "gpt-5.3-codex",
+          expanded: true,
+        },
+        {
+          id: "project-2",
+          name: "Two",
+          cwd: "/tmp/two",
+          model: "gpt-5.3-codex",
+          expanded: true,
+        },
+      ],
+      threads: [
+        makeThread({
+          id: "thread-a",
+          projectId: "project-1",
+        }),
+        makeThread({
+          id: "thread-b",
+          projectId: "project-2",
+        }),
+      ],
+      activeThreadId: "thread-a",
+      runtimeMode: "full-access",
+      diffOpen: false,
+    };
+
+    const next = reducer(state, {
+      type: "DELETE_PROJECT",
+      projectId: "project-1",
+    });
+
+    expect(next.projects).toHaveLength(1);
+    expect(next.projects[0]?.id).toBe("project-2");
+    expect(next.threads).toHaveLength(1);
+    expect(next.threads[0]?.id).toBe("thread-b");
+    expect(next.activeThreadId).toBe("thread-b");
+  });
+
   it("marks the active thread as visited when selected", () => {
     const state = makeState(
       makeThread({
