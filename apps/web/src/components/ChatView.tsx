@@ -969,7 +969,7 @@ export default function ChatView() {
   // Empty state: no active thread
   if (!activeThread) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col bg-background text-muted-foreground/40">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
         {isElectron && (
           <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
             <span className="text-xs text-muted-foreground/50">No active thread</span>
@@ -985,7 +985,7 @@ export default function ChatView() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* Top bar */}
       <header
         className={`flex items-center justify-between border-b border-border px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
@@ -1304,11 +1304,13 @@ const ChatHeader = memo(function ChatHeader({
 }: ChatHeaderProps) {
   return (
     <>
-      <div className="flex items-center gap-3">
-        <h2 className="text-sm font-medium text-foreground">{activeThreadTitle}</h2>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <h2 className="truncate text-sm font-medium text-foreground" title={activeThreadTitle}>
+          {activeThreadTitle}
+        </h2>
         {activeProjectName && <Badge variant="outline">{activeProjectName}</Badge>}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="shrink-0 flex items-center gap-3">
         {activeProjectName && <OpenInPicker keybindings={keybindings} />}
         {activeProjectName && <GitActionsControl api={api} gitCwd={gitCwd} />}
         <Button
