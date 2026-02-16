@@ -7,6 +7,7 @@ import {
   gitRunStackedActionInputSchema,
   gitRunStackedActionResultSchema,
   gitStatusInputSchema,
+  type GitStatusPrState,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
   type GitStatusInput,
@@ -34,18 +35,20 @@ interface GitManagerDeps {
   gitCore?: GitCoreService;
 }
 
-interface OpenPrInfo {
+interface PullRequestInfo {
   number: number;
   title: string;
   url: string;
   baseRefName: string;
   headRefName: string;
+  state: GitStatusPrState;
+  updatedAt: string | null;
 }
 
-function parseOpenPrList(raw: unknown): OpenPrInfo[] {
+function parsePullRequestList(raw: unknown): PullRequestInfo[] {
   if (!Array.isArray(raw)) return [];
 
-  const parsed: OpenPrInfo[] = [];
+  const parsed: PullRequestInfo[] = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const record = entry as Record<string, unknown>;
@@ -54,6 +57,9 @@ function parseOpenPrList(raw: unknown): OpenPrInfo[] {
     const url = record.url;
     const baseRefName = record.baseRefName;
     const headRefName = record.headRefName;
+    const state = record.state;
+    const mergedAt = record.mergedAt;
+    const updatedAt = record.updatedAt;
     if (typeof number !== "number" || !Number.isInteger(number) || number <= 0) {
       continue;
     }
@@ -61,16 +67,34 @@ function parseOpenPrList(raw: unknown): OpenPrInfo[] {
       typeof title !== "string" ||
       typeof url !== "string" ||
       typeof baseRefName !== "string" ||
-      typeof headRefName !== "string"
+      typeof headRefName !== "string" ||
+      typeof state !== "string"
     ) {
       continue;
     }
+
+    let normalizedState: GitStatusPrState;
+    if ((typeof mergedAt === "string" && mergedAt.trim().length > 0) || state === "MERGED") {
+      normalizedState = "merged";
+    } else if (state === "OPEN") {
+      normalizedState = "open";
+    } else if (state === "CLOSED") {
+      normalizedState = "closed";
+    } else {
+      continue;
+    }
+
+    const normalizedUpdatedAt =
+      typeof updatedAt === "string" && updatedAt.trim().length > 0 ? updatedAt : null;
+
     parsed.push({
       number,
       title,
       url,
       baseRefName,
       headRefName,
+      state: normalizedState,
+      updatedAt: normalizedUpdatedAt,
     });
   }
   return parsed;
@@ -160,12 +184,13 @@ function normalizeGitHubAuthError(error: unknown): Error | undefined {
   return undefined;
 }
 
-function toStatusOpenPr(pr: OpenPrInfo): {
+function toStatusPr(pr: PullRequestInfo): {
   number: number;
   title: string;
   url: string;
   baseBranch: string;
   headBranch: string;
+  state: GitStatusPrState;
 } {
   return {
     number: pr.number,
@@ -173,6 +198,7 @@ function toStatusOpenPr(pr: OpenPrInfo): {
     url: pr.url,
     baseBranch: pr.baseRefName,
     headBranch: pr.headRefName,
+    state: pr.state,
   };
 }
 
@@ -191,21 +217,12 @@ export class GitManager {
     const input = gitStatusInputSchema.parse(raw);
     const details = await this.gitCore.statusDetails(input.cwd);
 
-    let openPr: ReturnType<typeof toStatusOpenPr> | null = null;
-    let mergedPr: ReturnType<typeof toStatusOpenPr> | null = null;
+    let pr: ReturnType<typeof toStatusPr> | null = null;
     if (details.branch) {
       try {
-        if (details.hasUpstream) {
-          const existing = await this.findOpenPr(input.cwd, details.branch);
-          if (existing) {
-            openPr = toStatusOpenPr(existing);
-          }
-        }
-        if (!openPr) {
-          const merged = await this.findMergedPr(input.cwd, details.branch);
-          if (merged) {
-            mergedPr = toStatusOpenPr(merged);
-          }
+        const existing = await this.findLatestPr(input.cwd, details.branch);
+        if (existing) {
+          pr = toStatusPr(existing);
         }
       } catch {
         // PR lookup is best-effort for status rendering.
@@ -219,8 +236,7 @@ export class GitManager {
       hasUpstream: details.hasUpstream,
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,
-      openPr,
-      mergedPr,
+      pr,
     };
   }
 
@@ -390,7 +406,7 @@ export class GitManager {
     };
   }
 
-  private async findOpenPr(cwd: string, branch: string): Promise<OpenPrInfo | null> {
+  private async findOpenPr(cwd: string, branch: string): Promise<PullRequestInfo | null> {
     const stdout = await this.runGhStdout(cwd, [
       "pr",
       "list",
@@ -401,7 +417,7 @@ export class GitManager {
       "--limit",
       "1",
       "--json",
-      "number,title,url,baseRefName,headRefName",
+      "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt",
     ]);
 
     const raw = trimStdout(stdout);
@@ -414,22 +430,22 @@ export class GitManager {
       throw new Error("GitHub CLI returned invalid PR list JSON.");
     }
 
-    const parsed = parseOpenPrList(parsedJson);
+    const parsed = parsePullRequestList(parsedJson);
     return parsed[0] ?? null;
   }
 
-  private async findMergedPr(cwd: string, branch: string): Promise<OpenPrInfo | null> {
+  private async findLatestPr(cwd: string, branch: string): Promise<PullRequestInfo | null> {
     const stdout = await this.runGhStdout(cwd, [
       "pr",
       "list",
       "--head",
       branch,
       "--state",
-      "merged",
+      "all",
       "--limit",
-      "1",
+      "20",
       "--json",
-      "number,title,url,baseRefName,headRefName",
+      "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt",
     ]);
 
     const raw = trimStdout(stdout);
@@ -442,7 +458,11 @@ export class GitManager {
       throw new Error("GitHub CLI returned invalid PR list JSON.");
     }
 
-    const parsed = parseOpenPrList(parsedJson);
+    const parsed = parsePullRequestList(parsedJson).toSorted((a, b) => {
+      const left = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const right = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      return right - left;
+    });
     return parsed[0] ?? null;
   }
 

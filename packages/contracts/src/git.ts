@@ -72,6 +72,17 @@ export const gitPullInputSchema = z.object({
   cwd: z.string().trim().min(1),
 });
 
+export const gitStatusPrStateSchema = z.enum(["open", "closed", "merged"]);
+
+export const gitStatusPrSchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
+  url: z.string().url(),
+  baseBranch: z.string().min(1),
+  headBranch: z.string().min(1),
+  state: gitStatusPrStateSchema,
+});
+
 export const gitStatusResultSchema = z.object({
   branch: z.string().min(1).nullable(),
   hasWorkingTreeChanges: z.boolean(),
@@ -89,24 +100,7 @@ export const gitStatusResultSchema = z.object({
   hasUpstream: z.boolean(),
   aheadCount: z.number().int().nonnegative(),
   behindCount: z.number().int().nonnegative(),
-  openPr: z
-    .object({
-      number: z.number().int().positive(),
-      title: z.string().min(1),
-      url: z.string().url(),
-      baseBranch: z.string().min(1),
-      headBranch: z.string().min(1),
-    })
-    .nullable(),
-  mergedPr: z
-    .object({
-      number: z.number().int().positive(),
-      title: z.string().min(1),
-      url: z.string().url(),
-      baseBranch: z.string().min(1),
-      headBranch: z.string().min(1),
-    })
-    .nullable(),
+  pr: gitStatusPrSchema.nullable(),
 });
 
 export const gitStackedActionSchema = z.enum(["commit", "commit_push", "commit_push_pr"]);
@@ -146,6 +140,8 @@ export const gitRunStackedActionResultSchema = z.object({
 
 export type GitStatusInput = z.input<typeof gitStatusInputSchema>;
 export type GitPullInput = z.input<typeof gitPullInputSchema>;
+export type GitStatusPrState = z.infer<typeof gitStatusPrStateSchema>;
+export type GitStatusPr = z.infer<typeof gitStatusPrSchema>;
 export type GitStatusResult = z.infer<typeof gitStatusResultSchema>;
 export type GitStackedAction = z.infer<typeof gitStackedActionSchema>;
 export type GitRunStackedActionInput = z.input<typeof gitRunStackedActionInputSchema>;
