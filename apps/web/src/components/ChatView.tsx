@@ -279,6 +279,10 @@ export default function ChatView() {
     () => shortcutLabelForCommand(keybindings, "terminal.new"),
     [keybindings],
   );
+  const closeTerminalShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "terminal.close"),
+    [keybindings],
+  );
 
   const envLocked = Boolean(
     activeThread &&
@@ -1464,6 +1468,7 @@ export default function ChatView() {
           onNewTerminal={createNewTerminal}
           splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
           newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+          closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
           onActiveTerminalChange={activateTerminal}
           onCloseTerminal={closeTerminal}
           onHeightChange={(height) =>

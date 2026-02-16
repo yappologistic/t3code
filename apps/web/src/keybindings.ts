@@ -206,12 +206,12 @@ export function isChatNewShortcut(
   return matchesCommandShortcut(event, keybindings, "chat.new", options);
 }
 
-export function isChatNewSameGitStateShortcut(
+export function isChatNewLocalShortcut(
   event: ShortcutEventLike,
   keybindings: ResolvedKeybindingsConfig,
   options?: ShortcutMatchOptions,
 ): boolean {
-  return matchesCommandShortcut(event, keybindings, "chat.newSameGitState", options);
+  return matchesCommandShortcut(event, keybindings, "chat.newLocal", options);
 }
 
 export function isOpenFavoriteEditorShortcut(

@@ -6,7 +6,7 @@ export const keybindingCommandSchema = z.enum([
   "terminal.new",
   "terminal.close",
   "chat.new",
-  "chat.newSameGitState",
+  "chat.newLocal",
   "editor.openFavorite",
 ]);
 

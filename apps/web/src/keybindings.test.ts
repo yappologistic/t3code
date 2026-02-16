@@ -7,9 +7,9 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import {
-  isChatNewSameGitStateShortcut,
   formatShortcutLabel,
   isChatNewShortcut,
+  isChatNewLocalShortcut,
   isOpenFavoriteEditorShortcut,
   isTerminalClearShortcut,
   isTerminalCloseShortcut,
@@ -91,7 +91,7 @@ const DEFAULT_BINDINGS = compile([
     whenAst: whenIdentifier("terminalFocus"),
   },
   { shortcut: modShortcut("o", { shiftKey: true }), command: "chat.new" },
-  { shortcut: modShortcut("n", { shiftKey: true }), command: "chat.newSameGitState" },
+  { shortcut: modShortcut("n", { shiftKey: true }), command: "chat.newLocal" },
   { shortcut: modShortcut("o"), command: "editor.openFavorite" },
 ]);
 
@@ -245,9 +245,9 @@ describe("chat/editor shortcuts", () => {
     );
   });
 
-  it("matches chat.newSameGitState shortcut", () => {
+  it("matches chat.newLocal shortcut", () => {
     assert.isTrue(
-      isChatNewSameGitStateShortcut(
+      isChatNewLocalShortcut(
         event({ key: "n", metaKey: true, shiftKey: true }),
         DEFAULT_BINDINGS,
         {
@@ -256,7 +256,7 @@ describe("chat/editor shortcuts", () => {
       ),
     );
     assert.isTrue(
-      isChatNewSameGitStateShortcut(
+      isChatNewLocalShortcut(
         event({ key: "n", ctrlKey: true, shiftKey: true }),
         DEFAULT_BINDINGS,
         {

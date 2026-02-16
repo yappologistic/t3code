@@ -71,7 +71,7 @@ describe("server keybindings", () => {
     );
   });
 
-  it("defines defaults for terminal.close and chat.newSameGitState", () => {
+  it("defines defaults for terminal.close and chat.newLocal", () => {
     assert.deepInclude(DEFAULT_KEYBINDINGS, {
       key: "mod+w",
       command: "terminal.close",
@@ -79,7 +79,7 @@ describe("server keybindings", () => {
     });
     assert.deepInclude(DEFAULT_KEYBINDINGS, {
       key: "mod+shift+n",
-      command: "chat.newSameGitState",
+      command: "chat.newLocal",
     });
   });
 });

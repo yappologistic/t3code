@@ -7,7 +7,7 @@ import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
 import { derivePendingApprovals } from "../session-logic";
 import { useStore } from "../store";
-import { isChatNewSameGitStateShortcut, isChatNewShortcut } from "../keybindings";
+import { isChatNewLocalShortcut, isChatNewShortcut } from "../keybindings";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -388,14 +388,11 @@ export default function Sidebar() {
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
-      if (isChatNewSameGitStateShortcut(event, keybindings)) {
+      if (isChatNewLocalShortcut(event, keybindings)) {
         const projectId = activeThread?.projectId ?? state.projects[0]?.id;
         if (!projectId) return;
         event.preventDefault();
-        handleNewThread(projectId, {
-          branch: activeThread?.branch ?? null,
-          worktreePath: activeThread?.worktreePath ?? null,
-        });
+        handleNewThread(projectId);
         return;
       }
 
@@ -403,7 +400,10 @@ export default function Sidebar() {
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
       if (!projectId) return;
       event.preventDefault();
-      handleNewThread(projectId);
+      handleNewThread(projectId, {
+        branch: activeThread?.branch ?? null,
+        worktreePath: activeThread?.worktreePath ?? null,
+      });
     };
 
     window.addEventListener("keydown", onWindowKeyDown);

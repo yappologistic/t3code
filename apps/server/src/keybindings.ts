@@ -30,7 +30,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
   { key: "mod+w", command: "terminal.close", when: "terminalFocus" },
   { key: "mod+shift+o", command: "chat.new" },
-  { key: "mod+shift+n", command: "chat.newSameGitState" },
+  { key: "mod+shift+n", command: "chat.newLocal" },
   { key: "mod+o", command: "editor.openFavorite" },
 ];
 

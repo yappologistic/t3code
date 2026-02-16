@@ -1,5 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
-import { Plus, SquareSplitHorizontal, TerminalSquare, Trash2 } from "lucide-react";
+import { Plus, SquareSplitHorizontal, TerminalSquare, Trash2, XIcon } from "lucide-react";
 import { type NativeApi } from "@t3tools/contracts";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import {
@@ -18,10 +18,7 @@ import {
   preferredTerminalEditor,
   resolvePathLinkTarget,
 } from "../terminal-links";
-import {
-  isTerminalClearShortcut,
-  terminalNavigationShortcutData,
-} from "../keybindings";
+import { isTerminalClearShortcut, terminalNavigationShortcutData } from "../keybindings";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -161,10 +158,7 @@ function TerminalViewport({
       try {
         await api.terminal.write({ threadId, terminalId, data });
       } catch (error) {
-        writeSystemMessage(
-          activeTerminal,
-          error instanceof Error ? error.message : fallbackError,
-        );
+        writeSystemMessage(activeTerminal, error instanceof Error ? error.message : fallbackError);
       }
     };
 
@@ -429,6 +423,7 @@ interface ThreadTerminalDrawerProps {
   onNewTerminal: () => void;
   splitShortcutLabel?: string | undefined;
   newShortcutLabel?: string | undefined;
+  closeShortcutLabel?: string | undefined;
   onActiveTerminalChange: (terminalId: string) => void;
   onCloseTerminal: (terminalId: string) => void;
   onHeightChange: (height: number) => void;
@@ -444,15 +439,9 @@ interface TerminalActionButtonProps {
 function TerminalActionButton({ label, className, onClick, children }: TerminalActionButtonProps) {
   return (
     <Popover>
-      <PopoverTrigger openOnHover
-        render={
-          <button
-            type="button"
-            className={className}
-            onClick={onClick}
-            aria-label={label}
-          />
-        }
+      <PopoverTrigger
+        openOnHover
+        render={<button type="button" className={className} onClick={onClick} aria-label={label} />}
       >
         {children}
       </PopoverTrigger>
@@ -483,6 +472,7 @@ export default function ThreadTerminalDrawer({
   onNewTerminal,
   splitShortcutLabel,
   newShortcutLabel,
+  closeShortcutLabel,
   onActiveTerminalChange,
   onCloseTerminal,
   onHeightChange,
@@ -598,6 +588,9 @@ export default function ThreadTerminalDrawer({
       ),
     [normalizedTerminalIds],
   );
+  const closeTerminalActionLabel = closeShortcutLabel
+    ? `Close Terminal (${closeShortcutLabel})`
+    : "Close Terminal";
 
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
@@ -709,7 +702,9 @@ export default function ThreadTerminalDrawer({
             <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={onSplitTerminal}
-              label={splitShortcutLabel ? `Split Terminal (${splitShortcutLabel})` : "Split Terminal"}
+              label={
+                splitShortcutLabel ? `Split Terminal (${splitShortcutLabel})` : "Split Terminal"
+              }
             >
               <SquareSplitHorizontal className="size-3.25" />
             </TerminalActionButton>
@@ -725,7 +720,7 @@ export default function ThreadTerminalDrawer({
             <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
-              label="Close Terminal"
+              label={closeTerminalActionLabel}
             >
               <Trash2 className="size-3.25" />
             </TerminalActionButton>
@@ -805,16 +800,14 @@ export default function ThreadTerminalDrawer({
                   <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={onNewTerminal}
-                    label={
-                      newShortcutLabel ? `New Terminal (${newShortcutLabel})` : "New Terminal"
-                    }
+                    label={newShortcutLabel ? `New Terminal (${newShortcutLabel})` : "New Terminal"}
                   >
                     <Plus className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
-                    label="Close Terminal"
+                    label={closeTerminalActionLabel}
                   >
                     <Trash2 className="size-3.25" />
                   </TerminalActionButton>
@@ -852,6 +845,9 @@ export default function ThreadTerminalDrawer({
                       >
                         {terminalGroup.terminalIds.map((terminalId) => {
                           const isActive = terminalId === resolvedActiveTerminalId;
+                          const closeTerminalLabel = `Close ${
+                            terminalLabelById.get(terminalId) ?? "terminal"
+                          }${isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""}`;
                           return (
                             <div
                               key={terminalId}
@@ -875,18 +871,30 @@ export default function ThreadTerminalDrawer({
                                 </span>
                               </button>
                               {normalizedTerminalIds.length > 1 && (
-                                <button
-                                  type="button"
-                                  className="rounded px-1 text-xs font-medium leading-none text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    onCloseTerminal(terminalId);
-                                  }}
-                                  aria-label={`Close ${terminalLabelById.get(terminalId) ?? "terminal"}`}
-                                  title={`Close ${terminalLabelById.get(terminalId) ?? "terminal"}`}
-                                >
-                                  ×
-                                </button>
+                                <Popover>
+                                  <PopoverTrigger
+                                    openOnHover
+                                    render={
+                                      <button
+                                        type="button"
+                                        className="inline-flex size-3.5 items-center justify-center rounded text-xs font-medium leading-none text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                                        onClick={() => onCloseTerminal(terminalId)}
+                                        aria-label={closeTerminalLabel}
+                                      />
+                                    }
+                                  >
+                                    <XIcon className="size-2.5" />
+                                  </PopoverTrigger>
+                                  <PopoverPopup
+                                    tooltipStyle
+                                    side="bottom"
+                                    sideOffset={6}
+                                    align="center"
+                                    className="pointer-events-none select-none"
+                                  >
+                                    {closeTerminalLabel}
+                                  </PopoverPopup>
+                                </Popover>
                               )}
                             </div>
                           );
