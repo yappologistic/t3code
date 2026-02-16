@@ -910,13 +910,10 @@ export default function ChatView() {
     setSelectedEffort(effort);
     scheduleComposerFocus();
   };
-  const onEnvModeChange = useCallback(
-    (mode: "local" | "worktree") => {
-      setEnvMode(mode);
-      scheduleComposerFocus();
-    },
-    [scheduleComposerFocus],
-  );
+  const onEnvModeChange = (mode: "local" | "worktree") => {
+    setEnvMode(mode);
+    scheduleComposerFocus();
+  };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
