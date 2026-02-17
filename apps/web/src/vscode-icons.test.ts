@@ -31,11 +31,13 @@ describe("getVscodeIconUrlForEntry", () => {
     const dockerfileUrl = getVscodeIconUrlForEntry("Dockerfile", "file", "dark");
     const shellUrl = getVscodeIconUrlForEntry("entrypoint.sh", "file", "dark");
     const cursorRulesUrl = getVscodeIconUrlForEntry("general.mdc", "file", "dark");
+    const githubWorkflowUrl = getVscodeIconUrlForEntry(".github/workflows/ci.yml", "file", "light");
 
     assert.isTrue(tsxUrl.endsWith("/file_type_reactts.svg"));
     assert.isTrue(dockerfileUrl.endsWith("/file_type_docker.svg"));
     assert.isTrue(shellUrl.endsWith("/file_type_shell.svg"));
     assert.isTrue(cursorRulesUrl.endsWith("/file_type_markdown.svg"));
+    assert.isTrue(githubWorkflowUrl.endsWith("/file_type_light_yaml.svg"));
   });
 
   it("falls back to defaults when there is no match", () => {

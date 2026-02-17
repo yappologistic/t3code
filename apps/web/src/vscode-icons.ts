@@ -45,6 +45,11 @@ const languageIdByFileName = toLowercaseLookup(languageAssociations.fileNameToLa
 const localLanguageIdByExtensionOverrides = {
   // Cursor rules files (*.mdc) are commonly treated as markdown in VSCode/Cursor.
   mdc: "markdown",
+  // Upstream languages.ts maps yml/yaml to specialized language ids that can produce
+  // non-generic YAML icons (for example cloudfoundry/esphome). Prefer the base YAML icon
+  // unless a more specific basename/extension match (e.g. azure-pipelines.yml) is found.
+  yml: "yaml",
+  yaml: "yaml",
 } as const;
 
 const defaultDarkFileIconDefinition = manifest.file ?? "_file";

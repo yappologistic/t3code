@@ -75,6 +75,7 @@ import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import {
+  BotIcon,
   ChevronDownIcon,
   CircleAlertIcon,
   FileIcon,
@@ -259,7 +260,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         />
       ) : null}
       {props.item.type === "slash-command" ? (
-        <CursorIcon className="size-4 text-muted-foreground/80" />
+        <BotIcon className="size-4 text-muted-foreground/80" />
       ) : null}
       {props.item.type === "model" ? (
         <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
