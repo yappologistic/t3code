@@ -19,3 +19,10 @@ export function serverConfigQueryOptions(api: NativeApi | undefined) {
     staleTime: Infinity,
   });
 }
+
+export function serverKeybindingsQueryOptions(api: NativeApi | undefined) {
+  return queryOptions({
+    ...serverConfigQueryOptions(api),
+    select: (config) => config.keybindings,
+  });
+}

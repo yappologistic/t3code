@@ -27,8 +27,10 @@ import {
   useState,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
-import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
+import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import { serverKeybindingsQueryOptions } from "~/lib/serverReactQuery";
 
 import { isElectron } from "../env";
 import { buildBootstrapInput } from "../historyBootstrap";
@@ -340,7 +342,6 @@ export default function ChatView() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerCursor, setComposerCursor] = useState(0);
-  const [debouncedPathQuery, setDebouncedPathQuery] = useState("");
   const [composerMenuIndex, setComposerMenuIndex] = useState(0);
   const [composerKeyboardHighlight, setComposerKeyboardHighlight] = useState(false);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -462,47 +463,23 @@ export default function ChatView() {
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
+  const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
+    pathTriggerQuery,
+    { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
+    (debouncerState) => ({ isPending: debouncerState.isPending }),
+  );
+  const effectivePathQuery = pathTriggerQuery.length > 0 ? debouncedPathQuery : "";
   const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
-  const keybindingsQuery = useQuery({
-    ...serverConfigQueryOptions(api),
-    select: (config) => config.keybindings,
-  });
-  useEffect(() => {
-    if (!isPathTrigger) {
-      setDebouncedPathQuery("");
-      return;
-    }
-    if (pathTriggerQuery.length === 0) {
-      setDebouncedPathQuery("");
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setDebouncedPathQuery(pathTriggerQuery);
-    }, COMPOSER_PATH_QUERY_DEBOUNCE_MS);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [isPathTrigger, pathTriggerQuery]);
-  const workspaceEntriesQuery = useQuery({
-    queryKey: [
-      "composer-workspace-entries",
-      gitCwd,
-      debouncedPathQuery,
-    ],
-    enabled: Boolean(api && gitCwd && isPathTrigger),
-    staleTime: 15_000,
-    placeholderData: (previous) => previous,
-    queryFn: async () => {
-      if (!api || !gitCwd || !isPathTrigger) {
-        return { entries: [], truncated: false };
-      }
-      return api.projects.searchEntries({
-        cwd: gitCwd,
-        query: debouncedPathQuery,
-        limit: 80,
-      });
-    },
-  });
+  const keybindingsQuery = useQuery(serverKeybindingsQueryOptions(api));
+  const workspaceEntriesQuery = useQuery(
+    projectSearchEntriesQueryOptions({
+      api,
+      cwd: gitCwd,
+      query: effectivePathQuery,
+      enabled: isPathTrigger,
+      limit: 80,
+    }),
+  );
   const workspaceEntries = workspaceEntriesQuery.data?.entries ?? EMPTY_PROJECT_ENTRIES;
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
@@ -1301,7 +1278,10 @@ export default function ChatView() {
     setComposerMenuIndex(index);
   }, []);
   const isComposerMenuLoading =
-    composerTriggerKind === "path" && (workspaceEntriesQuery.isLoading || workspaceEntriesQuery.isFetching);
+    composerTriggerKind === "path" &&
+    ((pathTriggerQuery.length > 0 && composerPathQueryDebouncer.state.isPending) ||
+      workspaceEntriesQuery.isLoading ||
+      workspaceEntriesQuery.isFetching);
 
   const onPromptChange = useCallback((nextPrompt: string, nextCursor: number) => {
     setPrompt(nextPrompt);

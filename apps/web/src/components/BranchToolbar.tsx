@@ -68,19 +68,13 @@ export default function BranchToolbar({
       : branchNames;
   // ── Mutations ─────────────────────────────────────────────────────────
 
-  const checkoutMutation = useMutation({
-    ...gitCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
-    onError: (error) => {
-      setThreadError(error instanceof Error ? error.message : "Failed to checkout branch.");
-      setIsBranchMenuOpen(true);
-    },
-  });
+  const checkoutMutation = useMutation(
+    gitCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
+  );
 
-  const createBranchMutation = useMutation({
-    ...gitCreateBranchAndCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
-    onError: (error) =>
-      setThreadError(error instanceof Error ? error.message : "Failed to create branch."),
-  });
+  const createBranchMutation = useMutation(
+    gitCreateBranchAndCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
+  );
 
   // ── Effects ───────────────────────────────────────────────────────────
 
@@ -159,6 +153,10 @@ export default function BranchToolbar({
         setIsBranchMenuOpen(false);
         onComposerFocusRequest?.();
       },
+      onError: (error) => {
+        setThreadError(error instanceof Error ? error.message : "Failed to checkout branch.");
+        setIsBranchMenuOpen(true);
+      },
     });
   };
 
@@ -172,6 +170,9 @@ export default function BranchToolbar({
         setBranchQuery("");
         setIsBranchMenuOpen(false);
         onComposerFocusRequest?.();
+      },
+      onError: (error) => {
+        setThreadError(error instanceof Error ? error.message : "Failed to create branch.");
       },
     });
   };
