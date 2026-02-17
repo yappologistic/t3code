@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ProviderManager } from "./providerManager";
 
@@ -188,6 +188,125 @@ describe("ProviderManager", () => {
     expect(result.messageCount).toBe(0);
     expect(result.rolledBackTurns).toBe(2);
     expect(result.checkpoints).toHaveLength(2);
+
+    manager.dispose();
+  });
+
+  it("restores filesystem checkpoint when reverting and checkpointing is enabled", async () => {
+    const manager = new ProviderManager();
+    const internals = manager as unknown as {
+      codex: {
+        hasSession: (sessionId: string) => boolean;
+        readThread: (sessionId: string) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
+        rollbackThread: (sessionId: string, numTurns: number) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
+      };
+      filesystemCheckpointStore: {
+        hasCheckpoint: (input: { cwd: string; threadId: string; turnCount: number }) => Promise<boolean>;
+        restoreCheckpoint: (input: {
+          cwd: string;
+          threadId: string;
+          turnCount: number;
+        }) => Promise<boolean>;
+        pruneAfterTurn: (input: { cwd: string; threadId: string; maxTurnCount: number }) => Promise<void>;
+      };
+      sessionCheckpointCwds: Map<string, string>;
+    };
+
+    internals.codex.hasSession = () => true;
+    internals.codex.readThread = async () => ({
+      threadId: "thr_1",
+      turns: [
+        { id: "turn_1", items: [] },
+        { id: "turn_2", items: [] },
+      ],
+    });
+    internals.codex.rollbackThread = async () => ({
+      threadId: "thr_1",
+      turns: [{ id: "turn_1", items: [] }],
+    });
+    const hasCheckpoint = vi.fn(async () => true);
+    const restoreCheckpoint = vi.fn(async () => true);
+    const pruneAfterTurn = vi.fn(async () => undefined);
+    internals.filesystemCheckpointStore.hasCheckpoint = hasCheckpoint;
+    internals.filesystemCheckpointStore.restoreCheckpoint = restoreCheckpoint;
+    internals.filesystemCheckpointStore.pruneAfterTurn = pruneAfterTurn;
+    internals.sessionCheckpointCwds.set("sess_1", "/repo");
+
+    const result = await manager.revertToCheckpoint({
+      sessionId: "sess_1",
+      turnCount: 1,
+    });
+
+    expect(result.turnCount).toBe(1);
+    expect(hasCheckpoint).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      turnCount: 1,
+    });
+    expect(restoreCheckpoint).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      turnCount: 1,
+    });
+    expect(pruneAfterTurn).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      maxTurnCount: 1,
+    });
+
+    manager.dispose();
+  });
+
+  it("fails before rollback when filesystem checkpoint is missing", async () => {
+    const manager = new ProviderManager();
+    const internals = manager as unknown as {
+      codex: {
+        hasSession: (sessionId: string) => boolean;
+        readThread: (sessionId: string) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
+        rollbackThread: (sessionId: string, numTurns: number) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
+      };
+      filesystemCheckpointStore: {
+        hasCheckpoint: (input: { cwd: string; threadId: string; turnCount: number }) => Promise<boolean>;
+      };
+      sessionCheckpointCwds: Map<string, string>;
+    };
+
+    const rollbackSpy = vi.fn(async () => ({
+      threadId: "thr_1",
+      turns: [{ id: "turn_1", items: [] }],
+    }));
+
+    internals.codex.hasSession = () => true;
+    internals.codex.readThread = async () => ({
+      threadId: "thr_1",
+      turns: [
+        { id: "turn_1", items: [] },
+        { id: "turn_2", items: [] },
+      ],
+    });
+    internals.codex.rollbackThread = rollbackSpy;
+    internals.filesystemCheckpointStore.hasCheckpoint = async () => false;
+    internals.sessionCheckpointCwds.set("sess_1", "/repo");
+
+    await expect(
+      manager.revertToCheckpoint({
+        sessionId: "sess_1",
+        turnCount: 1,
+      }),
+    ).rejects.toThrow("Filesystem checkpoint is unavailable for turn 1 in thread thr_1.");
+    expect(rollbackSpy).not.toHaveBeenCalled();
 
     manager.dispose();
   });
