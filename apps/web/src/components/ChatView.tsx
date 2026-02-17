@@ -33,8 +33,6 @@ import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { isElectron } from "../env";
 import { buildBootstrapInput } from "../historyBootstrap";
 import {
-  buildPromptInput,
-  buildUserVisiblePrompt,
   detectComposerTrigger,
   replaceTextRange,
 } from "../composer-logic";
@@ -92,7 +90,7 @@ import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "./ui/menu"
 import { CursorIcon, Icon } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { Badge } from "./ui/badge";
-import { Command, CommandItem, CommandList, CommandPanel } from "./ui/command";
+import { Command, CommandItem, CommandList } from "./ui/command";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -185,7 +183,6 @@ export default function ChatView() {
     gitCreateWorktreeMutationOptions({ api, queryClient }),
   );
   const [prompt, setPrompt] = useState("");
-  const [taggedPaths, setTaggedPaths] = useState<string[]>([]);
   const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([]);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
@@ -204,6 +201,8 @@ export default function ChatView() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerMenuRef = useRef<HTMLDivElement>(null);
+  const previousComposerMenuIndexRef = useRef(0);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
@@ -341,9 +340,7 @@ export default function ChatView() {
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
-      return (workspaceEntriesQuery.data?.entries ?? [])
-        .filter((entry) => !taggedPaths.includes(entry.path))
-        .map((entry) => ({
+      return (workspaceEntriesQuery.data?.entries ?? []).map((entry) => ({
           id: `path:${entry.kind}:${entry.path}`,
           type: "path",
           path: entry.path,
@@ -378,7 +375,7 @@ export default function ChatView() {
       label: name,
       description: slug,
     }));
-  }, [composerTrigger, taggedPaths, workspaceEntriesQuery.data?.entries]);
+  }, [composerTrigger, workspaceEntriesQuery.data?.entries]);
   const composerMenuOpen = Boolean(composerTrigger);
   const activeComposerMenuItem =
     composerMenuItems[Math.min(composerMenuIndex, Math.max(0, composerMenuItems.length - 1))] ??
@@ -553,6 +550,28 @@ export default function ChatView() {
   }, [composerTrigger?.kind, composerTrigger?.query, composerMenuItems.length]);
 
   useEffect(() => {
+    if (!composerMenuOpen || composerMenuItems.length === 0) {
+      return;
+    }
+    const clampedIndex = Math.min(composerMenuIndex, composerMenuItems.length - 1);
+    const previousIndex = previousComposerMenuIndexRef.current;
+    const direction = clampedIndex - previousIndex;
+    previousComposerMenuIndexRef.current = clampedIndex;
+
+    const aheadIndex =
+      direction > 0
+        ? Math.min(clampedIndex + 1, composerMenuItems.length - 1)
+        : direction < 0
+          ? Math.max(clampedIndex - 1, 0)
+          : clampedIndex;
+
+    const node = composerMenuRef.current?.querySelector<HTMLElement>(
+      `[data-composer-menu-index="${aheadIndex}"]`,
+    );
+    node?.scrollIntoView({ block: "nearest" });
+  }, [composerMenuIndex, composerMenuItems, composerMenuOpen]);
+
+  useEffect(() => {
     if (!activeThread?.id || activeThread.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposer();
@@ -571,7 +590,6 @@ export default function ChatView() {
       revokePreviewUrls(existing);
       return [];
     });
-    setTaggedPaths([]);
     setComposerCursor(0);
     setComposerMenuIndex(0);
     dragDepthRef.current = 0;
@@ -890,10 +908,7 @@ export default function ChatView() {
     e.preventDefault();
     if (!api || !activeThread || isSending || isConnecting) return;
     const trimmed = prompt.trim();
-    const taggedPathsSnapshot = [...taggedPaths];
-    const promptForModel = buildPromptInput(trimmed, taggedPathsSnapshot);
-    const userVisiblePrompt = buildUserVisiblePrompt(trimmed, taggedPathsSnapshot);
-    if (!promptForModel && composerImages.length === 0) return;
+    if (!trimmed && composerImages.length === 0) return;
     if (!activeProject) return;
     const composerImagesSnapshot = [...composerImages];
 
@@ -933,7 +948,6 @@ export default function ChatView() {
     if (activeThread.messages.length === 0) {
       const titleSeed =
         trimmed ||
-        (taggedPathsSnapshot.length > 0 ? `Paths: ${taggedPathsSnapshot[0]}` : "") ||
         (composerImagesSnapshot.length > 0
           ? `Image: ${composerImagesSnapshot[0]?.name ?? "attachment"}`
           : "New thread");
@@ -958,13 +972,12 @@ export default function ChatView() {
       type: "PUSH_USER_MESSAGE",
       threadId: activeThread.id,
       id: crypto.randomUUID(),
-      text: userVisiblePrompt,
+      text: trimmed,
       ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
     });
     const previousMessages = activeThread.messages;
     setPrompt("");
     setComposerImages([]);
-    setTaggedPaths([]);
     setComposerCursor(0);
     setComposerMenuIndex(0);
 
@@ -987,14 +1000,14 @@ export default function ChatView() {
       const shouldBootstrap =
         previousMessages.length > 0 &&
         (sessionInfo.continuityState === "new" || sessionInfo.continuityState === "fallback_new");
-      const latestPromptForBootstrap = promptForModel || IMAGE_ONLY_BOOTSTRAP_PROMPT;
+      const latestPromptForBootstrap = trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT;
       const input = shouldBootstrap
         ? buildBootstrapInput(
             previousMessages,
             latestPromptForBootstrap,
             PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
           ).text
-        : promptForModel || undefined;
+        : trimmed || undefined;
       await api.providers.sendTurn({
         sessionId: sessionInfo.sessionId,
         ...(input ? { input } : {}),
@@ -1094,10 +1107,11 @@ export default function ChatView() {
     (item: ComposerCommandItem) => {
       if (!composerTrigger) return;
       if (item.type === "path") {
-        setTaggedPaths((existing) =>
-          existing.includes(item.path) ? existing : [...existing, item.path],
+        applyPromptReplacement(
+          composerTrigger.rangeStart,
+          composerTrigger.rangeEnd,
+          `@${item.path} `,
         );
-        applyPromptReplacement(composerTrigger.rangeStart, composerTrigger.rangeEnd, "");
         return;
       }
       if (item.type === "slash-command") {
@@ -1109,10 +1123,6 @@ export default function ChatView() {
     },
     [applyPromptReplacement, composerTrigger, onModelSelect],
   );
-
-  const onRemoveTaggedPath = useCallback((pathToRemove: string) => {
-    setTaggedPaths((existing) => existing.filter((entry) => entry !== pathToRemove));
-  }, []);
 
   const onPromptChange = useCallback((nextPrompt: string, nextCursor: number) => {
     setPrompt(nextPrompt);
@@ -1240,12 +1250,16 @@ export default function ChatView() {
               {composerMenuOpen && (
                 <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
                   <Command>
-                    <CommandPanel className="rounded-xl border border-border/80 bg-popover/96 backdrop-blur-xs">
+                    <div
+                      ref={composerMenuRef}
+                      className="overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs"
+                    >
                       <CommandList className="max-h-64">
                         {composerMenuItems.map((item, index) => (
                           <CommandItem
                             key={item.id}
                             value={item.id}
+                            data-composer-menu-index={index}
                             className={cn(
                               "gap-2",
                               index === composerMenuIndex && "bg-accent text-accent-foreground",
@@ -1287,27 +1301,8 @@ export default function ChatView() {
                               : "No matching command."}
                         </p>
                       )}
-                    </CommandPanel>
+                    </div>
                   </Command>
-                </div>
-              )}
-
-              {taggedPaths.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {taggedPaths.map((taggedPath) => (
-                    <button
-                      key={taggedPath}
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-secondary/65 px-2 py-1 text-[11px] text-foreground/85 transition-colors hover:bg-secondary"
-                      onClick={() => onRemoveTaggedPath(taggedPath)}
-                      aria-label={`Remove ${taggedPath}`}
-                      title={taggedPath}
-                    >
-                      <span className="text-muted-foreground/70">@</span>
-                      <span className="max-w-64 truncate">{taggedPath}</span>
-                      <XIcon className="size-3 text-muted-foreground/70" />
-                    </button>
-                  ))}
                 </div>
               )}
 
@@ -1446,7 +1441,7 @@ export default function ChatView() {
                     disabled={
                       isSending ||
                       isConnecting ||
-                      (!prompt.trim() && composerImages.length === 0 && taggedPaths.length === 0)
+                      (!prompt.trim() && composerImages.length === 0)
                     }
                     aria-label={
                       isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"

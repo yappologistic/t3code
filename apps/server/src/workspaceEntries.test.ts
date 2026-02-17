@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -18,6 +19,13 @@ function writeFile(cwd: string, relativePath: string, contents = ""): void {
   const absolutePath = path.join(cwd, relativePath);
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, contents, "utf8");
+}
+
+function runGit(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+  }
 }
 
 describe("searchWorkspaceEntries", () => {
@@ -58,5 +66,22 @@ describe("searchWorkspaceEntries", () => {
     expect(result.entries.length).toBeGreaterThan(0);
     expect(result.entries.some((entry) => entry.path === "src/components")).toBe(true);
     expect(result.entries.every((entry) => entry.path.toLowerCase().includes("compo"))).toBe(true);
+  });
+
+  it("excludes gitignored paths for git repositories", async () => {
+    const cwd = makeTempDir("t3code-workspace-gitignore-");
+    runGit(cwd, ["init"]);
+    writeFile(cwd, ".gitignore", ".convex/\nignored.txt\n");
+    writeFile(cwd, "src/keep.ts", "export {};");
+    writeFile(cwd, "ignored.txt", "ignore me");
+    writeFile(cwd, ".convex/local-storage/data.json", "{}");
+
+    const result = await searchWorkspaceEntries({ cwd, query: "", limit: 100 });
+    const paths = result.entries.map((entry) => entry.path);
+
+    expect(paths).toContain("src");
+    expect(paths).toContain("src/keep.ts");
+    expect(paths).not.toContain("ignored.txt");
+    expect(paths.some((entryPath) => entryPath.startsWith(".convex/"))).toBe(false);
   });
 });

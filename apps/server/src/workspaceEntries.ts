@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { runProcess } from "./processRunner";
 
 import {
   projectSearchEntriesInputSchema,
@@ -70,7 +71,103 @@ function scoreEntry(entry: ProjectEntry, query: string): number {
   return 5;
 }
 
+function isPathInIgnoredDirectory(relativePath: string): boolean {
+  const firstSegment = relativePath.split("/")[0];
+  if (!firstSegment) return false;
+  return IGNORED_DIRECTORY_NAMES.has(firstSegment);
+}
+
+function splitNullSeparatedPaths(input: string, truncated: boolean): string[] {
+  const parts = input.split("\0");
+  if (parts.length === 0) return [];
+
+  // If output was truncated, the final token can be partial.
+  if (truncated && parts[parts.length - 1]?.length) {
+    parts.pop();
+  }
+
+  return parts.filter((value) => value.length > 0);
+}
+
+function directoryAncestorsOf(relativePath: string): string[] {
+  const segments = relativePath.split("/").filter((segment) => segment.length > 0);
+  if (segments.length <= 1) return [];
+  const directories: string[] = [];
+  for (let index = 1; index < segments.length; index += 1) {
+    directories.push(segments.slice(0, index).join("/"));
+  }
+  return directories;
+}
+
+async function buildWorkspaceIndexFromGit(cwd: string): Promise<WorkspaceIndex | null> {
+  const insideWorkTree = await runProcess("git", ["rev-parse", "--is-inside-work-tree"], {
+    cwd,
+    allowNonZeroExit: true,
+    timeoutMs: 5_000,
+    maxBufferBytes: 4_096,
+  }).catch(() => null);
+  if (!insideWorkTree || insideWorkTree.code !== 0 || insideWorkTree.stdout.trim() !== "true") {
+    return null;
+  }
+
+  const listedFiles = await runProcess(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      cwd,
+      allowNonZeroExit: true,
+      timeoutMs: 20_000,
+      maxBufferBytes: 16 * 1024 * 1024,
+      outputMode: "truncate",
+    },
+  ).catch(() => null);
+  if (!listedFiles || listedFiles.code !== 0) {
+    return null;
+  }
+
+  const filePaths = splitNullSeparatedPaths(listedFiles.stdout, Boolean(listedFiles.stdoutTruncated))
+    .map((entry) => toPosixPath(entry))
+    .filter((entry) => entry.length > 0 && !isPathInIgnoredDirectory(entry));
+
+  const directorySet = new Set<string>();
+  for (const filePath of filePaths) {
+    for (const directoryPath of directoryAncestorsOf(filePath)) {
+      if (!isPathInIgnoredDirectory(directoryPath)) {
+        directorySet.add(directoryPath);
+      }
+    }
+  }
+
+  const directoryEntries: ProjectEntry[] = [...directorySet]
+    .sort((left, right) => left.localeCompare(right))
+    .map((directoryPath) => ({
+      path: directoryPath,
+      kind: "directory",
+      parentPath: parentPathOf(directoryPath),
+    }));
+  const fileEntries: ProjectEntry[] = [...new Set(filePaths)]
+    .sort((left, right) => left.localeCompare(right))
+    .map((filePath) => ({
+      path: filePath,
+      kind: "file",
+      parentPath: parentPathOf(filePath),
+    }));
+
+  const entries = [...directoryEntries, ...fileEntries];
+  return {
+    scannedAt: Date.now(),
+    entries: entries.slice(0, WORKSPACE_INDEX_MAX_ENTRIES),
+    truncated:
+      Boolean(listedFiles.stdoutTruncated) || entries.length > WORKSPACE_INDEX_MAX_ENTRIES,
+  };
+}
+
 async function buildWorkspaceIndex(cwd: string): Promise<WorkspaceIndex> {
+  const gitIndexed = await buildWorkspaceIndexFromGit(cwd);
+  if (gitIndexed) {
+    return gitIndexed;
+  }
+
   let pendingDirectories: string[] = [""];
   const entries: ProjectEntry[] = [];
   let truncated = false;
@@ -117,6 +214,9 @@ async function buildWorkspaceIndex(cwd: string): Promise<WorkspaceIndex> {
         const relativePath = toPosixPath(
           relativeDir ? path.join(relativeDir, dirent.name) : dirent.name,
         );
+        if (isPathInIgnoredDirectory(relativePath)) {
+          continue;
+        }
         const entry: ProjectEntry = {
           path: relativePath,
           kind: dirent.isDirectory() ? "directory" : "file",
