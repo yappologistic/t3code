@@ -5,6 +5,7 @@ export type RuntimeMode = "approval-required" | "full-access";
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;
 export const DEFAULT_THREAD_TERMINAL_ID = "default";
+export const MAX_THREAD_TERMINAL_COUNT = 4;
 
 export interface ThreadTerminalGroup {
   id: string;

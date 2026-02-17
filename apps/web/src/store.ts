@@ -16,6 +16,7 @@ import {
   type ChatAttachment,
   DEFAULT_THREAD_TERMINAL_ID,
   DEFAULT_RUNTIME_MODE,
+  MAX_THREAD_TERMINAL_COUNT,
   type Project,
   type RuntimeMode,
   type Thread,
@@ -110,7 +111,12 @@ function readPersistedState(): AppState {
     const hydrated = hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
     if (!hydrated) return initialState;
 
-    return { ...hydrated, diffOpen: false };
+    const threads = hydrated.threads.map((thread) => normalizeThreadTerminals(thread));
+    const activeThreadId = threads.some((thread) => thread.id === hydrated.activeThreadId)
+      ? hydrated.activeThreadId
+      : (threads[0]?.id ?? null);
+
+    return { ...hydrated, threads, activeThreadId, diffOpen: false };
   } catch {
     return initialState;
   }
@@ -139,7 +145,7 @@ function updateThread(
 
 function normalizeTerminalIds(terminalIds: string[]): string[] {
   const ids = terminalIds.map((id) => id.trim()).filter((id) => id.length > 0);
-  const unique = [...new Set(ids)];
+  const unique = [...new Set(ids)].slice(0, MAX_THREAD_TERMINAL_COUNT);
   if (unique.length > 0) {
     return unique;
   }
@@ -550,6 +556,13 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         threads: updateThread(state.threads, action.threadId, (thread) => {
           const normalizedThread = normalizeThreadTerminals(thread);
+          const isNewTerminal = !normalizedThread.terminalIds.includes(action.terminalId);
+          if (
+            isNewTerminal &&
+            normalizedThread.terminalIds.length >= MAX_THREAD_TERMINAL_COUNT
+          ) {
+            return normalizedThread;
+          }
           const terminalIds = normalizedThread.terminalIds.includes(action.terminalId)
             ? normalizedThread.terminalIds
             : [...normalizedThread.terminalIds, action.terminalId];
@@ -616,6 +629,13 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         threads: updateThread(state.threads, action.threadId, (thread) => {
           const normalizedThread = normalizeThreadTerminals(thread);
+          const isNewTerminal = !normalizedThread.terminalIds.includes(action.terminalId);
+          if (
+            isNewTerminal &&
+            normalizedThread.terminalIds.length >= MAX_THREAD_TERMINAL_COUNT
+          ) {
+            return normalizedThread;
+          }
           const terminalIds = normalizedThread.terminalIds.includes(action.terminalId)
             ? normalizedThread.terminalIds
             : [...normalizedThread.terminalIds, action.terminalId];

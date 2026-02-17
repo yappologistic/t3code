@@ -22,6 +22,7 @@ import { isTerminalClearShortcut, terminalNavigationShortcutData } from "../keyb
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
+  MAX_THREAD_TERMINAL_COUNT,
   type ThreadTerminalGroup,
 } from "../types";
 
@@ -581,6 +582,7 @@ export default function ThreadTerminalDrawer({
   const showGroupHeaders =
     resolvedTerminalGroups.length > 1 ||
     resolvedTerminalGroups.some((terminalGroup) => terminalGroup.terminalIds.length > 1);
+  const hasReachedTerminalLimit = normalizedTerminalIds.length >= MAX_THREAD_TERMINAL_COUNT;
   const terminalLabelById = useMemo(
     () =>
       new Map(
@@ -588,9 +590,23 @@ export default function ThreadTerminalDrawer({
       ),
     [normalizedTerminalIds],
   );
+  const splitTerminalActionLabel = hasReachedTerminalLimit
+    ? `Split Terminal (max ${MAX_THREAD_TERMINAL_COUNT})`
+    : (splitShortcutLabel ? `Split Terminal (${splitShortcutLabel})` : "Split Terminal");
+  const newTerminalActionLabel = hasReachedTerminalLimit
+    ? `New Terminal (max ${MAX_THREAD_TERMINAL_COUNT})`
+    : (newShortcutLabel ? `New Terminal (${newShortcutLabel})` : "New Terminal");
   const closeTerminalActionLabel = closeShortcutLabel
     ? `Close Terminal (${closeShortcutLabel})`
     : "Close Terminal";
+  const onSplitTerminalAction = useCallback(() => {
+    if (hasReachedTerminalLimit) return;
+    onSplitTerminal();
+  }, [hasReachedTerminalLimit, onSplitTerminal]);
+  const onNewTerminalAction = useCallback(() => {
+    if (hasReachedTerminalLimit) return;
+    onNewTerminal();
+  }, [hasReachedTerminalLimit, onNewTerminal]);
 
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
@@ -685,7 +701,7 @@ export default function ThreadTerminalDrawer({
 
   return (
     <aside
-      className="thread-terminal-drawer relative flex shrink-0 flex-col border-t border-border/80 bg-background"
+      className="thread-terminal-drawer relative flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background"
       style={{ height: `${drawerHeight}px` }}
     >
       <div
@@ -700,19 +716,25 @@ export default function ThreadTerminalDrawer({
         <div className="pointer-events-none absolute right-2 top-2 z-20">
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background/70">
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
-              onClick={onSplitTerminal}
-              label={
-                splitShortcutLabel ? `Split Terminal (${splitShortcutLabel})` : "Split Terminal"
-              }
+              className={`p-1 text-foreground/90 transition-colors ${
+                hasReachedTerminalLimit
+                  ? "cursor-not-allowed opacity-45 hover:bg-transparent"
+                  : "hover:bg-accent"
+              }`}
+              onClick={onSplitTerminalAction}
+              label={splitTerminalActionLabel}
             >
               <SquareSplitHorizontal className="size-3.25" />
             </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
-              onClick={onNewTerminal}
-              label={newShortcutLabel ? `New Terminal (${newShortcutLabel})` : "New Terminal"}
+              className={`p-1 text-foreground/90 transition-colors ${
+                hasReachedTerminalLimit
+                  ? "cursor-not-allowed opacity-45 hover:bg-transparent"
+                  : "hover:bg-accent"
+              }`}
+              onClick={onNewTerminalAction}
+              label={newTerminalActionLabel}
             >
               <Plus className="size-3.25" />
             </TerminalActionButton>
@@ -733,9 +755,9 @@ export default function ThreadTerminalDrawer({
           <div className="min-w-0 flex-1">
             {isSplitView ? (
               <div
-                className="grid h-full w-full gap-0 overflow-x-auto"
+                className="grid h-full w-full min-w-0 gap-0 overflow-hidden"
                 style={{
-                  gridTemplateColumns: `repeat(${visibleTerminalIds.length}, minmax(260px, 1fr))`,
+                  gridTemplateColumns: `repeat(${visibleTerminalIds.length}, minmax(0, 1fr))`,
                 }}
               >
                 {visibleTerminalIds.map((terminalId) => (
@@ -787,20 +809,24 @@ export default function ThreadTerminalDrawer({
               <div className="flex h-[22px] items-stretch justify-end border-b border-border/70">
                 <div className="inline-flex h-full items-stretch">
                   <TerminalActionButton
-                    className="inline-flex h-full items-center px-1 text-foreground/90 transition-colors hover:bg-accent/70"
-                    onClick={onSplitTerminal}
-                    label={
-                      splitShortcutLabel
-                        ? `Split Terminal (${splitShortcutLabel})`
-                        : "Split Terminal"
-                    }
+                    className={`inline-flex h-full items-center px-1 text-foreground/90 transition-colors ${
+                      hasReachedTerminalLimit
+                        ? "cursor-not-allowed opacity-45 hover:bg-transparent"
+                        : "hover:bg-accent/70"
+                    }`}
+                    onClick={onSplitTerminalAction}
+                    label={splitTerminalActionLabel}
                   >
                     <SquareSplitHorizontal className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
-                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
-                    onClick={onNewTerminal}
-                    label={newShortcutLabel ? `New Terminal (${newShortcutLabel})` : "New Terminal"}
+                    className={`inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors ${
+                      hasReachedTerminalLimit
+                        ? "cursor-not-allowed opacity-45 hover:bg-transparent"
+                        : "hover:bg-accent/70"
+                    }`}
+                    onClick={onNewTerminalAction}
+                    label={newTerminalActionLabel}
                   >
                     <Plus className="size-3.25" />
                   </TerminalActionButton>

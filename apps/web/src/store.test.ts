@@ -2,7 +2,11 @@ import type { ProviderEvent, ProviderSession, TerminalEvent } from "@t3tools/con
 import { describe, expect, it } from "vitest";
 
 import { type AppState, reducer } from "./store";
-import { DEFAULT_THREAD_TERMINAL_HEIGHT, DEFAULT_THREAD_TERMINAL_ID } from "./types";
+import {
+  DEFAULT_THREAD_TERMINAL_HEIGHT,
+  DEFAULT_THREAD_TERMINAL_ID,
+  MAX_THREAD_TERMINAL_COUNT,
+} from "./types";
 import type { Thread } from "./types";
 
 type TerminalStartedEvent = Extract<TerminalEvent, { type: "started" }>;
@@ -253,6 +257,70 @@ describe("store reducer thread continuity", () => {
     ]);
     expect(next.threads[0]?.activeTerminalId).toBe("term-3");
     expect(next.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
+  });
+
+  it("caps split terminals at four per thread", () => {
+    const state = makeState(
+      makeThread({
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID, "term-2", "term-3", "term-4"],
+        activeTerminalId: "term-4",
+        terminalGroups: [
+          {
+            id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+            terminalIds: [DEFAULT_THREAD_TERMINAL_ID, "term-2", "term-3", "term-4"],
+          },
+        ],
+        activeTerminalGroupId: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+      }),
+    );
+    const next = reducer(state, {
+      type: "SPLIT_THREAD_TERMINAL",
+      threadId: "thread-local-1",
+      terminalId: "term-5",
+    });
+
+    expect(next.threads[0]?.terminalIds).toHaveLength(MAX_THREAD_TERMINAL_COUNT);
+    expect(next.threads[0]?.terminalIds).toEqual([
+      DEFAULT_THREAD_TERMINAL_ID,
+      "term-2",
+      "term-3",
+      "term-4",
+    ]);
+    expect(next.threads[0]?.activeTerminalId).toBe("term-4");
+  });
+
+  it("caps new terminals at four per thread", () => {
+    const state = makeState(
+      makeThread({
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID, "term-2", "term-3", "term-4"],
+        activeTerminalId: "term-4",
+        terminalGroups: [
+          {
+            id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+            terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+          },
+          { id: "group-term-2", terminalIds: ["term-2"] },
+          { id: "group-term-3", terminalIds: ["term-3"] },
+          { id: "group-term-4", terminalIds: ["term-4"] },
+        ],
+        activeTerminalGroupId: "group-term-4",
+      }),
+    );
+    const next = reducer(state, {
+      type: "NEW_THREAD_TERMINAL",
+      threadId: "thread-local-1",
+      terminalId: "term-5",
+    });
+
+    expect(next.threads[0]?.terminalIds).toHaveLength(MAX_THREAD_TERMINAL_COUNT);
+    expect(next.threads[0]?.terminalIds).toEqual([
+      DEFAULT_THREAD_TERMINAL_ID,
+      "term-2",
+      "term-3",
+      "term-4",
+    ]);
+    expect(next.threads[0]?.activeTerminalId).toBe("term-4");
+    expect(next.threads[0]?.activeTerminalGroupId).toBe("group-term-4");
   });
 
   it("closes a terminal and keeps grouped layout coherent", () => {

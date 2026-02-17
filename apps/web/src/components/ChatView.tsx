@@ -51,7 +51,7 @@ import {
 } from "../session-logic";
 import { isScrollContainerNearBottom } from "../chat-scroll";
 import { useStore } from "../store";
-import type { ChatImageAttachment } from "../types";
+import { MAX_THREAD_TERMINAL_COUNT, type ChatImageAttachment } from "../types";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
 import {
@@ -294,6 +294,8 @@ export default function ChatView() {
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
+  const hasReachedTerminalLimit =
+    (activeThread?.terminalIds.length ?? 0) >= MAX_THREAD_TERMINAL_COUNT;
 
   const revokePreviewUrls = useCallback((images: Array<{ previewUrl?: string }>) => {
     for (const image of images) {
@@ -322,23 +324,23 @@ export default function ChatView() {
     });
   }, [activeThread?.terminalOpen, activeThreadId, dispatch]);
   const splitTerminal = useCallback(() => {
-    if (!activeThreadId) return;
+    if (!activeThreadId || hasReachedTerminalLimit) return;
     dispatch({
       type: "SPLIT_THREAD_TERMINAL",
       threadId: activeThreadId,
       terminalId: `terminal-${crypto.randomUUID()}`,
     });
     setTerminalFocusRequestId((value) => value + 1);
-  }, [activeThreadId, dispatch]);
+  }, [activeThreadId, dispatch, hasReachedTerminalLimit]);
   const createNewTerminal = useCallback(() => {
-    if (!activeThreadId) return;
+    if (!activeThreadId || hasReachedTerminalLimit) return;
     dispatch({
       type: "NEW_THREAD_TERMINAL",
       threadId: activeThreadId,
       terminalId: `terminal-${crypto.randomUUID()}`,
     });
     setTerminalFocusRequestId((value) => value + 1);
-  }, [activeThreadId, dispatch]);
+  }, [activeThreadId, dispatch, hasReachedTerminalLimit]);
   const activateTerminal = useCallback(
     (terminalId: string) => {
       if (!activeThreadId) return;
