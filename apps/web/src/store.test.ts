@@ -655,6 +655,9 @@ describe("store reducer thread continuity", () => {
       activeThreadId: "thread-a",
       runtimeMode: "full-access",
       diffOpen: false,
+      diffThreadId: null,
+      diffTurnId: null,
+      diffFilePath: null,
     };
 
     const next = reducer(state, {

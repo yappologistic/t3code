@@ -28,7 +28,7 @@ import {
   useState,
 } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
