@@ -1533,6 +1533,16 @@ export default function ChatView() {
         setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
         return;
       }
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Revert this thread to checkpoint ${turnCount}?`,
+          "This will discard newer messages and turn diffs in this thread.",
+          "This action cannot be undone.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
 
       setIsRevertingCheckpoint(true);
       setThreadError(activeThread.id, null);
