@@ -33,8 +33,16 @@ export function asObject(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+function asArray(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
 export function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function formatTimestamp(isoDate: string): string {
@@ -445,14 +453,77 @@ interface MutableTurnDiffSummary {
   completedAt: string | undefined;
   status: string | undefined;
   assistantMessageId: string | undefined;
+  unifiedDiff: string | undefined;
+  filesByPath: Map<string, TurnDiffFileChange>;
+}
+
+function parseFileChangeEntriesFromEvent(event: ProviderEvent): TurnDiffFileChange[] {
+  if (event.method !== "item/completed") {
+    return [];
+  }
+
+  const item = asObject(asObject(event.payload)?.item);
+  const itemType = normalizeItemType(asString(item?.type));
+  if (itemType !== "file change") {
+    return [];
+  }
+
+  const changes = asArray(item?.changes) ?? [];
+  const parsed: TurnDiffFileChange[] = [];
+  for (const rawChange of changes) {
+    const change = asObject(rawChange);
+    if (!change) continue;
+
+    const diff = normalizeDetail(asString(change.diff));
+    const path = normalizeDetail(asString(change.path)) ?? (diff ? parsePathFromDiff(diff) : undefined);
+    if (!path) continue;
+
+    const additions = asNumber(change.additions);
+    const deletions = asNumber(change.deletions);
+    const stat = additions !== undefined && deletions !== undefined ? null : diff ? countDiffStat(diff) : null;
+    const kind = normalizeDetail(asString(change.kind));
+    parsed.push({
+      path,
+      ...(kind ? { kind } : {}),
+      ...(diff ? { diff } : {}),
+      ...(additions !== undefined ? { additions } : stat ? { additions: stat.additions } : {}),
+      ...(deletions !== undefined ? { deletions } : stat ? { deletions: stat.deletions } : {}),
+    });
+  }
+
+  return parsed;
+}
+
+function mergeTurnDiffFileChange(
+  byPath: Map<string, TurnDiffFileChange>,
+  incoming: TurnDiffFileChange,
+): void {
+  const existing = byPath.get(incoming.path);
+  if (!existing) {
+    byPath.set(incoming.path, incoming);
+    return;
+  }
+
+  if (existing.kind === undefined && incoming.kind !== undefined) {
+    existing.kind = incoming.kind;
+  }
+  if (existing.diff === undefined && incoming.diff !== undefined) {
+    existing.diff = incoming.diff;
+  }
+  if (existing.additions === undefined && incoming.additions !== undefined) {
+    existing.additions = incoming.additions;
+  }
+  if (existing.deletions === undefined && incoming.deletions !== undefined) {
+    existing.deletions = incoming.deletions;
+  }
 }
 
 function parsePathFromDiff(diff: string): string | undefined {
   const normalized = diff.replace(/\r\n/g, "\n");
-  const gitHeader = normalized.match(/^diff --git a\/(.+) b\/(.+)$/m);
-  if (gitHeader && gitHeader[2]) return gitHeader[2];
   const bPath = normalized.match(/^\+\+\+ b\/(.+)$/m);
   if (bPath && bPath[1]) return bPath[1];
+  const gitHeader = normalized.match(/^diff --git a\/(.+) b\/(.+)$/m);
+  if (gitHeader && gitHeader[2]) return gitHeader[2];
   const direct = normalized.match(/^\+\+\+ (.+)$/m);
   if (!direct || !direct[1] || direct[1] === "/dev/null") {
     return undefined;
@@ -463,7 +534,7 @@ function parsePathFromDiff(diff: string): string | undefined {
 export function splitUnifiedDiffByFile(diff: string): Map<string, string> {
   const normalized = diff.replace(/\r\n/g, "\n");
   const byPath = new Map<string, string>();
-  const headerMatches = [...normalized.matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)];
+  const headerMatches = [...normalized.matchAll(/^diff --git .+$/gm)];
 
   if (headerMatches.length === 0) {
     const path = parsePathFromDiff(normalized);
@@ -479,7 +550,7 @@ export function splitUnifiedDiffByFile(diff: string): Map<string, string> {
     const start = match.index ?? 0;
     const nextStart = headerMatches[index + 1]?.index ?? normalized.length;
     const segment = normalized.slice(start, nextStart).trim();
-    const path = match[2] ?? match[1] ?? parsePathFromDiff(segment);
+    const path = parsePathFromDiff(segment);
     if (!path || segment.length === 0) continue;
     byPath.set(path, segment);
   }
@@ -555,7 +626,15 @@ export function countDiffStat(patch: string | undefined): { additions: number; d
 }
 
 export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummary[] {
-  const ordered = [...events].toReversed();
+  const firstEventAt = Date.parse(events[0]?.createdAt ?? "");
+  const lastEventAt = Date.parse(events.at(-1)?.createdAt ?? "");
+  const ordered =
+    events.length < 2 ||
+    Number.isNaN(firstEventAt) ||
+    Number.isNaN(lastEventAt) ||
+    firstEventAt >= lastEventAt
+      ? events
+      : [...events].toReversed();
   const byTurnId = new Map<string, MutableTurnDiffSummary>();
 
   const ensureSummary = (turnId: string): MutableTurnDiffSummary => {
@@ -566,6 +645,8 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
       completedAt: undefined,
       status: undefined,
       assistantMessageId: undefined,
+      unifiedDiff: undefined,
+      filesByPath: new Map<string, TurnDiffFileChange>(),
     };
     byTurnId.set(turnId, next);
     return next;
@@ -577,20 +658,37 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
     const summary = ensureSummary(turnId);
 
     if (event.method === "turn/completed") {
-      summary.completedAt = event.createdAt;
+      if (summary.completedAt === undefined) {
+        summary.completedAt = event.createdAt;
+      }
       const turn = asObject(asObject(event.payload)?.turn);
-      summary.status = normalizeDetail(asString(turn?.status));
-      continue;
+      if (summary.status === undefined) {
+        summary.status = normalizeDetail(asString(turn?.status));
+      }
     }
 
     if (event.method === "item/completed") {
       const item = asObject(asObject(event.payload)?.item);
       if (asString(item?.type) === "agentMessage") {
         const itemId = normalizeDetail(asString(item?.id));
-        if (itemId) {
+        if (itemId && summary.assistantMessageId === undefined) {
           summary.assistantMessageId = itemId;
         }
       }
+    }
+
+    if (event.method === "turn/diff/updated" && summary.unifiedDiff === undefined) {
+      const diff = normalizeDetail(asString(asObject(event.payload)?.diff));
+      if (diff) {
+        summary.unifiedDiff = diff;
+        for (const file of deriveTurnDiffFilesFromUnifiedDiff(diff)) {
+          mergeTurnDiffFileChange(summary.filesByPath, file);
+        }
+      }
+    }
+
+    for (const file of parseFileChangeEntriesFromEvent(event)) {
+      mergeTurnDiffFileChange(summary.filesByPath, file);
     }
   }
 
@@ -602,7 +700,10 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
       turnId: summary.turnId,
       completedAt: summary.completedAt,
       ...(summary.status ? { status: summary.status } : {}),
-      files: [],
+      files: Array.from(summary.filesByPath.values()).toSorted((a, b) =>
+        a.path.localeCompare(b.path),
+      ),
+      ...(summary.unifiedDiff ? { unifiedDiff: summary.unifiedDiff } : {}),
       ...(summary.assistantMessageId ? { assistantMessageId: summary.assistantMessageId } : {}),
     });
   }

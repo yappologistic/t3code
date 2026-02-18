@@ -202,7 +202,6 @@ function mergeTurnDiffSummaries(
   existing: Thread["turnDiffSummaries"],
   next: Thread["turnDiffSummaries"],
 ): Thread["turnDiffSummaries"] {
-  if (existing.length === 0) return next;
   if (next.length === 0) return existing;
 
   const existingByTurnId = new Map(existing.map((summary) => [summary.turnId, summary] as const));
@@ -893,11 +892,16 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         threads: updateThread(state.threads, target.id, (t) => {
           const nextEvents = [event, ...t.events];
-          const derivedTurnDiffSummaries = deriveTurnDiffSummaries(nextEvents);
-          const turnDiffSummaries = mergeTurnDiffSummaries(
-            t.turnDiffSummaries,
-            derivedTurnDiffSummaries,
-          );
+          const itemType = asString(asObject(asObject(event.payload)?.item)?.type);
+          const normalizedItemType = itemType?.replace(/[_-]/g, "").toLowerCase();
+          const shouldRederiveDiffs =
+            event.method === "turn/completed" ||
+            event.method === "turn/diff/updated" ||
+            (event.method === "item/completed" &&
+              (normalizedItemType === "agentmessage" || normalizedItemType === "filechange"));
+          const turnDiffSummaries = shouldRederiveDiffs
+            ? mergeTurnDiffSummaries(t.turnDiffSummaries, deriveTurnDiffSummaries(nextEvents))
+            : t.turnDiffSummaries;
           const eventThreadId = getEventThreadId(event);
           const shouldRebindIdentity =
             event.method === "thread/started" && t.session?.status === "connecting";

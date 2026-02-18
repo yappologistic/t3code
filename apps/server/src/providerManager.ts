@@ -308,6 +308,9 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     }
 
     const checkpointCwd = await this.getOrInitializeFilesystemCheckpointCwd(input.sessionId);
+    if (!checkpointCwd) {
+      throw new Error("Filesystem checkpoints are unavailable for this session.");
+    }
     return this.withFilesystemLock(input.sessionId, async () => {
       const beforeSnapshot = await this.codex.readThread(input.sessionId);
       const currentTurnCount = beforeSnapshot.turns.length;
@@ -330,29 +333,28 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
         }
       }
 
+      const restored = await this.filesystemCheckpointStore.restoreCheckpoint({
+        cwd: checkpointCwd,
+        threadId: beforeSnapshot.threadId,
+        turnCount: input.turnCount,
+      });
+      if (!restored) {
+        throw new Error(
+          `Filesystem checkpoint is unavailable for turn ${input.turnCount} in thread ${beforeSnapshot.threadId}.`,
+        );
+      }
+
       const requestedRollbackTurns = currentTurnCount - input.turnCount;
       const afterSnapshot =
         requestedRollbackTurns > 0
           ? await this.codex.rollbackThread(input.sessionId, requestedRollbackTurns)
           : beforeSnapshot;
 
-      if (checkpointCwd) {
-        const restored = await this.filesystemCheckpointStore.restoreCheckpoint({
-          cwd: checkpointCwd,
-          threadId: beforeSnapshot.threadId,
-          turnCount: input.turnCount,
-        });
-        if (!restored) {
-          throw new Error(
-            `Filesystem checkpoint is unavailable for turn ${input.turnCount} in thread ${beforeSnapshot.threadId}.`,
-          );
-        }
-        await this.filesystemCheckpointStore.pruneAfterTurn({
-          cwd: checkpointCwd,
-          threadId: afterSnapshot.threadId,
-          maxTurnCount: afterSnapshot.turns.length,
-        });
-      }
+      await this.filesystemCheckpointStore.pruneAfterTurn({
+        cwd: checkpointCwd,
+        threadId: afterSnapshot.threadId,
+        maxTurnCount: afterSnapshot.turns.length,
+      });
 
       const checkpoints = buildCheckpoints(afterSnapshot.turns);
       const currentCheckpoint =
@@ -415,7 +417,9 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
         threadId: snapshot.threadId,
         turnCount: snapshot.turns.length,
       });
-      this.sessionCheckpointCwds.set(session.sessionId, cwd);
+      if (this.codex.hasSession(session.sessionId)) {
+        this.sessionCheckpointCwds.set(session.sessionId, cwd);
+      }
     });
   }
 
@@ -428,9 +432,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     const session = this.codex
       .listSessions()
       .find((candidate) => candidate.sessionId === sessionId);
-    const candidateCwds = Array.from(
-      new Set([session?.cwd, process.cwd()].filter((value): value is string => Boolean(value))),
-    );
+    const candidateCwds = session?.cwd ? [session.cwd] : [process.cwd()];
     if (candidateCwds.length === 0) {
       return null;
     }
@@ -459,7 +461,9 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
           threadId: snapshot.threadId,
           turnCount: snapshot.turns.length,
         });
-        this.sessionCheckpointCwds.set(sessionId, supportedCwd);
+        if (this.codex.hasSession(sessionId)) {
+          this.sessionCheckpointCwds.set(sessionId, supportedCwd);
+        }
         return;
       }
 

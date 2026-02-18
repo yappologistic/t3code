@@ -84,7 +84,7 @@ const persistedThreadSchema = z.object({
   lastVisitedAt: z.string().min(1).optional(),
   branch: z.string().min(1).nullable().optional(),
   worktreePath: z.string().min(1).nullable().optional(),
-  turnDiffSummaries: z.array(persistedTurnDiffSummarySchema).default([]),
+  turnDiffSummaries: z.array(persistedTurnDiffSummarySchema).catch([]).default([]),
 });
 
 const persistedStateBodySchema = z.object({

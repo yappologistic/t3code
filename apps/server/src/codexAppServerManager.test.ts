@@ -262,6 +262,35 @@ describe("thread checkpoint control", () => {
     });
   });
 
+  it("reads thread turns from flat thread/read responses", async () => {
+    const { manager, context, sendRequest } = createThreadControlHarness();
+    sendRequest.mockResolvedValue({
+      threadId: "thread_1",
+      turns: [
+        {
+          id: "turn_1",
+          items: [{ type: "userMessage", content: [{ type: "text", text: "hello" }] }],
+        },
+      ],
+    });
+
+    const result = await manager.readThread("sess_1");
+
+    expect(sendRequest).toHaveBeenCalledWith(context, "thread/read", {
+      threadId: "thread_1",
+      includeTurns: true,
+    });
+    expect(result).toEqual({
+      threadId: "thread_1",
+      turns: [
+        {
+          id: "turn_1",
+          items: [{ type: "userMessage", content: [{ type: "text", text: "hello" }] }],
+        },
+      ],
+    });
+  });
+
   it("rolls back turns via thread/rollback and resets session running state", async () => {
     const { manager, context, sendRequest, updateSession } = createThreadControlHarness();
     sendRequest.mockResolvedValue({

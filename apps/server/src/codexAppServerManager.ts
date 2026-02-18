@@ -796,7 +796,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       throw new Error(`${method} response did not include a thread id.`);
     }
 
-    const turnsRaw = this.readArray(thread, "turns") ?? [];
+    const turnsRaw = this.readArray(thread, "turns") ?? this.readArray(responseRecord, "turns") ?? [];
     const turns = turnsRaw.map((turnValue, index) => {
       const turn = this.readObject(turnValue);
       const turnId = this.readString(turn, "id") ?? `${threadId}:turn:${index + 1}`;

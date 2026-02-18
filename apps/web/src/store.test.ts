@@ -569,6 +569,23 @@ describe("store reducer thread continuity", () => {
     ]);
   });
 
+  it("infers checkpoint turn counts when deriving turn summaries from an empty baseline", () => {
+    const state = makeState(makeThread({ turnDiffSummaries: [] }));
+    const next = reducer(state, {
+      type: "APPLY_EVENT",
+      event: makeEvent({
+        method: "turn/completed",
+        turnId: "turn-1",
+        createdAt: "2026-02-09T00:00:03.000Z",
+        payload: { turn: { id: "turn-1", status: "completed" } },
+      }),
+      activeAssistantItemRef: { current: null },
+    });
+
+    expect(next.threads[0]?.turnDiffSummaries[0]?.turnId).toBe("turn-1");
+    expect(next.threads[0]?.turnDiffSummaries[0]?.checkpointTurnCount).toBe(1);
+  });
+
   it("reconciles project ids by cwd when syncing backend projects", () => {
     const state: AppState = {
       projects: [

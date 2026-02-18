@@ -325,6 +325,46 @@ describe("hydratePersistedState", () => {
       },
     ]);
   });
+
+  it("drops malformed persisted turn diff summaries instead of rejecting the whole snapshot", () => {
+    const payload = JSON.stringify({
+      version: 7,
+      runtimeMode: "full-access",
+      projects: [
+        {
+          id: "p-1",
+          name: "Project",
+          cwd: "/tmp/project",
+          model: "gpt-5.3-codex",
+          expanded: true,
+        },
+      ],
+      threads: [
+        {
+          id: "t-1",
+          codexThreadId: "thr_1",
+          projectId: "p-1",
+          title: "Thread",
+          model: "gpt-5.3-codex",
+          messages: [],
+          createdAt: "2026-02-08T10:00:00.000Z",
+          turnDiffSummaries: [
+            {
+              turnId: "turn-1",
+              completedAt: "2026-02-08T10:05:00.000Z",
+              files: [{ path: 123 }],
+            },
+          ],
+        },
+      ],
+      activeThreadId: "t-1",
+    });
+
+    const hydrated = hydratePersistedState(payload, false);
+    expect(hydrated).not.toBeNull();
+    expect(hydrated?.threads[0]?.id).toBe("t-1");
+    expect(hydrated?.threads[0]?.turnDiffSummaries).toEqual([]);
+  });
 });
 
 describe("toPersistedState", () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -47,18 +47,17 @@ export class FilesystemCheckpointStore {
     const ref = checkpointRefForThreadTurn(threadId, turnCount);
 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "t3-fs-checkpoint-"));
-    const tempIndexPath = path.join(tempDir, `index-${randomUUID()}`);
-    const commitEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      GIT_INDEX_FILE: tempIndexPath,
-      GIT_AUTHOR_NAME: "T3 Code",
-      GIT_AUTHOR_EMAIL: "codex@users.noreply.github.com",
-      GIT_COMMITTER_NAME: "T3 Code",
-      GIT_COMMITTER_EMAIL: "codex@users.noreply.github.com",
-    };
 
     try {
-      await writeFile(tempIndexPath, "");
+      const tempIndexPath = path.join(tempDir, `index-${randomUUID()}`);
+      const commitEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        GIT_INDEX_FILE: tempIndexPath,
+        GIT_AUTHOR_NAME: "T3 Code",
+        GIT_AUTHOR_EMAIL: "codex@users.noreply.github.com",
+        GIT_COMMITTER_NAME: "T3 Code",
+        GIT_COMMITTER_EMAIL: "codex@users.noreply.github.com",
+      };
 
       const hasHead = await this.hasHeadCommit(cwd);
       if (hasHead) {
@@ -133,7 +132,7 @@ export class FilesystemCheckpointStore {
 
     await this.runGit(cwd, ["restore", "--source", commitOid, "--worktree", "--staged", "--", "."]);
     await this.runGit(cwd, ["clean", "-fd", "--", "."]);
-    await this.runGit(cwd, ["reset", "--quiet", "--", "."], { allowNonZeroExit: true });
+    await this.runGit(cwd, ["reset", "--quiet", "--", "."]);
     return true;
   }
 
@@ -228,11 +227,20 @@ export class FilesystemCheckpointStore {
         return turn !== null && turn > maxTurnCount;
       });
 
-    await Promise.all(
-      refsToDelete.map((refName) =>
-        this.runGit(cwd, ["update-ref", "-d", refName], { allowNonZeroExit: true }),
-      ),
+    const batchSize = 32;
+    const batches = Array.from(
+      { length: Math.ceil(refsToDelete.length / batchSize) },
+      (_, index) => refsToDelete.slice(index * batchSize, (index + 1) * batchSize),
     );
+    await batches.reduce<Promise<void>>((pending, batch) => {
+      return pending.then(async () => {
+        await Promise.all(
+          batch.map((refName) =>
+            this.runGit(cwd, ["update-ref", "-d", refName], { allowNonZeroExit: true }),
+          ),
+        );
+      });
+    }, Promise.resolve());
   }
 
   private async hasHeadCommit(cwd: string): Promise<boolean> {
@@ -286,6 +294,12 @@ export class FilesystemCheckpointStore {
 
     if (result.timedOut) {
       throw new Error(`${quoteGitCommand(args)} timed out.`);
+    }
+
+    if (result.stdoutTruncated || result.stderrTruncated) {
+      throw new Error(
+        `${quoteGitCommand(args)} output exceeded ${DEFAULT_MAX_OUTPUT_BYTES} bytes and was truncated.`,
+      );
     }
 
     if (!options.allowNonZeroExit && result.code !== 0) {

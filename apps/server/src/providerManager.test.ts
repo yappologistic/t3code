@@ -151,55 +151,44 @@ describe("ProviderManager", () => {
 
   it("rolls back from a selected checkpoint turn count", async () => {
     const manager = new ProviderManager();
-    const codex = (
-      manager as unknown as {
-        codex: {
-          hasSession: (sessionId: string) => boolean;
-          readThread: (sessionId: string) => Promise<{
-            threadId: string;
-            turns: Array<{ id: string; items: unknown[] }>;
-          }>;
-          rollbackThread: (
-            sessionId: string,
-            numTurns: number,
-          ) => Promise<{
-            threadId: string;
-            turns: Array<{ id: string; items: unknown[] }>;
-          }>;
-          listSessions: () => Array<{
-            sessionId: string;
-            provider: "codex";
-            status: "ready";
-            createdAt: string;
-            updatedAt: string;
-            cwd?: string;
-          }>;
-        };
-        filesystemCheckpointStore: {
-          isGitRepository: (cwd: string) => Promise<boolean>;
-          ensureRootCheckpoint: (input: { cwd: string; threadId: string }) => Promise<boolean>;
-        };
-      }
-    ).codex;
     const internals = manager as unknown as {
-      filesystemCheckpointStore: {
-        isGitRepository: (cwd: string) => Promise<boolean>;
-        ensureRootCheckpoint: (input: { cwd: string; threadId: string }) => Promise<boolean>;
+      codex: {
+        hasSession: (sessionId: string) => boolean;
+        readThread: (sessionId: string) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
+        rollbackThread: (
+          sessionId: string,
+          numTurns: number,
+        ) => Promise<{
+          threadId: string;
+          turns: Array<{ id: string; items: unknown[] }>;
+        }>;
       };
+      filesystemCheckpointStore: {
+        hasCheckpoint: (input: {
+          cwd: string;
+          threadId: string;
+          turnCount: number;
+        }) => Promise<boolean>;
+        restoreCheckpoint: (input: {
+          cwd: string;
+          threadId: string;
+          turnCount: number;
+        }) => Promise<boolean>;
+        pruneAfterTurn: (input: {
+          cwd: string;
+          threadId: string;
+          maxTurnCount: number;
+        }) => Promise<void>;
+      };
+      sessionCheckpointCwds: Map<string, string>;
     };
 
     const rollbackCalls: Array<{ sessionId: string; numTurns: number }> = [];
-    codex.hasSession = () => true;
-    codex.listSessions = () => [
-      {
-        sessionId: "sess_1",
-        provider: "codex",
-        status: "ready",
-        createdAt: "2026-02-18T00:00:00.000Z",
-        updatedAt: "2026-02-18T00:00:00.000Z",
-      },
-    ];
-    codex.readThread = async () => ({
+    internals.codex.hasSession = () => true;
+    internals.codex.readThread = async () => ({
       threadId: "thr_1",
       turns: [
         { id: "turn_1", items: [] },
@@ -207,15 +196,20 @@ describe("ProviderManager", () => {
         { id: "turn_3", items: [] },
       ],
     });
-    codex.rollbackThread = async (sessionId, numTurns) => {
+    internals.codex.rollbackThread = async (sessionId, numTurns) => {
       rollbackCalls.push({ sessionId, numTurns });
       return {
         threadId: "thr_1",
         turns: [{ id: "turn_1", items: [] }],
       };
     };
-    internals.filesystemCheckpointStore.isGitRepository = async () => false;
-    internals.filesystemCheckpointStore.ensureRootCheckpoint = async () => true;
+    const hasCheckpoint = vi.fn(async () => true);
+    const restoreCheckpoint = vi.fn(async () => true);
+    const pruneAfterTurn = vi.fn(async () => undefined);
+    internals.filesystemCheckpointStore.hasCheckpoint = hasCheckpoint;
+    internals.filesystemCheckpointStore.restoreCheckpoint = restoreCheckpoint;
+    internals.filesystemCheckpointStore.pruneAfterTurn = pruneAfterTurn;
+    internals.sessionCheckpointCwds.set("sess_1", "/repo");
 
     const result = await manager.revertToCheckpoint({
       sessionId: "sess_1",
@@ -228,6 +222,21 @@ describe("ProviderManager", () => {
     expect(result.messageCount).toBe(0);
     expect(result.rolledBackTurns).toBe(2);
     expect(result.checkpoints).toHaveLength(2);
+    expect(hasCheckpoint).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      turnCount: 1,
+    });
+    expect(restoreCheckpoint).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      turnCount: 1,
+    });
+    expect(pruneAfterTurn).toHaveBeenCalledWith({
+      cwd: "/repo",
+      threadId: "thr_1",
+      maxTurnCount: 1,
+    });
 
     manager.dispose();
   });
@@ -471,6 +480,101 @@ describe("ProviderManager", () => {
     }
   });
 
+  it("does not fall back to process cwd when a session cwd exists but is not a git repo", async () => {
+    const manager = new ProviderManager();
+    const internals = manager as unknown as {
+      codex: {
+        hasSession: (sessionId: string) => boolean;
+        listSessions: () => Array<{
+          sessionId: string;
+          provider: "codex";
+          status: "ready";
+          createdAt: string;
+          updatedAt: string;
+          cwd?: string;
+        }>;
+      };
+      filesystemCheckpointStore: {
+        isGitRepository: (cwd: string) => Promise<boolean>;
+      };
+      sessionCheckpointCwds: Map<string, string>;
+    };
+
+    const processCwd = vi.spyOn(process, "cwd").mockReturnValue("/fallback-repo");
+    try {
+      internals.codex.hasSession = () => true;
+      internals.codex.listSessions = () => [
+        {
+          sessionId: "sess_1",
+          provider: "codex",
+          status: "ready",
+          createdAt: "2026-02-18T00:00:00.000Z",
+          updatedAt: "2026-02-18T00:00:00.000Z",
+          cwd: "/session-cwd",
+        },
+      ];
+      const isGitRepository = vi.fn(async (cwd: string) => cwd === "/fallback-repo");
+      internals.filesystemCheckpointStore.isGitRepository = isGitRepository;
+      internals.sessionCheckpointCwds.delete("sess_1");
+
+      await expect(
+        manager.getCheckpointDiff({
+          sessionId: "sess_1",
+          fromTurnCount: 0,
+          toTurnCount: 1,
+        }),
+      ).rejects.toThrow("Filesystem checkpoints are unavailable for this session.");
+      expect(isGitRepository).toHaveBeenCalledWith("/session-cwd");
+      expect(isGitRepository).not.toHaveBeenCalledWith("/fallback-repo");
+    } finally {
+      processCwd.mockRestore();
+      manager.dispose();
+    }
+  });
+
+  it("fails revert when filesystem checkpoints are unavailable for the session", async () => {
+    const manager = new ProviderManager();
+    const internals = manager as unknown as {
+      codex: {
+        hasSession: (sessionId: string) => boolean;
+        listSessions: () => Array<{
+          sessionId: string;
+          provider: "codex";
+          status: "ready";
+          createdAt: string;
+          updatedAt: string;
+          cwd?: string;
+        }>;
+      };
+      filesystemCheckpointStore: {
+        isGitRepository: (cwd: string) => Promise<boolean>;
+      };
+      sessionCheckpointCwds: Map<string, string>;
+    };
+
+    internals.codex.hasSession = () => true;
+    internals.codex.listSessions = () => [
+      {
+        sessionId: "sess_1",
+        provider: "codex",
+        status: "ready",
+        createdAt: "2026-02-18T00:00:00.000Z",
+        updatedAt: "2026-02-18T00:00:00.000Z",
+      },
+    ];
+    internals.filesystemCheckpointStore.isGitRepository = async () => false;
+    internals.sessionCheckpointCwds.delete("sess_1");
+
+    await expect(
+      manager.revertToCheckpoint({
+        sessionId: "sess_1",
+        turnCount: 1,
+      }),
+    ).rejects.toThrow("Filesystem checkpoints are unavailable for this session.");
+
+    manager.dispose();
+  });
+
   it("restores filesystem checkpoint when reverting and checkpointing is enabled", async () => {
     const manager = new ProviderManager();
     const internals = manager as unknown as {
@@ -509,6 +613,7 @@ describe("ProviderManager", () => {
     };
 
     internals.codex.hasSession = () => true;
+    const callOrder: string[] = [];
     internals.codex.readThread = async () => ({
       threadId: "thr_1",
       turns: [
@@ -516,13 +621,22 @@ describe("ProviderManager", () => {
         { id: "turn_2", items: [] },
       ],
     });
-    internals.codex.rollbackThread = async () => ({
-      threadId: "thr_1",
-      turns: [{ id: "turn_1", items: [] }],
-    });
+    internals.codex.rollbackThread = async () => {
+      callOrder.push("rollback");
+      return {
+        threadId: "thr_1",
+        turns: [{ id: "turn_1", items: [] }],
+      };
+    };
     const hasCheckpoint = vi.fn(async () => true);
-    const restoreCheckpoint = vi.fn(async () => true);
-    const pruneAfterTurn = vi.fn(async () => undefined);
+    const restoreCheckpoint = vi.fn(async () => {
+      callOrder.push("restore");
+      return true;
+    });
+    const pruneAfterTurn = vi.fn(async () => {
+      callOrder.push("prune");
+      return undefined;
+    });
     internals.filesystemCheckpointStore.hasCheckpoint = hasCheckpoint;
     internals.filesystemCheckpointStore.restoreCheckpoint = restoreCheckpoint;
     internals.filesystemCheckpointStore.pruneAfterTurn = pruneAfterTurn;
@@ -549,6 +663,7 @@ describe("ProviderManager", () => {
       threadId: "thr_1",
       maxTurnCount: 1,
     });
+    expect(callOrder).toEqual(["restore", "rollback", "prune"]);
 
     manager.dispose();
   });

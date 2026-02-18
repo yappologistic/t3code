@@ -58,8 +58,8 @@ function Toggle({
 }: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
   const context = React.useContext(ToggleGroupContext);
 
-  const resolvedVariant = context.variant || variant;
-  const resolvedSize = context.size || size;
+  const resolvedVariant = variant ?? context.variant;
+  const resolvedSize = size ?? context.size;
 
   return (
     <ToggleComponent

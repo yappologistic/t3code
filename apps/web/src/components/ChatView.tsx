@@ -53,9 +53,7 @@ import {
   countDiffStat,
   derivePendingApprovals,
   derivePhase,
-  deriveTurnDiffSummaries,
   deriveTimelineEntries,
-  inferCheckpointTurnCountByTurnId,
   type TurnDiffSummary,
   type PendingApproval,
   deriveWorkLogEntries,
@@ -72,6 +70,7 @@ import {
 } from "../types";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
+import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
 import {
@@ -414,13 +413,8 @@ export default function ChatView() {
     () => deriveTimelineEntries(activeThread?.messages ?? [], workLogEntries),
     [activeThread?.messages, workLogEntries],
   );
-  const turnDiffSummaries = useMemo(
-    () =>
-      activeThread?.turnDiffSummaries.length
-        ? activeThread.turnDiffSummaries
-        : deriveTurnDiffSummaries(activeThread?.events ?? []),
-    [activeThread?.events, activeThread?.turnDiffSummaries],
-  );
+  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
+    useTurnDiffSummaries(activeThread);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<string, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
@@ -429,11 +423,6 @@ export default function ChatView() {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
-  const inferredCheckpointTurnCountByTurnId = useMemo(
-    () => inferCheckpointTurnCountByTurnId(turnDiffSummaries),
-    [turnDiffSummaries],
-  );
-
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<string, number>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -1487,8 +1476,10 @@ export default function ChatView() {
     const selectedDiffTurnId =
       state.diffOpen && state.diffThreadId === activeThreadId ? state.diffTurnId : null;
     const selectedDiffTurn =
-      turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ??
-      turnDiffSummaries[0];
+      selectedDiffTurnId === null
+        ? undefined
+        : (turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ??
+          turnDiffSummaries[0]);
     const selectedTurnMissingPatchBody = Boolean(
       selectedDiffTurn &&
       !selectedDiffTurn.unifiedDiff &&
@@ -1505,9 +1496,14 @@ export default function ChatView() {
     }
     checkpointHydrationSessionRequestRef.current.add(requestKey);
     setThreadError(activeThreadId, null);
-    void ensureSession().finally(() => {
-      checkpointHydrationSessionRequestRef.current.delete(requestKey);
-    });
+    void ensureSession().then(
+      () => {
+        checkpointHydrationSessionRequestRef.current.delete(requestKey);
+      },
+      () => {
+        // Keep the key on failure so this effect does not re-enter in a tight loop.
+      },
+    );
   }, [
     activeThreadId,
     activeThreadRuntimeId,

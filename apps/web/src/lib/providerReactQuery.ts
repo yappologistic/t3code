@@ -28,7 +28,13 @@ export function checkpointDiffQueryOptions(
   input: CheckpointDiffQueryInput,
 ) {
   const hasValidRange =
-    typeof input.fromTurnCount === "number" && typeof input.toTurnCount === "number";
+    typeof input.fromTurnCount === "number" &&
+    typeof input.toTurnCount === "number" &&
+    Number.isInteger(input.fromTurnCount) &&
+    Number.isInteger(input.toTurnCount) &&
+    input.fromTurnCount >= 0 &&
+    input.toTurnCount >= 0 &&
+    input.fromTurnCount <= input.toTurnCount;
 
   return queryOptions({
     queryKey: providerQueryKeys.checkpointDiff(input),

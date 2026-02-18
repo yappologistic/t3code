@@ -493,7 +493,11 @@ describe("deriveTurnDiffSummaries", () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0]?.turnId).toBe("turn-1");
     expect(summaries[0]?.assistantMessageId).toBe("msg-1");
-    expect(summaries[0]?.files).toEqual([]);
+    expect(summaries[0]?.unifiedDiff).toContain("diff --git a/src/a.ts b/src/a.ts");
+    expect(summaries[0]?.files.map((file) => file.path)).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(summaries[0]?.files[0]?.kind).toBe("modified");
+    expect(summaries[0]?.files[0]?.additions).toBe(1);
+    expect(summaries[0]?.files[0]?.deletions).toBe(1);
   });
 
   it("includes completed turns even when no fileChange tool events were emitted", () => {
@@ -522,6 +526,55 @@ describe("deriveTurnDiffSummaries", () => {
     expect(summaries[0]?.turnId).toBe("turn-1");
     expect(summaries[0]?.files).toEqual([]);
   });
+
+  it("keeps newest diff data when older events provide stale values", () => {
+    const summaries = deriveTurnDiffSummaries([
+      makeEvent({
+        id: "evt-turn-diff-old",
+        method: "turn/diff/updated",
+        turnId: "turn-1",
+        createdAt: "2026-02-08T10:00:01.000Z",
+        payload: {
+          diff: [
+            "diff --git a/src/example.ts b/src/example.ts",
+            "@@ -1 +1 @@",
+            "-old",
+            "+older",
+          ].join("\n"),
+        },
+      }),
+      makeEvent({
+        id: "evt-turn-diff-new",
+        method: "turn/diff/updated",
+        turnId: "turn-1",
+        createdAt: "2026-02-08T10:00:02.000Z",
+        payload: {
+          diff: [
+            "diff --git a/src/example.ts b/src/example.ts",
+            "@@ -1 +1 @@",
+            "-old",
+            "+newest",
+          ].join("\n"),
+        },
+      }),
+      makeEvent({
+        id: "evt-turn-completed",
+        method: "turn/completed",
+        turnId: "turn-1",
+        createdAt: "2026-02-08T10:00:03.000Z",
+        payload: {
+          turn: {
+            id: "turn-1",
+            status: "completed",
+          },
+        },
+      }),
+    ]);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.unifiedDiff).toContain("+newest");
+    expect(summaries[0]?.unifiedDiff).not.toContain("+older");
+  });
 });
 
 describe("deriveTurnDiffFilesFromUnifiedDiff", () => {
@@ -544,6 +597,22 @@ describe("deriveTurnDiffFilesFromUnifiedDiff", () => {
     expect(files[1]?.diff).toContain("diff --git a/src/b.ts b/src/b.ts");
     expect(files[0]?.additions).toBe(1);
     expect(files[0]?.deletions).toBe(1);
+  });
+
+  it("parses git headers when file paths include ` b/`", () => {
+    const files = deriveTurnDiffFilesFromUnifiedDiff(
+      [
+        "diff --git a/subdir b/example.ts b/subdir b/example.ts",
+        "--- a/subdir b/example.ts",
+        "+++ b/subdir b/example.ts",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+      ].join("\n"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0]?.path).toBe("subdir b/example.ts");
   });
 });
 

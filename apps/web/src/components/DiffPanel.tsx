@@ -8,11 +8,8 @@ import { cn } from "~/lib/utils";
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { useTheme } from "../hooks/useTheme";
-import {
-  deriveTurnDiffSummaries,
-  formatTimestamp,
-  inferCheckpointTurnCountByTurnId,
-} from "../session-logic";
+import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { formatTimestamp } from "../session-logic";
 import { useStore } from "../store";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 
@@ -78,17 +75,8 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const activeThreadRuntimeId =
     activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
   const activeSessionId = activeThread?.session?.sessionId ?? null;
-  const turnDiffSummaries = useMemo(
-    () =>
-      activeThread?.turnDiffSummaries.length
-        ? activeThread.turnDiffSummaries
-        : deriveTurnDiffSummaries(activeThread?.events ?? []),
-    [activeThread?.events, activeThread?.turnDiffSummaries],
-  );
-  const inferredCheckpointTurnCountByTurnId = useMemo(
-    () => inferCheckpointTurnCountByTurnId(turnDiffSummaries),
-    [turnDiffSummaries],
-  );
+  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
+    useTurnDiffSummaries(activeThread);
 
   const canApplyStoredTarget = Boolean(activeThread && state.diffThreadId === activeThread.id);
   const selectedTurnId = canApplyStoredTarget ? state.diffTurnId : null;
@@ -358,7 +346,12 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
           variant="outline"
           size="xs"
           value={[diffRenderMode]}
-          onValueChange={(value) => setDiffRenderMode(value[0] as DiffRenderMode)}
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "stacked" || next === "split") {
+              setDiffRenderMode(next);
+            }
+          }}
         >
           <Toggle aria-label="Stacked diff view" value="stacked">
             <Rows3Icon className="size-3" />
