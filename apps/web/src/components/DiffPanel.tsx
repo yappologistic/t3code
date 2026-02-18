@@ -138,12 +138,19 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const activeCheckpointRange = selectedTurn
     ? selectedCheckpointRange
     : conversationCheckpointRange;
+  const conversationCacheScope = useMemo(() => {
+    if (selectedTurn || turnDiffSummaries.length === 0) {
+      return null;
+    }
+    return `conversation:${turnDiffSummaries.map((summary) => summary.turnId).join(",")}`;
+  }, [selectedTurn, turnDiffSummaries]);
   const activeCheckpointDiffQuery = useQuery(
     checkpointDiffQueryOptions(api, {
       sessionId: activeSessionId,
       threadRuntimeId: activeThreadRuntimeId,
       fromTurnCount: activeCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: activeCheckpointRange?.toTurnCount ?? null,
+      cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : conversationCacheScope,
     }),
   );
   const selectedTurnCheckpointDiff = selectedTurn
@@ -184,6 +191,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             threadRuntimeId: activeThreadRuntimeId,
             fromTurnCount: Math.max(0, checkpointTurnCount - 1),
             toTurnCount: checkpointTurnCount,
+            cacheScope: `turn:${summary.turnId}`,
           }),
         )?.diff;
         if (checkpointPatch) {

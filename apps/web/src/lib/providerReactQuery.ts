@@ -6,6 +6,7 @@ export interface CheckpointDiffQueryInput {
   threadRuntimeId: string | null;
   fromTurnCount: number | null;
   toTurnCount: number | null;
+  cacheScope?: string | null;
 }
 
 export const providerQueryKeys = {
@@ -18,6 +19,7 @@ export const providerQueryKeys = {
       input.threadRuntimeId,
       input.fromTurnCount,
       input.toTurnCount,
+      input.cacheScope ?? null,
     ] as const,
 };
 

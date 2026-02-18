@@ -529,6 +529,7 @@ export default function ChatView() {
         threadRuntimeId: activeThreadRuntimeId,
         fromTurnCount: target.fromTurnCount,
         toTurnCount: target.toTurnCount,
+        cacheScope: `turn:${target.turnId}`,
       }),
     ),
   });
