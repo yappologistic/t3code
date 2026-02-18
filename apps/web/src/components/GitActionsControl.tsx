@@ -226,17 +226,14 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
       });
       return;
     }
-    const promise = api.shell.openExternal(prUrl);
-    toastManager.promise(promise, {
-      loading: { title: "Opening PR...", data: threadToastData },
-      success: { title: "PR opened", data: threadToastData },
-      error: (err) => ({
+    void api.shell.openExternal(prUrl).catch((err) => {
+      toastManager.add({
+        type: "error",
         title: "Unable to open PR link",
         description: err instanceof Error ? err.message : "An error occurred.",
         data: threadToastData,
-      }),
+      });
     });
-    void promise.catch(() => undefined);
   }, [api, gitStatusForActions?.openPr?.url, threadToastData]);
 
   const runGitActionWithToast = useCallback(
