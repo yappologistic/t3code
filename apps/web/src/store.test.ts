@@ -558,6 +558,49 @@ describe("store reducer thread continuity", () => {
     expect(next.activeThreadId).toBe("thread-a");
   });
 
+  it("treats empty scripts from sync as authoritative", () => {
+    const state: AppState = {
+      projects: [
+        {
+          id: "project-old-a",
+          name: "A",
+          cwd: "/tmp/a",
+          model: "gpt-5.3-codex",
+          expanded: true,
+          scripts: [
+            {
+              id: "test",
+              name: "Test",
+              command: "bun test",
+              icon: "test",
+              runOnWorktreeCreate: false,
+            },
+          ],
+        },
+      ],
+      threads: [makeThread({ id: "thread-a", projectId: "project-old-a" })],
+      activeThreadId: "thread-a",
+      runtimeMode: "full-access",
+      diffOpen: false,
+    };
+
+    const next = reducer(state, {
+      type: "SYNC_PROJECTS",
+      projects: [
+        {
+          id: "project-new-a",
+          name: "A",
+          cwd: "/tmp/a",
+          model: "gpt-5.3-codex",
+          expanded: false,
+          scripts: [],
+        },
+      ],
+    });
+
+    expect(next.projects[0]?.scripts).toEqual([]);
+  });
+
   it("updates project scripts", () => {
     const state = makeState(makeThread());
     const next = reducer(state, {

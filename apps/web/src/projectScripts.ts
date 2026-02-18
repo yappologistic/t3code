@@ -56,7 +56,7 @@ function shellEscapePosix(value: string): string {
 }
 
 function shellEscapeWindowsSetValue(value: string): string {
-  return value.replace(/"/g, '""');
+  return value.replace(/\^/g, "^^").replace(/%/g, "%%").replace(/"/g, '""');
 }
 
 export function injectEnvIntoShellCommand(

@@ -34,6 +34,15 @@ describe("projectScripts helpers", () => {
     expect(command).toBe('set "T3CODE_PROJECT_ROOT=C:\\\\repo path" && bun install');
   });
 
+  it("escapes windows env values that trigger interpolation", () => {
+    const command = injectEnvIntoShellCommand(
+      "bun install",
+      { T3CODE_PROJECT_ROOT: '%USERPROFILE%^"repo"' },
+      "Win32",
+    );
+    expect(command).toBe('set "T3CODE_PROJECT_ROOT=%%USERPROFILE%%^^""repo""" && bun install');
+  });
+
   it("resolves primary and setup scripts", () => {
     const scripts = [
       {

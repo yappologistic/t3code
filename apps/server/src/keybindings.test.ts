@@ -144,4 +144,49 @@ describe("server keybindings", () => {
     }>;
     expect(persisted).toEqual([{ key: "mod+shift+r", command: "script.run-tests.run" }]);
   });
+
+  it("refuses to overwrite malformed keybindings config", () => {
+    const fakeHome = makeTempDir("t3code-keybindings-malformed-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    const configPath = path.join(configDir, "keybindings.json");
+    fs.writeFileSync(configPath, "{ not-json", "utf8");
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+
+    expect(() =>
+      upsertKeybindingRule(logger, {
+        key: "mod+shift+r",
+        command: "script.run-tests.run",
+      }),
+    ).toThrow(/Unable to parse keybindings config/);
+
+    expect(fs.readFileSync(configPath, "utf8")).toBe("{ not-json");
+  });
+
+  it("cleans up temp files when atomic keybinding write fails", () => {
+    const fakeHome = makeTempDir("t3code-keybindings-atomic-");
+    const configDir = path.join(fakeHome, ".t3");
+    fs.mkdirSync(configDir, { recursive: true });
+    const configPath = path.join(configDir, "keybindings.json");
+    fs.writeFileSync(configPath, JSON.stringify([{ key: "mod+j", command: "terminal.toggle" }]), "utf8");
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error("rename failed");
+    });
+
+    expect(() =>
+      upsertKeybindingRule(logger, {
+        key: "mod+shift+r",
+        command: "script.run-tests.run",
+      }),
+    ).toThrow(/rename failed/);
+
+    expect(fs.readFileSync(configPath, "utf8")).toBe(
+      JSON.stringify([{ key: "mod+j", command: "terminal.toggle" }]),
+    );
+    const tempFiles = fs
+      .readdirSync(configDir)
+      .filter((file) => file.includes("keybindings.json.") && file.endsWith(".tmp"));
+    expect(tempFiles).toEqual([]);
+  });
 });

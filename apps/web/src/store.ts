@@ -481,10 +481,7 @@ export function reducer(state: AppState, action: Action): AppState {
       );
       const nextProjects = action.projects.map((project) => {
         const previous = previousByCwd.get(project.cwd);
-        const scripts =
-          project.scripts.length > 0
-            ? normalizeProjectScripts(project.scripts)
-            : normalizeProjectScripts(previous?.scripts ?? []);
+        const scripts = normalizeProjectScripts(project.scripts);
         return {
           ...project,
           model: resolveModelSlug(previous?.model ?? project.model),

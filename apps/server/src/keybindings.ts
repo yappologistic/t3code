@@ -281,12 +281,20 @@ function resolveKeybindingsConfigPath(): string {
   return path.join(os.homedir(), KEYBINDINGS_CONFIG_PATH);
 }
 
-function loadCustomKeybindingsConfig(logger: KeybindingsLogger): KeybindingsConfig {
+function loadCustomKeybindingsConfig(
+  logger: KeybindingsLogger,
+  options?: {
+    throwOnUnreadableConfig?: boolean;
+  },
+): KeybindingsConfig {
   const configPath = resolveKeybindingsConfigPath();
   try {
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) {
+      if (options?.throwOnUnreadableConfig) {
+        throw new Error(`Unable to parse keybindings config at ${configPath}: expected JSON array`);
+      }
       logger.warn("ignoring keybindings config with unsupported format; expected array", {
         path: configPath,
       });
@@ -319,11 +327,30 @@ function loadCustomKeybindingsConfig(logger: KeybindingsLogger): KeybindingsConf
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       return [];
     }
+    if (options?.throwOnUnreadableConfig) {
+      throw new Error(
+        `Unable to parse keybindings config at ${configPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error },
+      );
+    }
     logger.warn("ignoring malformed keybindings config", {
       path: configPath,
       error: error instanceof Error ? error.message : String(error),
     });
     return [];
+  }
+}
+
+function writeConfigAtomically(configPath: string, config: KeybindingsConfig): void {
+  const tempPath = `${configPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    fs.renameSync(tempPath, configPath);
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
   }
 }
 
@@ -375,7 +402,9 @@ export function upsertKeybindingRule(
   }
 
   const configPath = resolveKeybindingsConfigPath();
-  const customConfig = loadCustomKeybindingsConfig(logger);
+  const customConfig = loadCustomKeybindingsConfig(logger, {
+    throwOnUnreadableConfig: true,
+  });
   const nextConfig = [...customConfig.filter((entry) => entry.command !== rule.command), rule];
   const cappedConfig =
     nextConfig.length > MAX_KEYBINDINGS ? nextConfig.slice(-MAX_KEYBINDINGS) : nextConfig;
@@ -388,7 +417,7 @@ export function upsertKeybindingRule(
   }
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(cappedConfig, null, 2)}\n`, "utf8");
+  writeConfigAtomically(configPath, cappedConfig);
 
   const compiledCustomConfig = compileResolvedKeybindingsConfig(cappedConfig);
   return mergeWithDefaultKeybindings(compiledCustomConfig);

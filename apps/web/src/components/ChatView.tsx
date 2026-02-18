@@ -60,7 +60,11 @@ import {
 } from "../session-logic";
 import { isScrollContainerNearBottom } from "../chat-scroll";
 import { useStore } from "../store";
-import { MAX_THREAD_TERMINAL_COUNT, type ChatImageAttachment } from "../types";
+import {
+  DEFAULT_THREAD_TERMINAL_ID,
+  MAX_THREAD_TERMINAL_COUNT,
+  type ChatImageAttachment,
+} from "../types";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import BranchToolbar from "./BranchToolbar";
@@ -655,6 +659,7 @@ export default function ChatView() {
       options?: {
         cwd?: string;
         env?: Record<string, string>;
+        worktreePath?: string | null;
         preferNewTerminal?: boolean;
       },
     ) => {
@@ -664,9 +669,14 @@ export default function ChatView() {
         return { ...current, [activeProject.id]: script.id };
       });
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
-      const baseTerminalId = activeThread.activeTerminalId;
+      const baseTerminalId =
+        activeThread.activeTerminalId ||
+        activeThread.terminalIds[0] ||
+        DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = activeThread.runningTerminalIds.includes(baseTerminalId);
-      const shouldCreateNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
+      const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
+      const shouldCreateNewTerminal =
+        wantsNewTerminal && activeThread.terminalIds.length < MAX_THREAD_TERMINAL_COUNT;
       const targetTerminalId = shouldCreateNewTerminal
         ? `terminal-${crypto.randomUUID()}`
         : baseTerminalId;
@@ -701,7 +711,7 @@ export default function ChatView() {
           },
           script,
           threadId: activeThreadId,
-          worktreePath: activeThread.worktreePath ?? null,
+          worktreePath: options?.worktreePath ?? activeThread.worktreePath ?? null,
           ...(options?.env ? { extraEnv: options.env } : {}),
         }),
       );
@@ -1350,6 +1360,7 @@ export default function ChatView() {
         if (setupScript) {
           void runProjectScript(setupScript, {
             cwd: result.worktree.path,
+            worktreePath: result.worktree.path,
           });
         }
       } catch (err) {
