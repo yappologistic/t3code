@@ -98,7 +98,9 @@ const DEFAULT_BINDINGS = compile([
 describe("isTerminalToggleShortcut", () => {
   it("matches Cmd+J on macOS", () => {
     assert.isTrue(
-      isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_BINDINGS, { platform: "MacIntel" }),
+      isTerminalToggleShortcut(event({ metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
     );
   });
 
@@ -219,7 +221,10 @@ describe("shortcutLabelForCommand", () => {
         whenAst: whenNot(whenIdentifier("terminalFocus")),
       },
     ]);
-    assert.strictEqual(shortcutLabelForCommand(bindings, "terminal.split", "Linux"), "Ctrl+Shift+\\");
+    assert.strictEqual(
+      shortcutLabelForCommand(bindings, "terminal.split", "Linux"),
+      "Ctrl+Shift+\\",
+    );
   });
 
   it("returns labels for non-terminal commands", () => {
@@ -247,22 +252,14 @@ describe("chat/editor shortcuts", () => {
 
   it("matches chat.newLocal shortcut", () => {
     assert.isTrue(
-      isChatNewLocalShortcut(
-        event({ key: "n", metaKey: true, shiftKey: true }),
-        DEFAULT_BINDINGS,
-        {
-          platform: "MacIntel",
-        },
-      ),
+      isChatNewLocalShortcut(event({ key: "n", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
     );
     assert.isTrue(
-      isChatNewLocalShortcut(
-        event({ key: "n", ctrlKey: true, shiftKey: true }),
-        DEFAULT_BINDINGS,
-        {
-          platform: "Linux",
-        },
-      ),
+      isChatNewLocalShortcut(event({ key: "n", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+      }),
     );
   });
 
@@ -344,11 +341,17 @@ describe("cross-command precedence", () => {
 
 describe("formatShortcutLabel", () => {
   it("formats labels for macOS", () => {
-    assert.strictEqual(formatShortcutLabel(modShortcut("d", { shiftKey: true }), "MacIntel"), "⇧⌘D");
+    assert.strictEqual(
+      formatShortcutLabel(modShortcut("d", { shiftKey: true }), "MacIntel"),
+      "⇧⌘D",
+    );
   });
 
   it("formats labels for non-macOS", () => {
-    assert.strictEqual(formatShortcutLabel(modShortcut("d", { shiftKey: true }), "Linux"), "Ctrl+Shift+D");
+    assert.strictEqual(
+      formatShortcutLabel(modShortcut("d", { shiftKey: true }), "Linux"),
+      "Ctrl+Shift+D",
+    );
   });
 
   it("formats labels for plus key", () => {
@@ -368,7 +371,9 @@ describe("isTerminalClearShortcut", () => {
   });
 
   it("ignores non-keydown events", () => {
-    assert.isFalse(isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"));
+    assert.isFalse(
+      isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"),
+    );
   });
 });
 
@@ -413,7 +418,9 @@ describe("terminalNavigationShortcutData", () => {
         "MacIntel",
       ),
     );
-    assert.isNull(terminalNavigationShortcutData(event({ key: "ArrowLeft", metaKey: true }), "Linux"));
+    assert.isNull(
+      terminalNavigationShortcutData(event({ key: "ArrowLeft", metaKey: true }), "Linux"),
+    );
     assert.isNull(terminalNavigationShortcutData(event({ key: "a", altKey: true }), "MacIntel"));
   });
 

@@ -627,7 +627,8 @@ export default function GitActionsControl({ api, gitCwd }: GitActionsControlProp
                         : gitStatusForActions.aheadCount === 0 &&
                             gitStatusForActions.behindCount === 0
                           ? "Up to date"
-                          : gitStatusForActions.aheadCount > 0 && gitStatusForActions.behindCount > 0
+                          : gitStatusForActions.aheadCount > 0 &&
+                              gitStatusForActions.behindCount > 0
                             ? `Diverged (+${gitStatusForActions.aheadCount} / -${gitStatusForActions.behindCount})`
                             : gitStatusForActions.aheadCount > 0
                               ? `Ahead by ${gitStatusForActions.aheadCount}`

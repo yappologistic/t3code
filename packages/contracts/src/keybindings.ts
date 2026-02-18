@@ -21,14 +21,16 @@ export const keybindingRuleSchema = z.object({
 
 export const keybindingsConfigSchema = z.array(keybindingRuleSchema).max(256);
 
-export const keybindingShortcutSchema = z.object({
-  key: z.string().trim().min(1).max(32),
-  metaKey: z.boolean(),
-  ctrlKey: z.boolean(),
-  shiftKey: z.boolean(),
-  altKey: z.boolean(),
-  modKey: z.boolean(),
-}).strict();
+export const keybindingShortcutSchema = z
+  .object({
+    key: z.string().trim().min(1).max(32),
+    metaKey: z.boolean(),
+    ctrlKey: z.boolean(),
+    shiftKey: z.boolean(),
+    altKey: z.boolean(),
+    modKey: z.boolean(),
+  })
+  .strict();
 
 export type KeybindingWhenNode =
   | { type: "identifier"; name: string }
@@ -59,11 +61,13 @@ export const keybindingWhenNodeSchema: z.ZodType<KeybindingWhenNode> = z.lazy(()
   ]),
 );
 
-export const resolvedKeybindingRuleSchema = z.object({
-  command: keybindingCommandSchema,
-  shortcut: keybindingShortcutSchema,
-  whenAst: keybindingWhenNodeSchema.optional(),
-}).strict();
+export const resolvedKeybindingRuleSchema = z
+  .object({
+    command: keybindingCommandSchema,
+    shortcut: keybindingShortcutSchema,
+    whenAst: keybindingWhenNodeSchema.optional(),
+  })
+  .strict();
 
 export const resolvedKeybindingsConfigSchema = z.array(resolvedKeybindingRuleSchema).max(256);
 
