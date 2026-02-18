@@ -60,7 +60,7 @@ function shellEscapeWindowsSetValue(value: string): string {
   return value.replace(/\^/g, "^^").replace(/%/g, "^%").replace(/"/g, '""');
 }
 
-export function injectEnvIntoShellCommand(
+function injectEnvIntoShellCommand(
   command: string,
   env: Record<string, string>,
   platform = typeof navigator === "undefined" ? "" : navigator.platform,

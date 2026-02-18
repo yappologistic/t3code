@@ -552,7 +552,7 @@ export default function ChatView() {
       },
       worktreePath: activeThread?.worktreePath ?? null,
     });
-  }, [activeProject, activeThread?.worktreePath]);
+  }, [activeProject?.cwd, activeThread?.worktreePath]);
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = branchesQuery.data?.isRepo ?? true;
   const splitTerminalShortcutLabel = useMemo(
