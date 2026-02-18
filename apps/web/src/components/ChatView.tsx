@@ -60,7 +60,7 @@ import {
 import { isScrollContainerNearBottom } from "../chat-scroll";
 import { useStore } from "../store";
 import { MAX_THREAD_TERMINAL_COUNT, type ChatImageAttachment } from "../types";
-import { getVscodeIconUrlForEntry } from "../vscode-icons";
+import { basenameOfPath, getVscodeIconUrlForEntry } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
@@ -123,12 +123,6 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "tool") return "text-muted-foreground/70";
   if (tone === "thinking") return "text-muted-foreground/50";
   return "text-muted-foreground/40";
-}
-
-function basenameOfPath(pathValue: string): string {
-  const slashIndex = pathValue.lastIndexOf("/");
-  if (slashIndex === -1) return pathValue;
-  return pathValue.slice(slashIndex + 1);
 }
 
 type SessionContinuityState = "resumed" | "new" | "fallback_new";
