@@ -1,6 +1,6 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
@@ -9,6 +9,35 @@ import { DEFAULT_MODEL } from "../model-logic";
 import { createThread } from "../threadFactory";
 import { useStore } from "../store";
 import { onServerWelcome } from "../wsNativeApi";
+
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+}>()({
+  component: RootRouteView,
+});
+
+function RootRouteView() {
+  const api = useNativeApi();
+
+  if (!api) {
+    return (
+      <div className="flex h-screen flex-col bg-background text-foreground">
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-muted-foreground">Connecting to T3 Code server...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <EventRouter />
+      <AutoProjectBootstrap />
+      <DesktopProjectBootstrap />
+      <Outlet />
+    </>
+  );
+}
 
 function EventRouter() {
   const api = useNativeApi();
@@ -148,30 +177,3 @@ function DesktopProjectBootstrap() {
 
   return null;
 }
-
-function RootRouteView() {
-  const api = useNativeApi();
-
-  if (!api) {
-    return (
-      <div className="flex h-screen flex-col bg-background text-foreground">
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-muted-foreground">Connecting to T3 Code server...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <EventRouter />
-      <AutoProjectBootstrap />
-      <DesktopProjectBootstrap />
-      <Outlet />
-    </>
-  );
-}
-
-export const Route = createRootRoute({
-  component: RootRouteView,
-});
