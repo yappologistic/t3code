@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useMemo, useState } from "react";
 
 import { Button } from "../components/ui/button";
@@ -6,7 +6,7 @@ import { Textarea } from "../components/ui/textarea";
 import { createThread } from "../threadFactory";
 import { useStore } from "../store";
 
-export function ChatIndexRouteView() {
+function ChatIndexRouteView() {
   const { state, dispatch } = useStore();
   const navigate = useNavigate();
   const [draft, setDraft] = useState("");
@@ -82,3 +82,7 @@ export function ChatIndexRouteView() {
     </section>
   );
 }
+
+export const Route = createFileRoute("/_chat/")({
+  component: ChatIndexRouteView,
+});

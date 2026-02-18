@@ -1,14 +1,13 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import ChatView from "../components/ChatView";
 import { useStore } from "../store";
 
-export function ChatThreadRouteView() {
+function ChatThreadRouteView() {
   const { state, dispatch } = useStore();
   const navigate = useNavigate();
-  const params = useParams({ strict: false });
-  const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  const { threadId } = Route.useParams();
   const threadExists = threadId ? state.threads.some((thread) => thread.id === threadId) : false;
 
   useEffect(() => {
@@ -35,3 +34,7 @@ export function ChatThreadRouteView() {
 
   return <ChatView threadId={threadId} />;
 }
+
+export const Route = createFileRoute("/_chat/$threadId")({
+  component: ChatThreadRouteView,
+});
