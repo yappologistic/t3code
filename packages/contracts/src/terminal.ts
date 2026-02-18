@@ -21,8 +21,8 @@ export const terminalSessionInputSchema = terminalThreadInputSchema.extend({
 
 export const terminalOpenInputSchema = terminalSessionInputSchema.extend({
   cwd: z.string().trim().min(1),
-  cols: terminalColsSchema,
-  rows: terminalRowsSchema,
+  cols: terminalColsSchema.optional(),
+  rows: terminalRowsSchema.optional(),
   env: terminalEnvSchema.optional(),
 });
 

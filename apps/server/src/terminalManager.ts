@@ -26,6 +26,8 @@ import { runProcess } from "./processRunner";
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
+const DEFAULT_OPEN_COLS = 120;
+const DEFAULT_OPEN_ROWS = 30;
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
 
 type TerminalSubprocessChecker = (terminalPid: number) => Promise<boolean>;
@@ -66,6 +68,8 @@ interface ShellCandidate {
   shell: string;
   args?: string[];
 }
+
+type TerminalStartInput = TerminalOpenInput & { cols: number; rows: number };
 
 function defaultShellResolver(): string {
   if (process.platform === "win32") {
@@ -334,6 +338,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
       if (!existing) {
         await this.flushPersistQueue(input.threadId, input.terminalId);
         const history = await this.readHistory(input.threadId, input.terminalId);
+        const cols = input.cols ?? DEFAULT_OPEN_COLS;
+        const rows = input.rows ?? DEFAULT_OPEN_ROWS;
         const session: TerminalSessionState = {
           threadId: input.threadId,
           terminalId: input.terminalId,
@@ -344,8 +350,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           exitCode: null,
           exitSignal: null,
           updatedAt: new Date().toISOString(),
-          cols: input.cols,
-          rows: input.rows,
+          cols,
+          rows,
           process: null,
           unsubscribeData: null,
           unsubscribeExit: null,
@@ -353,12 +359,14 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           runtimeEnv: normalizedRuntimeEnv(input.env),
         };
         this.sessions.set(sessionKey, session);
-        this.startSession(session, input, "started");
+        this.startSession(session, { ...input, cols, rows }, "started");
         return this.snapshot(session);
       }
 
       const nextRuntimeEnv = normalizedRuntimeEnv(input.env);
       const currentRuntimeEnv = existing.runtimeEnv;
+      const targetCols = input.cols ?? existing.cols;
+      const targetRows = input.rows ?? existing.rows;
       const runtimeEnvChanged =
         JSON.stringify(currentRuntimeEnv) !== JSON.stringify(nextRuntimeEnv);
 
@@ -377,14 +385,14 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
       }
 
       if (!existing.process) {
-        this.startSession(existing, input, "started");
+        this.startSession(existing, { ...input, cols: targetCols, rows: targetRows }, "started");
         return this.snapshot(existing);
       }
 
-      if (existing.cols !== input.cols || existing.rows !== input.rows) {
-        existing.cols = input.cols;
-        existing.rows = input.rows;
-        existing.process.resize(input.cols, input.rows);
+      if (existing.cols !== targetCols || existing.rows !== targetRows) {
+        existing.cols = targetCols;
+        existing.rows = targetRows;
+        existing.process.resize(targetCols, targetRows);
         existing.updatedAt = new Date().toISOString();
       }
 
@@ -441,6 +449,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
       const sessionKey = toSessionKey(input.threadId, input.terminalId);
       let session = this.sessions.get(sessionKey);
       if (!session) {
+        const cols = input.cols ?? DEFAULT_OPEN_COLS;
+        const rows = input.rows ?? DEFAULT_OPEN_ROWS;
         session = {
           threadId: input.threadId,
           terminalId: input.terminalId,
@@ -451,8 +461,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           exitCode: null,
           exitSignal: null,
           updatedAt: new Date().toISOString(),
-          cols: input.cols,
-          rows: input.rows,
+          cols,
+          rows,
           process: null,
           unsubscribeData: null,
           unsubscribeExit: null,
@@ -466,9 +476,12 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
         session.runtimeEnv = normalizedRuntimeEnv(input.env);
       }
 
+      const cols = input.cols ?? session.cols;
+      const rows = input.rows ?? session.rows;
+
       session.history = "";
       await this.persistHistory(input.threadId, input.terminalId, session.history);
-      this.startSession(session, input, "restarted");
+      this.startSession(session, { ...input, cols, rows }, "restarted");
       return this.snapshot(session);
     });
   }
@@ -517,7 +530,7 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
 
   private startSession(
     session: TerminalSessionState,
-    input: TerminalOpenInput,
+    input: TerminalStartInput,
     eventType: "started" | "restarted",
   ): void {
     this.stopProcess(session);
