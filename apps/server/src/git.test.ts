@@ -760,6 +760,35 @@ describe("git integration", () => {
       expect(dirty.hasWorkingTreeChanges).toBe(true);
     });
 
+    it("refreshes upstream before statusDetails so behind count reflects remote updates", async () => {
+      await using remote = await makeTmpDir();
+      await using source = await makeTmpDir();
+      await using clone = await makeTmpDir();
+      await git(remote.path, "init --bare");
+
+      await initRepoWithCommit(source.path);
+      const initialBranch = (await listGitBranches({ cwd: source.path })).branches.find(
+        (branch) => branch.current,
+      )!.name;
+      await git(source.path, `remote add origin ${JSON.stringify(remote.path)}`);
+      await git(source.path, `push -u origin ${initialBranch}`);
+
+      await git(clone.path, `clone ${JSON.stringify(remote.path)} .`);
+      await git(clone.path, "config user.email 'test@test.com'");
+      await git(clone.path, "config user.name 'Test'");
+      await git(clone.path, `checkout -B ${initialBranch} --track origin/${initialBranch}`);
+      await writeFile(path.join(clone.path, "CHANGELOG.md"), "remote change\n");
+      await git(clone.path, "add CHANGELOG.md");
+      await git(clone.path, "commit -m 'remote update'");
+      await git(clone.path, `push origin ${initialBranch}`);
+
+      const core = new GitCoreService();
+      const details = await core.statusDetails(source.path);
+      expect(details.branch).toBe(initialBranch);
+      expect(details.aheadCount).toBe(0);
+      expect(details.behindCount).toBe(1);
+    });
+
     it("prepares commit context by auto-staging and creates commit", async () => {
       await using tmp = await makeTmpDir();
       await initRepoWithCommit(tmp.path);

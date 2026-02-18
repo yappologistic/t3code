@@ -65,6 +65,8 @@ interface ExecuteGitOptions {
 }
 
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
+const STATUS_UPSTREAM_REFRESH_INTERVAL_MS = 15_000;
+const STATUS_UPSTREAM_REFRESH_TIMEOUT_MS = 5_000;
 
 /** Spawn git directly with an argv array — no shell, no quoting needed. */
 function runGit(
@@ -216,6 +218,8 @@ async function executeGit(
 }
 
 export class GitCoreService {
+  private readonly lastUpstreamRefreshAt = new Map<string, number>();
+
   async status(raw: GitStatusInput): Promise<GitStatusResult> {
     const input = gitStatusInputSchema.parse(raw);
     const details = await this.statusDetails(input.cwd);
@@ -231,6 +235,8 @@ export class GitCoreService {
   }
 
   async statusDetails(cwd: string): Promise<GitStatusDetails> {
+    await this.refreshStatusUpstreamIfStale(cwd).catch(() => undefined);
+
     const [statusStdout, unstagedNumstatStdout, stagedNumstatStdout] = await Promise.all([
       this.gitStdout(cwd, ["status", "--porcelain=2", "--branch"]),
       this.gitStdout(cwd, ["diff", "--numstat"]),
@@ -553,7 +559,9 @@ export class GitCoreService {
     });
   }
 
-  private async refreshCheckedOutBranchUpstream(cwd: string): Promise<void> {
+  private async resolveCurrentUpstream(
+    cwd: string,
+  ): Promise<{ upstreamRef: string; remoteName: string; upstreamBranch: string } | null> {
     const upstreamRef = trimStdout(
       await this.gitStdout(
         cwd,
@@ -562,24 +570,72 @@ export class GitCoreService {
       ),
     );
     if (upstreamRef.length === 0 || upstreamRef === "@{upstream}") {
-      return;
+      return null;
     }
 
     const separatorIndex = upstreamRef.indexOf("/");
     if (separatorIndex <= 0) {
-      return;
+      return null;
     }
     const remoteName = upstreamRef.slice(0, separatorIndex);
     const upstreamBranch = upstreamRef.slice(separatorIndex + 1);
     if (remoteName.length === 0) {
-      return;
+      return null;
     }
     if (upstreamBranch.length === 0) {
+      return null;
+    }
+
+    return {
+      upstreamRef,
+      remoteName,
+      upstreamBranch,
+    };
+  }
+
+  private async fetchUpstreamRef(
+    cwd: string,
+    upstream: { upstreamRef: string; remoteName: string; upstreamBranch: string },
+  ): Promise<void> {
+    const refspec = `+refs/heads/${upstream.upstreamBranch}:refs/remotes/${upstream.upstreamRef}`;
+    await this.git(cwd, ["fetch", "--quiet", "--no-tags", upstream.remoteName, refspec], true);
+  }
+
+  private async fetchUpstreamRefForStatus(
+    cwd: string,
+    upstream: { upstreamRef: string; remoteName: string; upstreamBranch: string },
+  ): Promise<void> {
+    const refspec = `+refs/heads/${upstream.upstreamBranch}:refs/remotes/${upstream.upstreamRef}`;
+    await executeGit(cwd, ["fetch", "--quiet", "--no-tags", upstream.remoteName, refspec], {
+      allowNonZeroExit: true,
+      timeoutMs: STATUS_UPSTREAM_REFRESH_TIMEOUT_MS,
+    });
+  }
+
+  private async refreshStatusUpstreamIfStale(cwd: string): Promise<void> {
+    const upstream = await this.resolveCurrentUpstream(cwd);
+    if (!upstream) {
       return;
     }
 
-    const refspec = `+refs/heads/${upstreamBranch}:refs/remotes/${upstreamRef}`;
-    await this.git(cwd, ["fetch", "--quiet", "--no-tags", remoteName, refspec], true);
+    const cacheKey = `${cwd}\u0000${upstream.upstreamRef}`;
+    const now = Date.now();
+    const lastRefreshAt = this.lastUpstreamRefreshAt.get(cacheKey) ?? 0;
+    if (now - lastRefreshAt < STATUS_UPSTREAM_REFRESH_INTERVAL_MS) {
+      return;
+    }
+
+    // Record attempt time first to avoid repeated fetch spikes when status is polled often.
+    this.lastUpstreamRefreshAt.set(cacheKey, now);
+    await this.fetchUpstreamRefForStatus(cwd, upstream);
+  }
+
+  private async refreshCheckedOutBranchUpstream(cwd: string): Promise<void> {
+    const upstream = await this.resolveCurrentUpstream(cwd);
+    if (!upstream) {
+      return;
+    }
+    await this.fetchUpstreamRef(cwd, upstream);
   }
 
   async checkoutBranch(input: GitCheckoutInput): Promise<void> {
