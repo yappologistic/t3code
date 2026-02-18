@@ -24,16 +24,6 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
-function dedupePaths(paths: string[]): string[] {
-  const unique = new Set<string>();
-  for (const rawPath of paths) {
-    const normalized = rawPath.trim();
-    if (!normalized) continue;
-    unique.add(normalized);
-  }
-  return [...unique];
-}
-
 export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
@@ -97,32 +87,4 @@ export function replaceTextRange(
   const safeEnd = Math.max(safeStart, Math.min(text.length, rangeEnd));
   const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`;
   return { text: nextText, cursor: safeStart + replacement.length };
-}
-
-export function buildPromptInput(text: string, taggedPaths: string[]): string {
-  const trimmedPrompt = text.trim();
-  const normalizedPaths = dedupePaths(taggedPaths);
-  if (normalizedPaths.length === 0) {
-    return trimmedPrompt;
-  }
-
-  const tagBlock = `Referenced paths:\n${normalizedPaths.map((entry) => `- ${entry}`).join("\n")}`;
-  if (!trimmedPrompt) {
-    return tagBlock;
-  }
-  return `${trimmedPrompt}\n\n${tagBlock}`;
-}
-
-export function buildUserVisiblePrompt(text: string, taggedPaths: string[]): string {
-  const trimmedPrompt = text.trim();
-  const normalizedPaths = dedupePaths(taggedPaths);
-  if (normalizedPaths.length === 0) {
-    return trimmedPrompt;
-  }
-
-  const tagsSummary = normalizedPaths.map((entry) => `@${entry}`).join(" ");
-  if (!trimmedPrompt) {
-    return tagsSummary;
-  }
-  return `${trimmedPrompt}\n\n${tagsSummary}`;
 }
