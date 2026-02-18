@@ -122,6 +122,9 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
   }
   if (event.altKey) parts.push("alt");
   if (event.shiftKey) parts.push("shift");
+  if (parts.length === 0) {
+    return null;
+  }
   parts.push(keyToken);
   return parts.join("+");
 }
