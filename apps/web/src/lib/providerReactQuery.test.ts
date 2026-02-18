@@ -1,4 +1,5 @@
 import type { NativeApi } from "@t3tools/contracts";
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { checkpointDiffQueryOptions, providerQueryKeys } from "./providerReactQuery";
 
@@ -42,7 +43,8 @@ describe("checkpointDiffQueryOptions", () => {
       cacheScope: "turn:abc",
     });
 
-    await options.queryFn();
+    const queryClient = new QueryClient();
+    await queryClient.fetchQuery(options);
 
     expect(getCheckpointDiff).toHaveBeenCalledWith({
       sessionId: "session-id",
