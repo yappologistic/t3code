@@ -702,7 +702,7 @@ export default function ChatView() {
           script,
           threadId: activeThreadId,
           worktreePath: activeThread.worktreePath ?? null,
-          extraEnv: options?.env,
+          ...(options?.env ? { extraEnv: options.env } : {}),
         }),
       );
 
