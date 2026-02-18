@@ -1,10 +1,7 @@
 import type { ProjectScript } from "@t3tools/contracts";
 
-import { isWindowsPlatform } from "./lib/utils";
-
 const SCRIPT_RUN_COMMAND_PATTERN = /^script\.([a-z0-9][a-z0-9-]*)\.run$/;
 const MAX_SCRIPT_ID_LENGTH = 64;
-const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function normalizeScriptId(value: string): string {
   const cleaned = value
@@ -50,37 +47,6 @@ export function nextProjectScriptId(name: string, existingIds: Iterable<string>)
 
   // This last-resort fallback only triggers after exhausting thousands of suffixes.
   return `${baseId}-${Date.now()}`.slice(0, MAX_SCRIPT_ID_LENGTH);
-}
-
-function shellEscapePosix(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function shellEscapeWindowsSetValue(value: string): string {
-  return value.replace(/\^/g, "^^").replace(/%/g, "^%").replace(/"/g, '""');
-}
-
-function injectEnvIntoShellCommand(
-  command: string,
-  env: Record<string, string>,
-  platform = typeof navigator === "undefined" ? "" : navigator.platform,
-): string {
-  const entries = Object.entries(env).filter(
-    ([key, value]) => ENV_KEY_PATTERN.test(key) && value.length > 0,
-  );
-  if (entries.length === 0) {
-    return command;
-  }
-
-  if (isWindowsPlatform(platform)) {
-    const prefixes = entries.map(
-      ([key, value]) => `set "${key}=${shellEscapeWindowsSetValue(value)}"`,
-    );
-    return `${prefixes.join(" && ")} && ${command}`;
-  }
-
-  const assignments = entries.map(([key, value]) => `${key}=${shellEscapePosix(value)}`).join(" ");
-  return `env ${assignments} ${command}`;
 }
 
 interface ProjectScriptRuntimeEnvInput {
