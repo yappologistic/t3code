@@ -102,7 +102,6 @@ import { Command, CommandInput, CommandItem, CommandList } from "./ui/command";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {
   commandForProjectScript,
-  injectEnvIntoShellCommand,
   nextProjectScriptId,
   projectScriptRuntimeEnv,
   projectScriptIdFromCommand,
@@ -545,6 +544,15 @@ export default function ChatView() {
     [composerHighlightedItemId, composerMenuItems],
   );
   const keybindings = keybindingsQuery.data ?? EMPTY_KEYBINDINGS;
+  const threadTerminalRuntimeEnv = useMemo(() => {
+    if (!activeProject) return {};
+    return projectScriptRuntimeEnv({
+      project: {
+        cwd: activeProject.cwd,
+      },
+      worktreePath: activeThread?.worktreePath ?? null,
+    });
+  }, [activeProject, activeThread?.worktreePath]);
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = branchesQuery.data?.isRepo ?? true;
   const splitTerminalShortcutLabel = useMemo(
@@ -661,13 +669,16 @@ export default function ChatView() {
         env?: Record<string, string>;
         worktreePath?: string | null;
         preferNewTerminal?: boolean;
+        rememberAsLastInvoked?: boolean;
       },
     ) => {
       if (!api || !activeThreadId || !activeProject || !activeThread) return;
-      setLastInvokedScriptByProjectId((current) => {
-        if (current[activeProject.id] === script.id) return current;
-        return { ...current, [activeProject.id]: script.id };
-      });
+      if (options?.rememberAsLastInvoked !== false) {
+        setLastInvokedScriptByProjectId((current) => {
+          if (current[activeProject.id] === script.id) return current;
+          return { ...current, [activeProject.id]: script.id };
+        });
+      }
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
       const baseTerminalId =
         activeThread.activeTerminalId ||
@@ -701,20 +712,13 @@ export default function ChatView() {
       }
       setTerminalFocusRequestId((value) => value + 1);
 
-      const resolvedCommand = injectEnvIntoShellCommand(
-        script.command,
-        projectScriptRuntimeEnv({
-          project: {
-            id: activeProject.id,
-            name: activeProject.name,
-            cwd: activeProject.cwd,
-          },
-          script,
-          threadId: activeThreadId,
-          worktreePath: options?.worktreePath ?? activeThread.worktreePath ?? null,
-          ...(options?.env ? { extraEnv: options.env } : {}),
-        }),
-      );
+      const runtimeEnv = projectScriptRuntimeEnv({
+        project: {
+          cwd: activeProject.cwd,
+        },
+        worktreePath: options?.worktreePath ?? activeThread.worktreePath ?? null,
+        ...(options?.env ? { extraEnv: options.env } : {}),
+      });
 
       try {
         await api.terminal.open({
@@ -723,11 +727,12 @@ export default function ChatView() {
           cwd: targetCwd,
           cols: SCRIPT_TERMINAL_COLS,
           rows: SCRIPT_TERMINAL_ROWS,
+          env: runtimeEnv,
         });
         await api.terminal.write({
           threadId: activeThreadId,
           terminalId: targetTerminalId,
-          data: `${resolvedCommand}\n`,
+          data: `${script.command}\r`,
         });
       } catch (error) {
         dispatch({
@@ -1337,6 +1342,7 @@ export default function ChatView() {
           void runProjectScript(setupScript, {
             cwd: result.worktree.path,
             worktreePath: result.worktree.path,
+            rememberAsLastInvoked: false,
           });
         }
       } catch (err) {
@@ -1889,6 +1895,7 @@ export default function ChatView() {
           api={api}
           threadId={activeThread.id}
           cwd={gitCwd ?? activeProject.cwd}
+          runtimeEnv={threadTerminalRuntimeEnv}
           height={activeThread.terminalHeight}
           terminalIds={activeThread.terminalIds}
           activeTerminalId={activeThread.activeTerminalId}

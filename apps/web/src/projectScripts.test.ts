@@ -67,40 +67,19 @@ describe("projectScripts helpers", () => {
 
   it("builds default runtime env for scripts", () => {
     const env = projectScriptRuntimeEnv({
-      project: { id: "project-1", name: "acme-web", cwd: "/repo" },
-      script: {
-        id: "test",
-        name: "Test",
-        icon: "test",
-        runOnWorktreeCreate: false,
-      },
-      threadId: "thread-1",
+      project: { cwd: "/repo" },
       worktreePath: "/repo/worktree-a",
     });
 
     expect(env).toMatchObject({
       T3CODE_PROJECT_ROOT: "/repo",
-      T3CODE_PROJECT_ID: "project-1",
-      T3CODE_PROJECT_NAME: "acme-web",
-      T3CODE_THREAD_ID: "thread-1",
-      T3CODE_SCRIPT_ID: "test",
-      T3CODE_SCRIPT_NAME: "Test",
-      T3CODE_SCRIPT_ICON: "test",
-      T3CODE_SCRIPT_IS_SETUP: "0",
       T3CODE_WORKTREE_PATH: "/repo/worktree-a",
     });
   });
 
   it("allows overriding runtime env values", () => {
     const env = projectScriptRuntimeEnv({
-      project: { id: "project-1", name: "acme-web", cwd: "/repo" },
-      script: {
-        id: "setup",
-        name: "Setup",
-        icon: "configure",
-        runOnWorktreeCreate: true,
-      },
-      threadId: "thread-1",
+      project: { cwd: "/repo" },
       extraEnv: {
         T3CODE_PROJECT_ROOT: "/custom-root",
         CUSTOM_FLAG: "1",
@@ -108,7 +87,6 @@ describe("projectScripts helpers", () => {
     });
 
     expect(env.T3CODE_PROJECT_ROOT).toBe("/custom-root");
-    expect(env.T3CODE_SCRIPT_IS_SETUP).toBe("1");
     expect(env.CUSTOM_FLAG).toBe("1");
     expect(env.T3CODE_WORKTREE_PATH).toBeUndefined();
   });

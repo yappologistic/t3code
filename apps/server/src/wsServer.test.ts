@@ -323,6 +323,8 @@ describe("WebSocket Server", () => {
   });
 
   it("responds to server.getConfig", async () => {
+    const fakeHome = makeTempDir("t3code-home-");
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
     server = createTestServer({ cwd: "/my/workspace" });
     await server.start();
     const addr = server.httpServer.address();

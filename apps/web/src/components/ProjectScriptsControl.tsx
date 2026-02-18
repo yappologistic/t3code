@@ -6,12 +6,12 @@ import type {
 import {
   BugIcon,
   ChevronDownIcon,
-  CogIcon,
   FlaskConicalIcon,
   HammerIcon,
   ListChecksIcon,
   PlayIcon,
   PlusIcon,
+  SettingsIcon,
   WrenchIcon,
 } from "lucide-react";
 import React, { type FormEvent, type KeyboardEvent, useMemo, useState } from "react";
@@ -319,7 +319,7 @@ export default function ProjectScriptsControl({
                           openEditDialog(script);
                         }}
                       >
-                        <CogIcon className="size-3.5" />
+                        <SettingsIcon className="size-3.5" />
                       </Button>
                     </span>
                   </MenuItem>

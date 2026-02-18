@@ -59,6 +59,12 @@ interface TerminalSessionState {
   unsubscribeData: (() => void) | null;
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;
+  runtimeEnv: Record<string, string> | null;
+}
+
+interface ShellCandidate {
+  shell: string;
+  args?: string[];
 }
 
 function defaultShellResolver(): string {
@@ -82,34 +88,54 @@ function normalizeShellCommand(value: string | undefined): string | null {
   return firstToken.replace(/^['"]|['"]$/g, "");
 }
 
-function uniqueShells(shells: Array<string | null>): string[] {
+function shellCandidateFromCommand(command: string | null): ShellCandidate | null {
+  if (!command || command.length === 0) return null;
+  const shellName = path.basename(command).toLowerCase();
+  if (process.platform !== "win32" && shellName === "zsh") {
+    return { shell: command, args: ["-o", "nopromptsp"] };
+  }
+  return { shell: command };
+}
+
+function formatShellCandidate(candidate: ShellCandidate): string {
+  if (!candidate.args || candidate.args.length === 0) return candidate.shell;
+  return `${candidate.shell} ${candidate.args.join(" ")}`;
+}
+
+function uniqueShellCandidates(candidates: Array<ShellCandidate | null>): ShellCandidate[] {
   const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const shell of shells) {
-    if (!shell || shell.length === 0) continue;
-    if (seen.has(shell)) continue;
-    seen.add(shell);
-    ordered.push(shell);
+  const ordered: ShellCandidate[] = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const key = formatShellCandidate(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(candidate);
   }
   return ordered;
 }
 
-function resolveShellCandidates(shellResolver: () => string): string[] {
-  const requested = normalizeShellCommand(shellResolver());
+function resolveShellCandidates(shellResolver: () => string): ShellCandidate[] {
+  const requested = shellCandidateFromCommand(normalizeShellCommand(shellResolver()));
 
   if (process.platform === "win32") {
-    return uniqueShells([requested, process.env.ComSpec ?? null, "powershell.exe", "cmd.exe"]);
+    return uniqueShellCandidates([
+      requested,
+      shellCandidateFromCommand(process.env.ComSpec ?? null),
+      shellCandidateFromCommand("powershell.exe"),
+      shellCandidateFromCommand("cmd.exe"),
+    ]);
   }
 
-  return uniqueShells([
+  return uniqueShellCandidates([
     requested,
-    normalizeShellCommand(process.env.SHELL),
-    "/bin/zsh",
-    "/bin/bash",
-    "/bin/sh",
-    "zsh",
-    "bash",
-    "sh",
+    shellCandidateFromCommand(normalizeShellCommand(process.env.SHELL)),
+    shellCandidateFromCommand("/bin/zsh"),
+    shellCandidateFromCommand("/bin/bash"),
+    shellCandidateFromCommand("/bin/sh"),
+    shellCandidateFromCommand("zsh"),
+    shellCandidateFromCommand("bash"),
+    shellCandidateFromCommand("sh"),
   ]);
 }
 
@@ -241,14 +267,31 @@ function shouldExcludeTerminalEnvKey(key: string): boolean {
   return TERMINAL_ENV_BLOCKLIST.has(normalizedKey);
 }
 
-function createTerminalSpawnEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function createTerminalSpawnEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  runtimeEnv?: Record<string, string> | null,
+): NodeJS.ProcessEnv {
   const spawnEnv: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(baseEnv)) {
     if (value === undefined) continue;
     if (shouldExcludeTerminalEnvKey(key)) continue;
     spawnEnv[key] = value;
   }
+  if (runtimeEnv) {
+    for (const [key, value] of Object.entries(runtimeEnv)) {
+      spawnEnv[key] = value;
+    }
+  }
   return spawnEnv;
+}
+
+function normalizedRuntimeEnv(
+  env: Record<string, string> | undefined,
+): Record<string, string> | null {
+  if (!env) return null;
+  const entries = Object.entries(env);
+  if (entries.length === 0) return null;
+  return Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right)));
 }
 
 export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
@@ -307,20 +350,30 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           unsubscribeData: null,
           unsubscribeExit: null,
           hasRunningSubprocess: false,
+          runtimeEnv: normalizedRuntimeEnv(input.env),
         };
         this.sessions.set(sessionKey, session);
         this.startSession(session, input, "started");
         return this.snapshot(session);
       }
 
-      if (existing.cwd !== input.cwd) {
+      const nextRuntimeEnv = normalizedRuntimeEnv(input.env);
+      const currentRuntimeEnv = existing.runtimeEnv;
+      const runtimeEnvChanged =
+        JSON.stringify(currentRuntimeEnv) !== JSON.stringify(nextRuntimeEnv);
+
+      if (existing.cwd !== input.cwd || runtimeEnvChanged) {
         this.stopProcess(existing);
         existing.cwd = input.cwd;
+        existing.runtimeEnv = nextRuntimeEnv;
         existing.history = "";
         await this.persistHistory(existing.threadId, existing.terminalId, existing.history);
       } else if (existing.status === "exited" || existing.status === "error") {
+        existing.runtimeEnv = nextRuntimeEnv;
         existing.history = "";
         await this.persistHistory(existing.threadId, existing.terminalId, existing.history);
+      } else if (currentRuntimeEnv !== nextRuntimeEnv) {
+        existing.runtimeEnv = nextRuntimeEnv;
       }
 
       if (!existing.process) {
@@ -404,11 +457,13 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           unsubscribeData: null,
           unsubscribeExit: null,
           hasRunningSubprocess: false,
+          runtimeEnv: normalizedRuntimeEnv(input.env),
         };
         this.sessions.set(sessionKey, session);
       } else {
         this.stopProcess(session);
         session.cwd = input.cwd;
+        session.runtimeEnv = normalizedRuntimeEnv(input.env);
       }
 
       session.history = "";
@@ -480,19 +535,20 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
     let startedShell: string | null = null;
     try {
       const shellCandidates = resolveShellCandidates(this.shellResolver);
-      const terminalEnv = createTerminalSpawnEnv(process.env);
+      const terminalEnv = createTerminalSpawnEnv(process.env, session.runtimeEnv);
       let lastSpawnError: unknown = null;
 
-      for (const shell of shellCandidates) {
+      for (const candidate of shellCandidates) {
         try {
           ptyProcess = this.ptyAdapter.spawn({
-            shell,
+            shell: candidate.shell,
+            ...(candidate.args ? { args: candidate.args } : {}),
             cwd: session.cwd,
             cols: session.cols,
             rows: session.rows,
             env: terminalEnv,
           });
-          startedShell = shell;
+          startedShell = formatShellCandidate(candidate);
           break;
         } catch (error) {
           lastSpawnError = error;
@@ -506,7 +562,9 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
         const detail =
           lastSpawnError instanceof Error ? lastSpawnError.message : "Terminal start failed";
         const tried =
-          shellCandidates.length > 0 ? ` Tried shells: ${shellCandidates.join(", ")}.` : "";
+          shellCandidates.length > 0
+            ? ` Tried shells: ${shellCandidates.map((candidate) => formatShellCandidate(candidate)).join(", ")}.`
+            : "";
         throw new Error(`${detail}.${tried}`.trim());
       }
 

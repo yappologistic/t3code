@@ -5,6 +5,11 @@ export const DEFAULT_TERMINAL_ID = "default";
 const terminalColsSchema = z.number().int().min(20).max(400);
 const terminalRowsSchema = z.number().int().min(5).max(200);
 const terminalIdSchema = z.string().trim().min(1).max(128);
+const terminalEnvKeySchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).max(128);
+const terminalEnvValueSchema = z.string().max(8_192);
+const terminalEnvSchema = z
+  .record(terminalEnvKeySchema, terminalEnvValueSchema)
+  .refine((env) => Object.keys(env).length <= 128, "Too many terminal env vars");
 
 export const terminalThreadInputSchema = z.object({
   threadId: z.string().trim().min(1),
@@ -18,6 +23,7 @@ export const terminalOpenInputSchema = terminalSessionInputSchema.extend({
   cwd: z.string().trim().min(1),
   cols: terminalColsSchema,
   rows: terminalRowsSchema,
+  env: terminalEnvSchema.optional(),
 });
 
 export const terminalWriteInputSchema = terminalSessionInputSchema.extend({

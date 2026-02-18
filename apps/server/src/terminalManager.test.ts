@@ -466,4 +466,42 @@ describe("TerminalManager", () => {
       restoreEnv();
     }
   });
+
+  it("injects runtime env overrides into spawned terminals", async () => {
+    const { manager, ptyAdapter } = makeManager();
+    await manager.open(
+      openInput({
+        env: {
+          T3CODE_PROJECT_ROOT: "/repo",
+          T3CODE_WORKTREE_PATH: "/repo/worktree-a",
+          CUSTOM_FLAG: "1",
+        },
+      }),
+    );
+    const spawnInput = ptyAdapter.spawnInputs[0];
+    expect(spawnInput).toBeDefined();
+    if (!spawnInput) return;
+
+    expect(spawnInput.env.T3CODE_PROJECT_ROOT).toBe("/repo");
+    expect(spawnInput.env.T3CODE_WORKTREE_PATH).toBe("/repo/worktree-a");
+    expect(spawnInput.env.CUSTOM_FLAG).toBe("1");
+
+    manager.dispose();
+  });
+
+  it("starts zsh with prompt spacer disabled to avoid `%` end markers", async () => {
+    if (process.platform === "win32") return;
+    const { manager, ptyAdapter } = makeManager(5, {
+      shellResolver: () => "/bin/zsh",
+    });
+    await manager.open(openInput());
+    const spawnInput = ptyAdapter.spawnInputs[0];
+    expect(spawnInput).toBeDefined();
+    if (!spawnInput) return;
+
+    expect(spawnInput.shell).toBe("/bin/zsh");
+    expect(spawnInput.args).toEqual(["-o", "nopromptsp"]);
+
+    manager.dispose();
+  });
 });

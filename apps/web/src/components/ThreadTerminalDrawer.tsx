@@ -111,6 +111,7 @@ interface TerminalViewportProps {
   threadId: string;
   terminalId: string;
   cwd: string;
+  runtimeEnv?: Record<string, string>;
   focusRequestId: number;
   autoFocus: boolean;
   resizeEpoch: number;
@@ -122,6 +123,7 @@ function TerminalViewport({
   threadId,
   terminalId,
   cwd,
+  runtimeEnv,
   focusRequestId,
   autoFocus,
   resizeEpoch,
@@ -274,6 +276,7 @@ function TerminalViewport({
           cwd,
           cols: activeTerminal.cols,
           rows: activeTerminal.rows,
+          ...(runtimeEnv ? { env: runtimeEnv } : {}),
         });
         if (disposed) return;
         activeTerminal.write("\u001bc");
@@ -369,7 +372,7 @@ function TerminalViewport({
       fitAddonRef.current = null;
       terminal.dispose();
     };
-  }, [api, cwd, terminalId, threadId]);
+  }, [api, autoFocus, cwd, runtimeEnv, terminalId, threadId]);
 
   useEffect(() => {
     if (!autoFocus) return;
@@ -414,6 +417,7 @@ interface ThreadTerminalDrawerProps {
   api: NativeApi;
   threadId: string;
   cwd: string;
+  runtimeEnv?: Record<string, string>;
   height: number;
   terminalIds: string[];
   activeTerminalId: string;
@@ -463,6 +467,7 @@ export default function ThreadTerminalDrawer({
   api,
   threadId,
   cwd,
+  runtimeEnv,
   height,
   terminalIds,
   activeTerminalId,
@@ -778,6 +783,7 @@ export default function ThreadTerminalDrawer({
                         threadId={threadId}
                         terminalId={terminalId}
                         cwd={cwd}
+                        {...(runtimeEnv ? { runtimeEnv } : {})}
                         focusRequestId={focusRequestId}
                         autoFocus={terminalId === resolvedActiveTerminalId}
                         resizeEpoch={resizeEpoch}
@@ -795,6 +801,7 @@ export default function ThreadTerminalDrawer({
                   threadId={threadId}
                   terminalId={resolvedActiveTerminalId}
                   cwd={cwd}
+                  {...(runtimeEnv ? { runtimeEnv } : {})}
                   focusRequestId={focusRequestId}
                   autoFocus
                   resizeEpoch={resizeEpoch}
