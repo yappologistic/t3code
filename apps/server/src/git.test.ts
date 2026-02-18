@@ -760,6 +760,24 @@ describe("git integration", () => {
       expect(dirty.hasWorkingTreeChanges).toBe(true);
     });
 
+    it("includes command context when worktree removal fails", async () => {
+      await using tmp = await makeTmpDir();
+      await initRepoWithCommit(tmp.path);
+      const core = new GitCoreService();
+      const missingWorktreePath = path.join(tmp.path, "missing-worktree");
+
+      const error = await core
+        .removeWorktree({ cwd: tmp.path, path: missingWorktreePath })
+        .then(() => null)
+        .catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message).toContain("git worktree remove");
+      expect(message).toContain(`cwd: ${tmp.path}`);
+      expect(message).toContain(missingWorktreePath);
+    });
+
     it("refreshes upstream before statusDetails so behind count reflects remote updates", async () => {
       await using remote = await makeTmpDir();
       await using source = await makeTmpDir();

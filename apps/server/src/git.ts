@@ -546,10 +546,18 @@ export class GitCoreService {
   }
 
   async removeWorktree(input: GitRemoveWorktreeInput): Promise<void> {
-    await executeGit(input.cwd, ["worktree", "remove", input.path], {
-      timeoutMs: 15_000,
-      fallbackErrorMessage: "git worktree remove failed",
-    });
+    const args = ["worktree", "remove", input.path] as const;
+    try {
+      await executeGit(input.cwd, args, {
+        timeoutMs: 15_000,
+        fallbackErrorMessage: "git worktree remove failed",
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${commandLabel(args)} failed (cwd: ${input.cwd}): ${detail}`, {
+        cause: error,
+      });
+    }
   }
 
   async createBranch(input: GitCreateBranchInput): Promise<void> {

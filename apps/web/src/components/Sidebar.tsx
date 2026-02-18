@@ -336,8 +336,19 @@ export default function Sidebar() {
           cwd: threadProject.cwd,
           path: orphanedWorktreePath,
         });
-      } catch {
-        // Worktree deletion is best-effort and should not block thread deletion.
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error removing worktree.";
+        console.error("Failed to remove orphaned worktree after thread deletion", {
+          threadId,
+          projectCwd: threadProject.cwd,
+          worktreePath: orphanedWorktreePath,
+          error,
+        });
+        toastManager.add({
+          type: "error",
+          title: "Thread deleted, but worktree removal failed",
+          description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
+        });
       }
     },
     [api, dispatch, removeWorktreeMutation, state.projects, state.threads],
