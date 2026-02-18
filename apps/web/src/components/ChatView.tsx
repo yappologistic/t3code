@@ -739,6 +739,72 @@ export default function ChatView() {
     },
     [activeProject, activeThread, activeThreadId, api, dispatch, gitCwd],
   );
+  const persistProjectScripts = useCallback(
+    async (input: {
+      projectId: string;
+      projectCwd: string;
+      previousScripts: ProjectScript[];
+      nextScripts: ProjectScript[];
+      keybinding?: string | null;
+      keybindingCommand: string;
+    }) => {
+      dispatch({
+        type: "SET_PROJECT_SCRIPTS",
+        projectId: input.projectId,
+        scripts: input.nextScripts,
+      });
+
+      if (!isElectron || !api) return;
+
+      let scriptsPersisted = false;
+      try {
+        const updated = await api.projects.updateScripts({
+          id: input.projectId,
+          scripts: input.nextScripts,
+        });
+        scriptsPersisted = true;
+
+        if (input.keybinding) {
+          const keybindingUpdate = await api.server.upsertKeybinding({
+            key: input.keybinding,
+            command: input.keybindingCommand,
+          });
+          queryClient.setQueryData(
+            serverQueryKeys.config(),
+            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
+              current
+                ? { ...current, keybindings: keybindingUpdate.keybindings }
+                : {
+                    cwd: input.projectCwd,
+                    keybindings: keybindingUpdate.keybindings,
+                  },
+          );
+        }
+
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: updated.project.id,
+          scripts: updated.project.scripts,
+        });
+      } catch (error) {
+        if (scriptsPersisted) {
+          await api.projects
+            .updateScripts({
+              id: input.projectId,
+              scripts: input.previousScripts,
+            })
+            .catch(() => undefined);
+        }
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: input.projectId,
+          scripts: input.previousScripts,
+        });
+        throw error;
+      }
+    },
+    [api, dispatch, queryClient],
+  );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput) => {
       if (!activeProject) return;
@@ -762,61 +828,16 @@ export default function ChatView() {
           ]
         : [...activeProject.scripts, nextScript];
 
-      dispatch({
-        type: "SET_PROJECT_SCRIPTS",
+      await persistProjectScripts({
         projectId: activeProject.id,
-        scripts: nextScripts,
+        projectCwd: activeProject.cwd,
+        previousScripts: activeProject.scripts,
+        nextScripts,
+        keybinding: input.keybinding,
+        keybindingCommand: commandForProjectScript(nextId),
       });
-
-      if (!isElectron || !api) return;
-      let scriptsPersisted = false;
-      try {
-        const updated = await api.projects.updateScripts({
-          id: activeProject.id,
-          scripts: nextScripts,
-        });
-        scriptsPersisted = true;
-
-        if (input.keybinding) {
-          const keybindingUpdate = await api.server.upsertKeybinding({
-            key: input.keybinding,
-            command: commandForProjectScript(nextId),
-          });
-          queryClient.setQueryData(
-            serverQueryKeys.config(),
-            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
-              current
-                ? { ...current, keybindings: keybindingUpdate.keybindings }
-                : {
-                    cwd: activeProject.cwd,
-                    keybindings: keybindingUpdate.keybindings,
-                  },
-          );
-        }
-
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: updated.project.id,
-          scripts: updated.project.scripts,
-        });
-      } catch (error) {
-        if (scriptsPersisted) {
-          await api.projects
-            .updateScripts({
-              id: activeProject.id,
-              scripts: activeProject.scripts,
-            })
-            .catch(() => undefined);
-        }
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: activeProject.id,
-          scripts: activeProject.scripts,
-        });
-        throw error;
-      }
     },
-    [activeProject, api, dispatch, queryClient],
+    [activeProject, persistProjectScripts],
   );
   const updateProjectScript = useCallback(
     async (scriptId: string, input: NewProjectScriptInput) => {
@@ -841,61 +862,16 @@ export default function ChatView() {
             : script,
       );
 
-      dispatch({
-        type: "SET_PROJECT_SCRIPTS",
+      await persistProjectScripts({
         projectId: activeProject.id,
-        scripts: nextScripts,
+        projectCwd: activeProject.cwd,
+        previousScripts: activeProject.scripts,
+        nextScripts,
+        keybinding: input.keybinding,
+        keybindingCommand: commandForProjectScript(scriptId),
       });
-
-      if (!isElectron || !api) return;
-      let scriptsPersisted = false;
-      try {
-        const updated = await api.projects.updateScripts({
-          id: activeProject.id,
-          scripts: nextScripts,
-        });
-        scriptsPersisted = true;
-
-        if (input.keybinding) {
-          const keybindingUpdate = await api.server.upsertKeybinding({
-            key: input.keybinding,
-            command: commandForProjectScript(scriptId),
-          });
-          queryClient.setQueryData(
-            serverQueryKeys.config(),
-            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
-              current
-                ? { ...current, keybindings: keybindingUpdate.keybindings }
-                : {
-                    cwd: activeProject.cwd,
-                    keybindings: keybindingUpdate.keybindings,
-                  },
-          );
-        }
-
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: updated.project.id,
-          scripts: updated.project.scripts,
-        });
-      } catch (error) {
-        if (scriptsPersisted) {
-          await api.projects
-            .updateScripts({
-              id: activeProject.id,
-              scripts: activeProject.scripts,
-            })
-            .catch(() => undefined);
-        }
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: activeProject.id,
-          scripts: activeProject.scripts,
-        });
-        throw error;
-      }
     },
-    [activeProject, api, dispatch, queryClient],
+    [activeProject, persistProjectScripts],
   );
 
   const handleRuntimeModeChange = async (mode: "approval-required" | "full-access") => {
