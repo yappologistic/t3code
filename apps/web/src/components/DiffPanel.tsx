@@ -14,6 +14,7 @@ import { useStore } from "../store";
 import { Button } from "./ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { cn } from "~/lib/utils";
+import { ToggleGroup, Toggle } from "./ui/toggle-group";
 
 type DiffRenderMode = "stacked" | "split";
 
@@ -406,68 +407,19 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
-          <Popover>
-            <PopoverTrigger
-              openOnHover
-              render={
-                <Button
-                  aria-label="Stacked diff view"
-                  aria-pressed={diffRenderMode === "stacked"}
-                  size="icon-xs"
-                  variant="outline"
-                  className={cn(diffRenderMode === "stacked" && "bg-accent text-accent-foreground")}
-                  onClick={() => setDiffRenderMode("stacked")}
-                />
-              }
-            >
-              <Rows3Icon />
-            </PopoverTrigger>
-            <PopoverPopup
-              tooltipStyle
-              side="bottom"
-              sideOffset={6}
-              align="center"
-              className="pointer-events-none select-none"
-            >
-              Stacked
-            </PopoverPopup>
-          </Popover>
-          <Popover>
-            <PopoverTrigger
-              openOnHover
-              render={
-                <Button
-                  aria-label="Split diff view"
-                  aria-pressed={diffRenderMode === "split"}
-                  size="icon-xs"
-                  variant="outline"
-                  className={cn(diffRenderMode === "split" && "bg-accent text-accent-foreground")}
-                  onClick={() => setDiffRenderMode("split")}
-                />
-              }
-            >
-              <Columns2Icon />
-            </PopoverTrigger>
-            <PopoverPopup
-              tooltipStyle
-              side="bottom"
-              sideOffset={6}
-              align="center"
-              className="pointer-events-none select-none"
-            >
-              Split
-            </PopoverPopup>
-          </Popover>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={() => dispatch({ type: "CLOSE_DIFF" })}
-          >
-            <XIcon />
-          </Button>
-        </div>
+        <ToggleGroup
+          variant="outline"
+          size="xs"
+          value={[diffRenderMode]}
+          onValueChange={(value) => setDiffRenderMode(value[0] as DiffRenderMode)}
+        >
+          <Toggle aria-label="Stacked diff view" value="stacked">
+            <Rows3Icon className="size-3" />
+          </Toggle>
+          <Toggle aria-label="Split diff view" value="split">
+            <Columns2Icon className="size-3" />
+          </Toggle>
+        </ToggleGroup>
       </div>
 
       {!activeThread ? (
