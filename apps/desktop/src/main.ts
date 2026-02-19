@@ -21,6 +21,8 @@ const BACKEND_ENTRY = path.join(ROOT_DIR, "apps/server/dist/index.mjs");
 const WEB_ENTRY = path.join(ROOT_DIR, "apps/web/dist/index.html");
 const STATE_DIR = path.join(os.homedir(), ".t3", "userdata");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const APP_DISPLAY_NAME = "T3 Code";
+const APP_USER_MODEL_ID = "com.t3tools.t3code";
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -30,6 +32,41 @@ let backendWsUrl = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
+
+function resolveResourcePath(fileName: string): string | null {
+  const candidates = [
+    path.join(__dirname, "../resources", fileName),
+    path.join(process.resourcesPath, "resources", fileName),
+    path.join(process.resourcesPath, fileName),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
+  return resolveResourcePath(`icon.${ext}`);
+}
+
+function configureAppIdentity(): void {
+  app.setName(APP_DISPLAY_NAME);
+
+  if (process.platform === "win32") {
+    app.setAppUserModelId(APP_USER_MODEL_ID);
+  }
+
+  if (process.platform === "darwin" && app.dock) {
+    const iconPath = resolveIconPath("png");
+    if (iconPath) {
+      app.dock.setIcon(iconPath);
+    }
+  }
+}
 
 async function reserveLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -207,7 +244,8 @@ function registerIpcHandlers(): void {
 function getIconOption(): { icon: string } | Record<string, never> {
   if (process.platform === "darwin") return {}; // macOS uses .icns from app bundle
   const ext = process.platform === "win32" ? "ico" : "png";
-  return { icon: path.join(__dirname, `../resources/icon.${ext}`) };
+  const iconPath = resolveIconPath(ext);
+  return iconPath ? { icon: iconPath } : {};
 }
 
 function createWindow(): BrowserWindow {
@@ -219,6 +257,7 @@ function createWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     ...getIconOption(),
+    title: APP_DISPLAY_NAME,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -252,6 +291,8 @@ function createWindow(): BrowserWindow {
 
   return window;
 }
+
+configureAppIdentity();
 
 async function bootstrap(): Promise<void> {
   backendPort = await reserveLoopbackPort();
