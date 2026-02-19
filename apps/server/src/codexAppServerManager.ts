@@ -584,10 +584,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     context: CodexSessionContext,
     notification: JsonRpcNotification,
   ): void {
-    if (this.shouldSuppressNotification(notification)) {
-      return;
-    }
-
     const route = this.readRouteFields(notification.params);
     const textDelta =
       notification.method === "item/agentMessage/delta"
@@ -646,19 +642,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         lastError: message ?? context.session.lastError,
       });
     }
-  }
-
-  private shouldSuppressNotification(notification: JsonRpcNotification): boolean {
-    if (notification.method === "item/agentMessage/delta") {
-      return true;
-    }
-
-    if (notification.method !== "item/started") {
-      return false;
-    }
-
-    const itemType = this.readString(this.readObject(notification.params, "item"), "type");
-    return itemType === "agentMessage";
   }
 
   private handleServerRequest(context: CodexSessionContext, request: JsonRpcRequest): void {
