@@ -6,6 +6,7 @@ import {
   WorkerPoolContextProvider,
 } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { Columns2Icon, Rows3Icon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { checkpointDiffQueryOptions, providerQueryKeys } from "~/lib/providerReactQuery";
@@ -105,7 +106,10 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const queryClient = useQueryClient();
   const [diffRenderMode, setDiffRenderMode] = useState<DiffRenderMode>("stacked");
   const patchViewportRef = useRef<HTMLDivElement>(null);
-  const activeThread = state.threads.find((thread) => thread.id === state.activeThreadId);
+  const params = useParams({ strict: false });
+  const routeThreadId = typeof params.threadId === "string" ? params.threadId : null;
+  const activeThreadId = state.diffThreadId ?? routeThreadId;
+  const activeThread = state.threads.find((thread) => thread.id === activeThreadId);
   const activeThreadRuntimeId =
     activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
   const activeSessionId = activeThread?.session?.sessionId ?? null;
