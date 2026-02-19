@@ -12,6 +12,7 @@ import {
   ipcMain,
   Menu,
   type MenuItemConstructorOptions,
+  protocol,
   shell,
 } from "electron";
 
@@ -25,10 +26,9 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
-const ROOT_DIR = path.resolve(__dirname, "../../..");
-const BACKEND_ENTRY = path.join(ROOT_DIR, "apps/server/dist/index.mjs");
-const WEB_ENTRY = path.join(ROOT_DIR, "apps/web/dist/index.html");
 const STATE_DIR = path.join(os.homedir(), ".t3", "userdata");
+const DESKTOP_SCHEME = "t3";
+const ROOT_DIR = path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const APP_USER_MODEL_ID = "com.t3tools.t3code";
@@ -41,6 +41,123 @@ let backendWsUrl = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
+let desktopProtocolRegistered = false;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: DESKTOP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
+function resolveAppRoot(): string {
+  if (!app.isPackaged) {
+    return ROOT_DIR;
+  }
+  return app.getAppPath();
+}
+
+function resolveBackendEntry(): string {
+  return path.join(resolveAppRoot(), "apps/server/dist/index.mjs");
+}
+
+function resolveBackendCwd(): string {
+  if (!app.isPackaged) {
+    return resolveAppRoot();
+  }
+  return os.homedir();
+}
+
+function resolveDesktopStaticDir(): string | null {
+  const appRoot = resolveAppRoot();
+  const candidates = [
+    path.join(appRoot, "apps/server/dist/client"),
+    path.join(appRoot, "apps/web/dist"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveDesktopStaticPath(staticRoot: string, requestUrl: string): string {
+  const url = new URL(requestUrl);
+  const rawPath = decodeURIComponent(url.pathname);
+  const normalizedPath = path.posix.normalize(rawPath).replace(/^\/+/, "");
+  if (normalizedPath.includes("..")) {
+    return path.join(staticRoot, "index.html");
+  }
+
+  const requestedPath = normalizedPath.length > 0 ? normalizedPath : "index.html";
+  const resolvedPath = path.join(staticRoot, requestedPath);
+
+  if (path.extname(resolvedPath)) {
+    return resolvedPath;
+  }
+
+  const nestedIndex = path.join(resolvedPath, "index.html");
+  if (fs.existsSync(nestedIndex)) {
+    return nestedIndex;
+  }
+
+  return path.join(staticRoot, "index.html");
+}
+
+function isStaticAssetRequest(requestUrl: string): boolean {
+  try {
+    const url = new URL(requestUrl);
+    return path.extname(url.pathname).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function registerDesktopProtocol(): void {
+  if (isDevelopment || desktopProtocolRegistered) return;
+
+  const staticRoot = resolveDesktopStaticDir();
+  if (!staticRoot) {
+    throw new Error("Desktop static bundle missing. Build apps/server (with bundled client) first.");
+  }
+
+  const staticRootResolved = path.resolve(staticRoot);
+  const staticRootPrefix = `${staticRootResolved}${path.sep}`;
+  const fallbackIndex = path.join(staticRootResolved, "index.html");
+
+  protocol.registerFileProtocol(DESKTOP_SCHEME, (request, callback) => {
+    try {
+      const candidate = resolveDesktopStaticPath(staticRootResolved, request.url);
+      const resolvedCandidate = path.resolve(candidate);
+      const isInRoot =
+        resolvedCandidate === fallbackIndex || resolvedCandidate.startsWith(staticRootPrefix);
+      const isAssetRequest = isStaticAssetRequest(request.url);
+
+      if (!isInRoot || !fs.existsSync(resolvedCandidate)) {
+        if (isAssetRequest) {
+          callback({ error: -6 });
+          return;
+        }
+        callback({ path: fallbackIndex });
+        return;
+      }
+
+      callback({ path: resolvedCandidate });
+    } catch {
+      callback({ path: fallbackIndex });
+    }
+  });
+
+  desktopProtocolRegistered = true;
+}
 
 function dispatchMenuAction(action: string): void {
   const existingWindow = BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0];
@@ -199,13 +316,14 @@ function scheduleBackendRestart(reason: string): void {
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
-  if (!fs.existsSync(BACKEND_ENTRY)) {
-    scheduleBackendRestart(`missing server entry at ${BACKEND_ENTRY}`);
+  const backendEntry = resolveBackendEntry();
+  if (!fs.existsSync(backendEntry)) {
+    scheduleBackendRestart(`missing server entry at ${backendEntry}`);
     return;
   }
 
-  const child = spawn(process.execPath, [BACKEND_ENTRY], {
-    cwd: ROOT_DIR,
+  const child = spawn(process.execPath, [backendEntry], {
+    cwd: resolveBackendCwd(),
     // In Electron main, process.execPath points to the Electron binary.
     // Run the child in Node mode so this backend process does not become a GUI app instance.
     env: {
@@ -370,10 +488,7 @@ function createWindow(): BrowserWindow {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
-    if (!fs.existsSync(WEB_ENTRY)) {
-      throw new Error(`Web bundle missing at ${WEB_ENTRY}`);
-    }
-    void window.loadFile(WEB_ENTRY);
+    void window.loadURL(`${DESKTOP_SCHEME}://app/index.html`);
   }
 
   window.on("closed", () => {
@@ -406,6 +521,7 @@ app.on("before-quit", () => {
 app.whenReady().then(() => {
   configureAppIdentity();
   configureApplicationMenu();
+  registerDesktopProtocol();
   void bootstrap();
 
   app.on("activate", () => {
