@@ -55,6 +55,9 @@ function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
 
 function configureAppIdentity(): void {
   app.setName(APP_DISPLAY_NAME);
+  app.setAboutPanelOptions({
+    applicationName: APP_DISPLAY_NAME,
+  });
 
   if (process.platform === "win32") {
     app.setAppUserModelId(APP_USER_MODEL_ID);
@@ -269,6 +272,13 @@ function createWindow(): BrowserWindow {
   });
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.on("page-title-updated", (event) => {
+    event.preventDefault();
+    window.setTitle(APP_DISPLAY_NAME);
+  });
+  window.webContents.on("did-finish-load", () => {
+    window.setTitle(APP_DISPLAY_NAME);
+  });
   window.once("ready-to-show", () => {
     window.show();
   });
@@ -311,6 +321,7 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(() => {
+  configureAppIdentity();
   void bootstrap();
 
   app.on("activate", () => {

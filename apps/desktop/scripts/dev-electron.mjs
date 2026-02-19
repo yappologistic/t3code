@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
-
+import electronmon from "electronmon";
 import waitOn from "wait-on";
+
+import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
 
 const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5173);
 const devServerUrl = `http://localhost:${port}`;
@@ -14,18 +15,15 @@ await waitOn({
   ],
 });
 
-const command = process.platform === "win32" ? "electronmon.cmd" : "electronmon";
 const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(command, ["dist-electron/main.js"], {
-  stdio: "inherit",
+await electronmon({
+  cwd: desktopDir,
+  args: ["dist-electron/main.js"],
   env: {
     ...childEnv,
     VITE_DEV_SERVER_URL: devServerUrl,
   },
-});
-
-child.on("exit", (code) => {
-  process.exit(code ?? 0);
+  electronPath: resolveElectronPath(),
 });
