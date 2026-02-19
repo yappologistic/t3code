@@ -37,6 +37,7 @@ import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuer
 
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
+import { useAppSettings } from "../appSettings";
 import { buildBootstrapInput } from "../historyBootstrap";
 import {
   type ComposerTriggerKind,
@@ -380,6 +381,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const rawSearch = useSearch({ strict: false });
   const api = useNativeApi();
   const { resolvedTheme } = useTheme();
+  const { settings: appSettings } = useAppSettings();
   const queryClient = useQueryClient();
   const createWorktreeMutation = useMutation(
     gitCreateWorktreeMutationOptions({ api, queryClient }),
@@ -651,6 +653,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const runtimeApprovalPolicy = state.runtimeMode === "full-access" ? "never" : "on-request";
   const runtimeSandboxMode =
     state.runtimeMode === "full-access" ? "danger-full-access" : "workspace-write";
+  const codexBinaryPath = appSettings.codexBinaryPath.trim();
+  const codexHomePath = appSettings.codexHomePath.trim();
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const composerTrigger = useMemo(
     () => detectComposerTrigger(prompt, composerCursor),
@@ -1524,6 +1528,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           cwd: cwdOverride ?? activeThread.worktreePath ?? activeProject.cwd,
           model: selectedModel || undefined,
           resumeThreadId: priorCodexThreadId ?? undefined,
+          ...(codexBinaryPath.length > 0 ? { codexBinaryPath } : {}),
+          ...(codexHomePath.length > 0 ? { codexHomePath } : {}),
           approvalPolicy: runtimeApprovalPolicy,
           sandboxMode: runtimeSandboxMode,
         });
@@ -1564,6 +1570,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       activeProject,
       activeThread,
       api,
+      codexBinaryPath,
+      codexHomePath,
       dispatch,
       runtimeApprovalPolicy,
       runtimeSandboxMode,
