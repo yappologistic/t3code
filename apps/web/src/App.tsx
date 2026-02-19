@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { Activity, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Activity, Suspense, lazy, useEffect, useRef } from "react";
 
 import ChatView from "./components/ChatView";
 import Sidebar from "./components/Sidebar";

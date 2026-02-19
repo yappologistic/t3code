@@ -1,5 +1,10 @@
 import { parsePatchFiles } from "@pierre/diffs";
-import { FileDiff, type FileDiffMetadata, WorkerPoolContextProvider } from "@pierre/diffs/react";
+import {
+  FileDiff,
+  type FileDiffMetadata,
+  Virtualizer,
+  WorkerPoolContextProvider,
+} from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Columns2Icon, Rows3Icon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +20,7 @@ import { useStore } from "../store";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 
 type DiffRenderMode = "stacked" | "split";
+type DiffThemeType = "light" | "dark" | "system";
 
 type RenderablePatch =
   | {
@@ -59,6 +65,10 @@ function resolveFileDiffPath(fileDiff: FileDiffMetadata): string {
     return raw.slice(2);
   }
   return raw;
+}
+
+function buildFileDiffRenderKey(fileDiff: FileDiffMetadata): string {
+  return fileDiff.cacheKey ?? `${fileDiff.prevName ?? "none"}:${fileDiff.name}`;
 }
 
 interface DiffPanelProps {
@@ -396,46 +406,60 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         </div>
       ) : (
         <>
-          <div ref={patchViewportRef} className="min-w-0 flex-1 overflow-auto px-3 py-2">
+          <div ref={patchViewportRef} className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {!canApplyStoredTarget && state.diffThreadId && (
-              <p className="mb-2 text-[11px] text-muted-foreground/65">
-                Showing diffs for the active thread.
-              </p>
+              <div className="px-3 pt-2">
+                <p className="mb-2 text-[11px] text-muted-foreground/65">
+                  Showing diffs for the active thread.
+                </p>
+              </div>
             )}
             {checkpointDiffError && !renderablePatch && (
-              <p className="mb-2 text-[11px] text-red-500/80">{checkpointDiffError}</p>
+              <div className="px-3">
+                <p className="mb-2 text-[11px] text-red-500/80">{checkpointDiffError}</p>
+              </div>
             )}
             {!renderablePatch ? (
-              <div className="flex h-full items-center justify-center text-xs text-muted-foreground/70">
-                {isLoadingCheckpointDiff
-                  ? "Loading checkpoint diff..."
-                  : "No patch available for this selection."}
+              <div className="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
+                <p>
+                  {isLoadingCheckpointDiff
+                    ? "Loading checkpoint diff..."
+                    : "No patch available for this selection."}
+                </p>
               </div>
             ) : renderablePatch.kind === "files" ? (
-              <div className="space-y-3">
-                {renderableFiles.map((fileDiff) => (
-                  <div
-                    key={fileDiff.cacheKey ?? `${fileDiff.prevName ?? "none"}:${fileDiff.name}`}
-                    data-diff-file-path={resolveFileDiffPath(fileDiff)}
-                    className="rounded-md"
-                  >
-                    <FileDiff
-                      fileDiff={fileDiff}
-                      options={{
-                        diffStyle: diffRenderMode === "split" ? "split" : "unified",
-                        lineDiffType: "none",
-                        themeType: resolvedTheme,
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+              <Virtualizer
+                className="h-full min-h-0 overflow-auto px-3 py-2"
+                config={{
+                  overscrollSize: 600,
+                  intersectionObserverMargin: 1200,
+                }}
+              >
+                {renderableFiles.map((fileDiff) => {
+                  const filePath = resolveFileDiffPath(fileDiff);
+                  const fileKey = buildFileDiffRenderKey(fileDiff);
+                  return (
+                    <div key={fileKey} data-diff-file-path={filePath} className="rounded-md">
+                      <FileDiff
+                        fileDiff={fileDiff}
+                        options={{
+                          diffStyle: diffRenderMode === "split" ? "split" : "unified",
+                          lineDiffType: "none",
+                          themeType: resolvedTheme as DiffThemeType,
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </Virtualizer>
             ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] text-muted-foreground/75">{renderablePatch.reason}</p>
-                <pre className="max-h-[72vh] overflow-auto rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90">
-                  {renderablePatch.text}
-                </pre>
+              <div className="h-full overflow-auto px-3 py-2">
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground/75">{renderablePatch.reason}</p>
+                  <pre className="max-h-[72vh] overflow-auto rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90">
+                    {renderablePatch.text}
+                  </pre>
+                </div>
               </div>
             )}
           </div>
