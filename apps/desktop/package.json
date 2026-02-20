@@ -15,7 +15,7 @@
     "smoke-test": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
-    "electron": "33.4.11"
+    "electron": "40.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
