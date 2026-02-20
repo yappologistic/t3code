@@ -259,18 +259,27 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
 
     updateTurnStripScrollState();
     const onScroll = () => updateTurnStripScrollState();
+    
+    const onWheel = (event: WheelEvent) => {
+      if (!element) return;
+      if (element.scrollWidth <= element.clientWidth + 1) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      element.scrollBy({ left: event.deltaY, behavior: "auto" });
+    };
+
     element.addEventListener("scroll", onScroll, { passive: true });
-    element.addEventListener("wheel", onTurnStripWheel, { passive: false });
+    element.addEventListener("wheel", onWheel, { passive: false });
 
     const resizeObserver = new ResizeObserver(() => updateTurnStripScrollState());
     resizeObserver.observe(element);
 
     return () => {
       element.removeEventListener("scroll", onScroll);
-      element.removeEventListener("wheel", onTurnStripWheel);
+      element.removeEventListener("wheel", onWheel);
       resizeObserver.disconnect();
     };
-  }, [onTurnStripWheel, updateTurnStripScrollState]);
+  }, [updateTurnStripScrollState]);
 
   useEffect(() => {
     updateTurnStripScrollState();
