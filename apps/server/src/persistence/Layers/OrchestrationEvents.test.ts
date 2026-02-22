@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import {  ManagedRuntime, Effect } from "effect";
+import { ManagedRuntime, Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { OrchestrationEventRepository } from "../Services/OrchestrationEvents.ts";
@@ -56,7 +56,6 @@ describe("OrchestrationEventRepository", () => {
   it("creates and reuses the migrator tracking table", async () => {
     const stateDir = makeTempDir("t3code-event-store-migrations-");
     const dbPath = path.join(stateDir, "orchestration.sqlite");
-
 
     const firstRuntime = ManagedRuntime.make(makeSqliteOrchestrationEventRepositoryLive(dbPath));
     const first = await firstRuntime.runPromise(Effect.service(OrchestrationEventRepository));

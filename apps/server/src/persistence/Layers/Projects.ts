@@ -381,7 +381,7 @@ const makeRepository = Effect.gen(function* () {
         Effect.mapError(toPersistenceSqlError("ProjectRepository.remove:findById")),
       );
       if (Option.isNone(existing)) {
-        return yield* (new ProjectNotFoundError({ projectId: input.id }));
+        return yield* new ProjectNotFoundError({ projectId: input.id });
       }
 
       yield* deleteProject({ id: input.id }).pipe(
@@ -396,7 +396,7 @@ const makeRepository = Effect.gen(function* () {
         Effect.mapError(toPersistenceSqlError("ProjectRepository.updateScripts:findById")),
       );
       if (Option.isNone(existing)) {
-        return yield* (new ProjectNotFoundError({ projectId: input.id }));
+        return yield* new ProjectNotFoundError({ projectId: input.id });
       }
 
       const nextScripts = yield* parseProjectScripts(

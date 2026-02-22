@@ -5,8 +5,6 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Effect, Layer, ServiceMap } from "effect";
 
-
-
 import { runMigrations } from "../Migrations.ts";
 
 export interface PersistenceConfigShape {
@@ -37,7 +35,6 @@ export function makeSqlitePersistenceLive(dbPath: string) {
     }),
   ).pipe(Layer.provide(SqliteClientLive));
 }
-
 
 export const SqlitePersistenceLive = Layer.unwrap(
   Effect.map(Effect.service(PersistenceConfig), ({ dbPath }) => makeSqlitePersistenceLive(dbPath)),

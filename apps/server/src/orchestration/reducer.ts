@@ -36,7 +36,7 @@ function decodeForEvent<A>(
 ): Effect.Effect<A, OrchestrationReducerDecodeError> {
   return Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(toReducerDecodeError(`${eventType}:${field}`)),
-  ) as Effect.Effect<A, OrchestrationReducerDecodeError> 
+  ) as Effect.Effect<A, OrchestrationReducerDecodeError>;
 }
 
 const ThreadCreatedPayloadSchema = Schema.Struct({
