@@ -34,36 +34,6 @@ function asError(error: unknown, fallbackMessage: string): Error {
 function mapCommandToEvent(command: OrchestrationCommand): Omit<OrchestrationEvent, "sequence"> {
   const eventId = crypto.randomUUID();
   switch (command.type) {
-    case "project.create":
-      return {
-        eventId,
-        type: "project.created",
-        aggregateType: "project",
-        aggregateId: command.projectId,
-        occurredAt: command.createdAt,
-        commandId: command.commandId,
-        payload: {
-          id: command.projectId,
-          name: command.name,
-          cwd: command.cwd,
-          model: command.model,
-          createdAt: command.createdAt,
-          updatedAt: command.createdAt,
-        },
-      };
-    case "project.delete":
-      return {
-        eventId,
-        type: "project.deleted",
-        aggregateType: "project",
-        aggregateId: command.projectId,
-        occurredAt: command.createdAt,
-        commandId: command.commandId,
-        payload: {
-          id: command.projectId,
-          deletedAt: command.createdAt,
-        },
-      };
     case "thread.create":
       return {
         eventId,
@@ -226,10 +196,7 @@ export class OrchestrationEngine {
     return Effect.gen(this, function* () {
       const eventBase = mapCommandToEvent(envelope.command);
       const savedEvent = yield* this.eventStore.append(eventBase);
-
-      yield* Effect.sync(() => {
-        this.readModel = reduceEvent(this.readModel, savedEvent);
-      });
+      this.readModel = yield* reduceEvent(this.readModel, savedEvent);
 
       const snapshot = this.readModel;
       yield* Effect.all([
@@ -237,14 +204,12 @@ export class OrchestrationEngine {
         PubSub.publish(this.readModelPubSub, snapshot),
       ]);
 
-      yield* Effect.sync(() => {
-        for (const listener of this.domainEventListeners) {
-          listener(savedEvent);
-        }
-        for (const listener of this.readModelListeners) {
-          listener(snapshot);
-        }
-      });
+      for (const listener of this.domainEventListeners) {
+        listener(savedEvent);
+      }
+      for (const listener of this.readModelListeners) {
+        listener(snapshot);
+      }
 
       yield* Deferred.succeed(envelope.result, { sequence: savedEvent.sequence });
     }).pipe(
@@ -257,14 +222,12 @@ export class OrchestrationEngine {
     );
   }
 
-  private bootstrapReadModel(): Effect.Effect<void> {
+  private bootstrapReadModel(): Effect.Effect<void, unknown> {
     return Effect.gen(this, function* () {
       const existingEvents = yield* this.eventStore.readAll();
-      yield* Effect.sync(() => {
-        for (const event of existingEvents) {
-          this.readModel = reduceEvent(this.readModel, event);
-        }
-      });
+      for (const event of existingEvents) {
+        this.readModel = yield* reduceEvent(this.readModel, event);
+      }
     });
   }
 

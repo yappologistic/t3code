@@ -28,13 +28,6 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function inferProjectName(cwd: string): string {
-  const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-  const parts = normalized.split("/");
-  const last = parts[parts.length - 1];
-  return last && last.length > 0 ? last : "project";
-}
-
 interface ThreadStatusPill {
   label: "Working" | "Connecting" | "Completed" | "Awaiting response";
   colorClass: string;
@@ -195,23 +188,16 @@ export default function Sidebar() {
           return;
         }
 
-        const projectId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        const name = inferProjectName(cwd);
-        if (isElectron) {
-          // Keep project registry in sync for desktop integrations.
-          await api.projects.add({ cwd });
+        const result = await api.projects.add({ cwd });
+        const projects = await api.projects.list();
+        dispatch({ type: "SYNC_PROJECTS", projects });
+
+        const hasThread = state.threads.some((thread) => thread.projectId === result.project.id);
+        if (hasThread) {
+          focusMostRecentThreadForProject(result.project.id);
+          return;
         }
-        await api.orchestration.dispatchCommand({
-          type: "project.create",
-          commandId: crypto.randomUUID(),
-          projectId,
-          name,
-          cwd,
-          model: DEFAULT_MODEL,
-          createdAt: now,
-        });
-        handleNewThread(projectId);
+        handleNewThread(result.project.id);
       } finally {
         setIsAddingProject(false);
         setNewCwd("");
@@ -225,6 +211,7 @@ export default function Sidebar() {
       handleNewThread,
       isAddingProject,
       state.projects,
+      state.threads,
     ],
   );
 
@@ -381,28 +368,20 @@ export default function Sidebar() {
       );
       if (!confirmed) return;
 
-      if (isElectron) {
-        try {
-          await api.projects.remove({ id: projectId });
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Unknown error deleting project.";
-          console.error("Failed to remove project", { projectId, error });
-          toastManager.add({
-            type: "error",
-            title: `Failed to delete "${project.name}"`,
-            description: message,
-          });
-          return;
-        }
+      try {
+        await api.projects.remove({ id: projectId });
+        const projects = await api.projects.list();
+        dispatch({ type: "SYNC_PROJECTS", projects });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown error deleting project.";
+        console.error("Failed to remove project", { projectId, error });
+        toastManager.add({
+          type: "error",
+          title: `Failed to delete "${project.name}"`,
+          description: message,
+        });
       }
-
-      await api.orchestration.dispatchCommand({
-        type: "project.delete",
-        commandId: crypto.randomUUID(),
-        projectId,
-        createdAt: new Date().toISOString(),
-      });
     },
     [api, dispatch, state.projects, state.threads],
   );

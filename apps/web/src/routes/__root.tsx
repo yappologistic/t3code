@@ -126,9 +126,9 @@ function EventRouter() {
 
   useEffect(() => {
     if (!api) return;
-    void api.orchestration
-      .getSnapshot()
-      .then((snapshot) => {
+    void Promise.all([api.projects.list(), api.orchestration.getSnapshot()])
+      .then(([projects, snapshot]) => {
+        dispatch({ type: "SYNC_PROJECTS", projects });
         dispatch({ type: "SYNC_SERVER_READ_MODEL", readModel: snapshot });
       })
       .catch(() => undefined);
@@ -150,8 +150,8 @@ function AutoProjectBootstrap() {
 
   useEffect(() => {
     if (!api) return;
-    // Browser mode bootstraps from server welcome.
-    // Electron bootstraps from persisted projects via DesktopProjectBootstrap.
+    // Browser mode auto-adds the current cwd project via server welcome.
+    // Desktop skips this because projects are already loaded from the repository.
     if (isElectron) return;
 
     return onServerWelcome((payload) => {
@@ -166,40 +166,38 @@ function AutoProjectBootstrap() {
       }
 
       bootstrappedRef.current = true;
-      const projectId = crypto.randomUUID();
-      const threadId = crypto.randomUUID();
       const now = new Date().toISOString();
-      void api.orchestration
-        .dispatchCommand({
-          type: "project.create",
-          commandId: crypto.randomUUID(),
-          projectId,
-          name: payload.projectName,
-          cwd: payload.cwd,
-          model: DEFAULT_MODEL,
-          createdAt: now,
-        })
-        .then(() =>
-          api.orchestration.dispatchCommand({
+      void api.projects
+        .add({ cwd: payload.cwd })
+        .then(async (result) => {
+          const projects = await api.projects.list();
+          dispatch({ type: "SYNC_PROJECTS", projects });
+
+          const hasThread = state.threads.some((thread) => thread.projectId === result.project.id);
+          if (hasThread) {
+            return;
+          }
+
+          return api.orchestration.dispatchCommand({
             type: "thread.create",
             commandId: crypto.randomUUID(),
-            threadId,
-            projectId,
+            threadId: crypto.randomUUID(),
+            projectId: result.project.id,
             title: "New thread",
             model: DEFAULT_MODEL,
             branch: null,
             worktreePath: null,
             createdAt: now,
-          }),
-        )
+          });
+        })
         .catch(() => undefined);
     });
-  }, [api, state.projects, dispatch]);
+  }, [api, state.projects, state.threads, dispatch]);
 
   return null;
 }
 
 function DesktopProjectBootstrap() {
-  // Desktop now hydrates from orchestration read-model snapshots.
+  // Desktop hydration runs through EventRouter project + orchestration sync.
   return null;
 }

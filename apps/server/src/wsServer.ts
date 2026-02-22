@@ -18,10 +18,10 @@ import {
   type WsResponse,
   wsRequestSchema,
 } from "@t3tools/contracts";
+import { Layer, ManagedRuntime } from "effect";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { createLogger } from "./logger";
-import { ProjectRegistry } from "./projectRegistry";
 import { ProviderManager } from "./providerManager";
 import { GitManager } from "./gitManager";
 import {
@@ -36,7 +36,13 @@ import {
 import { TerminalManager } from "./terminalManager";
 import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
-import { createOrchestrationSystem, type OrchestrationSystem } from "./orchestration/runtime";
+import type { OrchestrationEngine } from "./orchestration/engine";
+import { OrchestrationLive } from "./orchestration/layers";
+import { OrchestrationEngineService } from "./orchestration/services";
+import { ProjectRepositoryLive } from "./persistence/Layers/Projects";
+import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite";
+import { ProjectRepository, type ProjectRepositoryShape } from "./persistence/Services/Projects";
+import assert from "node:assert";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -61,10 +67,29 @@ export interface ServerOptions {
   staticDir?: string | undefined;
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
-  projectRegistry?: ProjectRegistry | undefined;
   gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
   authToken?: string | undefined;
+}
+
+const isServerNotRunningError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const maybeCode = (error as NodeJS.ErrnoException).code;
+  return (
+    maybeCode === "ERR_SERVER_NOT_RUNNING" || error.message.toLowerCase().includes("not running")
+  );
+};
+
+function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
+  socket.write(
+    `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
+      "Connection: close\r\n" +
+      "Content-Type: text/plain\r\n" +
+      `Content-Length: ${Buffer.byteLength(message)}\r\n` +
+      "\r\n" +
+      message,
+  );
+  socket.destroy();
 }
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
@@ -99,18 +124,19 @@ export function createServer(options: ServerOptions) {
     staticDir,
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
-    projectRegistry: providedRegistry,
-    gitManager: providedGitManager,
-    terminalManager: providedTerminalManager,
+    gitManager = new GitManager(),
+    terminalManager = new TerminalManager(),
     authToken,
   } = options;
   const providerManager = new ProviderManager();
-  const terminalManager = providedTerminalManager ?? new TerminalManager();
-  const projectRegistry =
-    providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
-  const gitManager = providedGitManager ?? new GitManager();
+
   const resolvedStateDir = stateDir ?? path.join(os.homedir(), ".t3", "userdata");
-  let orchestrationSystem: OrchestrationSystem | null = null;
+  let effectRuntime: ManagedRuntime.ManagedRuntime<
+    ProjectRepository | OrchestrationEngineService,
+    unknown
+  > | null = null;
+  let projectRepository: ProjectRepositoryShape | null = null;
+  let orchestrationEngine: OrchestrationEngine | null = null;
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
   const logWebSocketEvents =
@@ -128,15 +154,23 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  function requireOrchestrationEngine() {
-    if (!orchestrationSystem) {
-      throw new Error("Orchestration engine is not started");
-    }
-    return orchestrationSystem.engine;
-  }
+  const getOrchestrationEngine = () => {
+    assert(orchestrationEngine, "Orchestration engine is not started");
+    return orchestrationEngine;
+  };
+
+  const getProjectRepository = () => {
+    assert(projectRepository, "Project repository is not started");
+    return projectRepository;
+  };
+
+  const getEffectRuntime = () => {
+    assert(effectRuntime, "Effect runtime is not started");
+    return effectRuntime;
+  };
 
   function attachOrchestrationSubscriptions() {
-    const orchestrationEngine = requireOrchestrationEngine();
+    const orchestrationEngine = getOrchestrationEngine();
 
     unsubscribeReadModel = orchestrationEngine.subscribeToReadModel((snapshot) => {
       const push: WsPush = {
@@ -179,17 +213,16 @@ export function createServer(options: ServerOptions) {
   // Forward provider events to all connected WebSocket clients
   providerManager.on("event", (event) => {
     void (async () => {
-      const liveOrchestrationSystem = orchestrationSystem;
-      if (!liveOrchestrationSystem) {
+      const liveOrchestrationEngine = orchestrationEngine;
+      if (!liveOrchestrationEngine) {
         return;
       }
-      const orchestrationEngine = liveOrchestrationSystem.engine;
-      const snapshot = orchestrationEngine.getSnapshot();
+      const snapshot = liveOrchestrationEngine.getSnapshot();
       const thread = snapshot.threads.find((entry) => entry.session?.sessionId === event.sessionId);
       if (!thread) return;
       const now = event.createdAt;
       if (event.method === "turn/started" || event.method === "turn/completed") {
-        await orchestrationEngine.dispatch({
+        await liveOrchestrationEngine.dispatch({
           type: "thread.session",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -208,7 +241,7 @@ export function createServer(options: ServerOptions) {
       }
       if (event.textDelta && event.textDelta.length > 0) {
         const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
-        await orchestrationEngine.dispatch({
+        await liveOrchestrationEngine.dispatch({
           type: "message.send",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -221,7 +254,7 @@ export function createServer(options: ServerOptions) {
       }
       if (event.method === "turn/completed") {
         const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
-        await orchestrationEngine.dispatch({
+        await liveOrchestrationEngine.dispatch({
           type: "message.send",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -236,13 +269,15 @@ export function createServer(options: ServerOptions) {
         const payload = asObject(event.payload);
         const turnId = event.turnId ?? asString(payload?.turnId);
         if (turnId) {
-          await orchestrationEngine.dispatch({
+          await liveOrchestrationEngine.dispatch({
             type: "thread.turnDiff.complete",
             commandId: crypto.randomUUID(),
             threadId: thread.id,
             turnId,
             completedAt: now,
-            ...(asString(payload?.status) !== null ? { status: asString(payload?.status) ?? undefined } : {}),
+            ...(asString(payload?.status) !== null
+              ? { status: asString(payload?.status) ?? undefined }
+              : {}),
             files: [],
             assistantMessageId: `assistant:${turnId}`,
             ...(asNumber(payload?.turnCount) !== null
@@ -253,7 +288,7 @@ export function createServer(options: ServerOptions) {
         }
       }
       if (event.kind === "error" && event.message) {
-        await orchestrationEngine.dispatch({
+        await liveOrchestrationEngine.dispatch({
           type: "thread.session",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -350,18 +385,6 @@ export function createServer(options: ServerOptions) {
   // WebSocket server — upgrades from the HTTP server
   const wss = new WebSocketServer({ noServer: true });
 
-  function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
-    socket.write(
-      `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
-        "Connection: close\r\n" +
-        "Content-Type: text/plain\r\n" +
-        `Content-Length: ${Buffer.byteLength(message)}\r\n` +
-        "\r\n" +
-        message,
-    );
-    socket.destroy();
-  }
-
   httpServer.on("upgrade", (request, socket, head) => {
     if (authToken) {
       let providedToken: string | null = null;
@@ -386,7 +409,7 @@ export function createServer(options: ServerOptions) {
 
   wss.on("connection", (ws) => {
     clients.add(ws);
-    const orchestrationEngine = requireOrchestrationEngine();
+    const orchestrationEngine = getOrchestrationEngine();
 
     // Send welcome message with project info
     const segments = cwd.split(/[/\\]/).filter(Boolean);
@@ -453,7 +476,9 @@ export function createServer(options: ServerOptions) {
   }
 
   async function routeRequest(request: WsRequest): Promise<unknown> {
-    const orchestrationEngine = requireOrchestrationEngine();
+    const orchestrationEngine = getOrchestrationEngine();
+    const projectRepository = getProjectRepository();
+    const effectRuntime = getEffectRuntime();
 
     switch (request.method) {
       case WS_METHODS.providersStartSession:
@@ -479,79 +504,56 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.providersGetCheckpointDiff:
         return providerManager.getCheckpointDiff(request.params as never);
 
-      case WS_METHODS.providersRevertToCheckpoint:
-        {
-          const result = await providerManager.revertToCheckpoint(request.params as never);
-          const params = request.params as { sessionId?: string };
-          const sessionId = params.sessionId;
-          if (typeof sessionId === "string") {
-            const snapshot = orchestrationEngine.getSnapshot();
-            const thread = snapshot.threads.find((entry) => entry.session?.sessionId === sessionId);
-            if (thread) {
-              const now = new Date().toISOString();
+      case WS_METHODS.providersRevertToCheckpoint: {
+        const result = await providerManager.revertToCheckpoint(request.params as never);
+        const params = request.params as { sessionId?: string };
+        const sessionId = params.sessionId;
+        if (typeof sessionId === "string") {
+          const snapshot = orchestrationEngine.getSnapshot();
+          const thread = snapshot.threads.find((entry) => entry.session?.sessionId === sessionId);
+          if (thread) {
+            const now = new Date().toISOString();
+            await orchestrationEngine.dispatch({
+              type: "thread.revert",
+              commandId: crypto.randomUUID(),
+              threadId: thread.id,
+              turnCount: result.turnCount,
+              messageCount: result.messageCount,
+              createdAt: now,
+            });
+            if (thread.session) {
               await orchestrationEngine.dispatch({
-                type: "thread.revert",
+                type: "thread.session",
                 commandId: crypto.randomUUID(),
                 threadId: thread.id,
-                turnCount: result.turnCount,
-                messageCount: result.messageCount,
+                session: {
+                  ...thread.session,
+                  status: "ready",
+                  activeTurnId: null,
+                  updatedAt: now,
+                  lastError: null,
+                },
                 createdAt: now,
               });
-              if (thread.session) {
-                await orchestrationEngine.dispatch({
-                  type: "thread.session",
-                  commandId: crypto.randomUUID(),
-                  threadId: thread.id,
-                  session: {
-                    ...thread.session,
-                    status: "ready",
-                    activeTurnId: null,
-                    updatedAt: now,
-                    lastError: null,
-                  },
-                  createdAt: now,
-                });
-              }
             }
           }
-          return result;
         }
+        return result;
+      }
 
       case WS_METHODS.projectsList:
-        return projectRegistry.list();
+        return effectRuntime.runPromise(projectRepository.list());
 
       case WS_METHODS.projectsAdd:
-        {
-          const result = await projectRegistry.add(request.params as never);
-          await orchestrationEngine.dispatch({
-            type: "project.create",
-            commandId: crypto.randomUUID(),
-            projectId: result.project.id,
-            name: result.project.name,
-            cwd: result.project.cwd,
-            model: "gpt-5-codex",
-            createdAt: new Date().toISOString(),
-          });
-          return result;
-        }
+        return effectRuntime.runPromise(projectRepository.add(request.params as never));
 
       case WS_METHODS.projectsRemove:
-        {
-          const params = request.params as { id: string };
-          projectRegistry.remove(request.params as never);
-          await orchestrationEngine.dispatch({
-            type: "project.delete",
-            commandId: crypto.randomUUID(),
-            projectId: params.id,
-            createdAt: new Date().toISOString(),
-          });
-          return undefined;
-        }
+        return effectRuntime.runPromise(projectRepository.remove(request.params as never));
 
       case WS_METHODS.projectsSearchEntries:
         return searchWorkspaceEntries(request.params as never);
       case WS_METHODS.projectsUpdateScripts:
-        return projectRegistry.updateScripts(request.params as never);
+        return effectRuntime.runPromise(projectRepository.updateScripts(request.params as never));
 
       case WS_METHODS.shellOpenInEditor: {
         const params = request.params as {
@@ -597,25 +599,25 @@ export function createServer(options: ServerOptions) {
         return undefined;
       }
 
-      case WS_METHODS.gitStatus:
-        {
-          const params = request.params as { cwd: string };
-          const status = await gitManager.status(request.params as never);
-          const project = projectRegistry.list().find((entry) => entry.cwd === params.cwd);
-          if (project) {
-            await orchestrationEngine.dispatch({
-              type: "git.readModel.upsert",
-              commandId: crypto.randomUUID(),
-              projectId: project.id,
-              branch: status.branch,
-              hasWorkingTreeChanges: status.hasWorkingTreeChanges,
-              aheadCount: status.aheadCount,
-              behindCount: status.behindCount,
-              createdAt: new Date().toISOString(),
-            });
-          }
-          return status;
+      case WS_METHODS.gitStatus: {
+        const params = request.params as { cwd: string };
+        const status = await gitManager.status(request.params as never);
+        const projects = await effectRuntime.runPromise(projectRepository.list());
+        const project = projects.find((entry) => entry.cwd === params.cwd);
+        if (project) {
+          await orchestrationEngine.dispatch({
+            type: "git.readModel.upsert",
+            commandId: crypto.randomUUID(),
+            projectId: project.id,
+            branch: status.branch,
+            hasWorkingTreeChanges: status.hasWorkingTreeChanges,
+            aheadCount: status.aheadCount,
+            behindCount: status.behindCount,
+            createdAt: new Date().toISOString(),
+          });
         }
+        return status;
+      }
 
       case WS_METHODS.gitPull:
         return pullGitBranch(request.params as never);
@@ -698,37 +700,57 @@ export function createServer(options: ServerOptions) {
     }
   }
 
-  async function ensureOrchestrationSystemStarted() {
-    if (orchestrationSystem) {
-      return;
+  async function createEffectRuntime() {
+    const dbPath = path.join(resolvedStateDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtime = ManagedRuntime.make(
+      Layer.mergeAll(OrchestrationLive, ProjectRepositoryLive).pipe(
+        Layer.provide(persistenceLayer),
+      ),
+    );
+
+    try {
+      const [nextOrchestrationEngine, repository] = await Promise.all([
+        runtime.runPromise(OrchestrationEngineService),
+        runtime.runPromise(ProjectRepository),
+      ]);
+      orchestrationEngine = nextOrchestrationEngine;
+      projectRepository = repository;
+      await runtime.runPromise(repository.pruneMissing());
+      attachOrchestrationSubscriptions();
+    } catch (error) {
+      await runtime.dispose().catch(() => undefined);
+      throw error;
     }
 
-    orchestrationSystem = await createOrchestrationSystem(resolvedStateDir);
-    attachOrchestrationSubscriptions();
+    return runtime;
   }
 
-  async function disposeOrchestrationSystem() {
+  async function disposeEffectRuntime() {
     unsubscribeReadModel();
     unsubscribeDomainEvents();
     unsubscribeReadModel = noop;
     unsubscribeDomainEvents = noop;
 
-    if (!orchestrationSystem) {
+    const runtime = effectRuntime;
+    effectRuntime = null;
+    orchestrationEngine = null;
+    projectRepository = null;
+
+    if (!runtime) {
       return;
     }
 
-    const system = orchestrationSystem;
-    orchestrationSystem = null;
-    await system.dispose();
+    await runtime.dispose();
   }
 
   async function start() {
-    await ensureOrchestrationSystemStarted();
+    effectRuntime = await createEffectRuntime();
 
     return new Promise<void>((resolve, reject) => {
       const onError = (error: Error) => {
         httpServer.off("error", onError);
-        void disposeOrchestrationSystem().finally(() => reject(error));
+        void disposeEffectRuntime().finally(() => reject(error));
       };
       httpServer.once("error", onError);
       const onListening = () => {
@@ -744,7 +766,7 @@ export function createServer(options: ServerOptions) {
   }
 
   async function stop(): Promise<void> {
-    await disposeOrchestrationSystem();
+    await disposeEffectRuntime();
     terminalManager.off("event", onTerminalEvent);
     providerManager.stopAll();
     providerManager.dispose();
@@ -754,15 +776,6 @@ export function createServer(options: ServerOptions) {
       client.close();
     }
     clients.clear();
-
-    const isServerNotRunningError = (error: unknown): boolean => {
-      if (!(error instanceof Error)) return false;
-      const maybeCode = (error as NodeJS.ErrnoException).code;
-      return (
-        maybeCode === "ERR_SERVER_NOT_RUNNING" ||
-        error.message.toLowerCase().includes("not running")
-      );
-    };
 
     const closeWebSocketServer = new Promise<void>((resolve, reject) => {
       wss.close((error) => {

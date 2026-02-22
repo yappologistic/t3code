@@ -8,7 +8,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { OrchestrationEventRepositoryShape } from "../persistence/Services/OrchestrationEvents";
 import { OrchestrationEngine } from "./engine";
-import { createOrchestrationSystem } from "./runtime";
+
+import { Layer, ManagedRuntime } from "effect";
+
+import { makeSqlitePersistenceLive } from "../persistence/Layers/Sqlite";
+
+import { OrchestrationLive } from "./layers";
+import { OrchestrationEngineService } from "./services";
 
 const tempDirs: string[] = [];
 
@@ -24,6 +30,19 @@ afterEach(() => {
   }
 });
 
+export async function createOrchestrationSystem(stateDir: string) {
+  const dbPath = path.join(stateDir, "orchestration.sqlite");
+  const orchestrationLayer = OrchestrationLive.pipe(
+    Layer.provide(makeSqlitePersistenceLive(dbPath)),
+  );
+  const runtime = ManagedRuntime.make(orchestrationLayer);
+  const engine = await runtime.runPromise(OrchestrationEngineService);
+  return {
+    engine,
+    dispose: () => runtime.dispose(),
+  };
+}
+
 describe("OrchestrationEngine", () => {
   it("replays to the same deterministic snapshot", async () => {
     const stateDir = makeTempDir("t3code-orchestration-");
@@ -34,17 +53,8 @@ describe("OrchestrationEngine", () => {
     const firstSystem = await createOrchestrationSystem(stateDir);
     const engineA = firstSystem.engine;
     await engineA.dispatch({
-      type: "project.create",
-      commandId: "cmd-1",
-      projectId,
-      name: "demo",
-      cwd: "/tmp/demo",
-      model: "gpt-5-codex",
-      createdAt,
-    });
-    await engineA.dispatch({
       type: "thread.create",
-      commandId: "cmd-2",
+      commandId: "cmd-1",
       threadId,
       projectId,
       title: "Thread",
@@ -82,12 +92,14 @@ describe("OrchestrationEngine", () => {
       updates.push(snapshot.sequence);
     });
     await engine.dispatch({
-      type: "project.create",
-      commandId: "cmd-project",
+      type: "thread.create",
+      commandId: "cmd-thread",
+      threadId: "thread-2",
       projectId: "project-2",
-      name: "fanout",
-      cwd: "/tmp/fanout",
+      title: "fanout",
       model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
       createdAt: new Date().toISOString(),
     });
     unsubscribe();
@@ -100,24 +112,26 @@ describe("OrchestrationEngine", () => {
     const system = await createOrchestrationSystem(stateDir);
     const engine = system.engine;
     await engine.dispatch({
-      type: "project.create",
+      type: "thread.create",
       commandId: "cmd-a",
+      threadId: "thread-replay",
       projectId: "project-replay",
-      name: "replay",
-      cwd: "/tmp/replay",
+      title: "replay",
       model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
       createdAt: new Date().toISOString(),
     });
     await engine.dispatch({
-      type: "project.delete",
+      type: "thread.delete",
       commandId: "cmd-b",
-      projectId: "project-replay",
+      threadId: "thread-replay",
       createdAt: new Date().toISOString(),
     });
     const events = await engine.replayEvents(0);
     expect(events.length).toBe(2);
-    expect(events[0]?.type).toBe("project.created");
-    expect(events[1]?.type).toBe("project.deleted");
+    expect(events[0]?.type).toBe("thread.created");
+    expect(events[1]?.type).toBe("thread.deleted");
     await system.dispose();
   });
 
@@ -126,15 +140,6 @@ describe("OrchestrationEngine", () => {
     const firstSystem = await createOrchestrationSystem(stateDir);
     const engine = firstSystem.engine;
     const completedAt = new Date().toISOString();
-    await engine.dispatch({
-      type: "project.create",
-      commandId: "cmd-project-turn-diff",
-      projectId: "project-turn-diff",
-      name: "turn-diff",
-      cwd: "/tmp/turn-diff",
-      model: "gpt-5-codex",
-      createdAt: completedAt,
-    });
     await engine.dispatch({
       type: "thread.create",
       commandId: "cmd-thread-turn-diff",
@@ -158,7 +163,9 @@ describe("OrchestrationEngine", () => {
       createdAt: completedAt,
     });
 
-    const firstThread = engine.getSnapshot().threads.find((thread) => thread.id === "thread-turn-diff");
+    const firstThread = engine
+      .getSnapshot()
+      .threads.find((thread) => thread.id === "thread-turn-diff");
     expect(firstThread?.turnDiffSummaries).toEqual([
       {
         turnId: "turn-1",
@@ -192,15 +199,6 @@ describe("OrchestrationEngine", () => {
     const firstSystem = await createOrchestrationSystem(stateDir);
     const engine = firstSystem.engine;
     const createdAt = new Date().toISOString();
-    await engine.dispatch({
-      type: "project.create",
-      commandId: "cmd-project-revert",
-      projectId: "project-revert",
-      name: "revert",
-      cwd: "/tmp/revert",
-      model: "gpt-5-codex",
-      createdAt,
-    });
     await engine.dispatch({
       type: "thread.create",
       commandId: "cmd-thread-revert",
@@ -334,9 +332,7 @@ describe("OrchestrationEngine", () => {
       append(event) {
         if (shouldFailFirstAppend) {
           shouldFailFirstAppend = false;
-          return Effect.sync(() => {
-            throw new Error("append failed");
-          });
+          return Effect.die(new Error("append failed"));
         }
         const savedEvent = {
           ...event,
@@ -360,28 +356,32 @@ describe("OrchestrationEngine", () => {
 
     await expect(
       engine.dispatch({
-        type: "project.create",
+        type: "thread.create",
         commandId: "cmd-flaky-1",
-        projectId: "project-flaky-fail",
-        name: "flaky-fail",
-        cwd: "/tmp/flaky-fail",
+        threadId: "thread-flaky-fail",
+        projectId: "project-flaky",
+        title: "flaky-fail",
         model: "gpt-5-codex",
+        branch: null,
+        worktreePath: null,
         createdAt,
       }),
     ).rejects.toThrow("append failed");
 
     const result = await engine.dispatch({
-      type: "project.create",
+      type: "thread.create",
       commandId: "cmd-flaky-2",
-      projectId: "project-flaky-ok",
-      name: "flaky-ok",
-      cwd: "/tmp/flaky-ok",
+      threadId: "thread-flaky-ok",
+      projectId: "project-flaky",
+      title: "flaky-ok",
       model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
       createdAt,
     });
 
     expect(result.sequence).toBe(1);
-    expect(engine.getSnapshot().projects.map((project) => project.id)).toEqual(["project-flaky-ok"]);
+    expect(engine.getSnapshot().sequence).toBe(1);
 
     await engine.stop();
   });

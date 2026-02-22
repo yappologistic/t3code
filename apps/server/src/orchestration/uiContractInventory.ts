@@ -8,11 +8,6 @@ export interface UiEntityContract {
 // with what the current frontend renders.
 export const UI_ENTITY_CONTRACTS: UiEntityContract[] = [
   {
-    entity: "Project",
-    requiredFields: ["id", "name", "cwd", "model"],
-    consumedBy: ["apps/web/src/components/Sidebar.tsx"],
-  },
-  {
     entity: "Thread",
     requiredFields: [
       "id",
@@ -61,6 +56,9 @@ export const UI_ENTITY_CONTRACTS: UiEntityContract[] = [
   {
     entity: "GitReadModel",
     requiredFields: ["projectId", "branch", "hasWorkingTreeChanges", "aheadCount", "behindCount"],
-    consumedBy: ["apps/web/src/components/GitActionsControl.tsx", "apps/web/src/components/BranchToolbar.tsx"],
+    consumedBy: [
+      "apps/web/src/components/GitActionsControl.tsx",
+      "apps/web/src/components/BranchToolbar.tsx",
+    ],
   },
 ];

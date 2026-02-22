@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 
+import { Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { createServer } from "./wsServer";
 import WebSocket from "ws";
@@ -16,8 +17,8 @@ import {
   type WsPush,
   type WsResponse,
 } from "@t3tools/contracts";
-import { ProjectRegistry } from "./projectRegistry";
 import { compileResolvedKeybindingRule, DEFAULT_KEYBINDINGS } from "./keybindings";
+import { ProjectRepository } from "./persistence/Services/Projects";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -28,6 +29,8 @@ import type {
   TerminalWriteInput,
 } from "@t3tools/contracts";
 import type { TerminalManager } from "./terminalManager";
+import { ProjectRepositoryLive } from "./persistence/Layers/Projects";
+import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite";
 
 interface PendingMessages {
   queue: unknown[];
@@ -249,9 +252,9 @@ describe("WebSocket Server", () => {
     return createServer({
       port: 0,
       cwd: options.cwd ?? "/test/project",
+      stateDir,
       ...(options.devUrl ? { devUrl: options.devUrl } : {}),
       ...(options.authToken ? { authToken: options.authToken } : {}),
-      projectRegistry: new ProjectRegistry(stateDir),
       ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
       ...(options.terminalManager ? { terminalManager: options.terminalManager } : {}),
     });
@@ -888,7 +891,11 @@ describe("WebSocket Server", () => {
   it("supports projects.searchEntries", async () => {
     const workspace = makeTempDir("t3code-ws-workspace-entries-");
     fs.mkdirSync(path.join(workspace, "src", "components"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "src", "components", "Composer.tsx"), "export {};", "utf8");
+    fs.writeFileSync(
+      path.join(workspace, "src", "components", "Composer.tsx"),
+      "export {};",
+      "utf8",
+    );
     fs.writeFileSync(path.join(workspace, "README.md"), "# test", "utf8");
     fs.mkdirSync(path.join(workspace, ".git"), { recursive: true });
     fs.writeFileSync(path.join(workspace, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
@@ -1025,36 +1032,18 @@ describe("WebSocket Server", () => {
   it("prunes missing projects on startup", async () => {
     const stateDir = makeTempDir("t3code-ws-prune-state-");
     const existing = makeTempDir("t3code-ws-existing-project-");
-    const missing = path.join(stateDir, "definitely-missing");
-    const now = new Date().toISOString();
-    const projectsFile = path.join(stateDir, "projects.json");
+    const missing = makeTempDir("t3code-ws-missing-project-");
 
-    fs.writeFileSync(
-      projectsFile,
-      JSON.stringify(
-        {
-          version: 1,
-          projects: [
-            {
-              id: "project-existing",
-              cwd: existing,
-              name: "existing",
-              createdAt: now,
-              updatedAt: now,
-            },
-            {
-              id: "project-missing",
-              cwd: missing,
-              name: "missing",
-              createdAt: now,
-              updatedAt: now,
-            },
-          ],
-        },
-        null,
-        2,
+    const projectRuntime = ManagedRuntime.make(
+      ProjectRepositoryLive.pipe(
+        Layer.provide(makeSqlitePersistenceLive(path.join(stateDir, "orchestration.sqlite"))),
       ),
     );
+    const projectRepository = await projectRuntime.runPromise(ProjectRepository);
+    await projectRuntime.runPromise(projectRepository.add({ cwd: existing }));
+    await projectRuntime.runPromise(projectRepository.add({ cwd: missing }));
+    await projectRuntime.dispose();
+    fs.rmSync(missing, { recursive: true, force: true });
 
     server = createTestServer({ stateDir, cwd: "/test" });
     await server.start();
@@ -1067,9 +1056,9 @@ describe("WebSocket Server", () => {
 
     const response = await sendRequest(ws, WS_METHODS.projectsList);
     expect(response.error).toBeUndefined();
-    const listed = response.result as Array<{ id: string }>;
+    const listed = response.result as Array<{ cwd: string }>;
     expect(listed).toHaveLength(1);
-    expect(listed[0]?.id).toBe("project-existing");
+    expect(listed[0]?.cwd).toBe(existing);
   });
 
   it("rejects websocket connections without a valid auth token", async () => {

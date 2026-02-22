@@ -10,9 +10,10 @@ import {
 
 import {
   type OrchestrationReadModel,
+  type ProjectListResult,
   normalizeProjectScripts,
 } from "@t3tools/contracts";
-import { resolveModelSlug } from "./model-logic";
+import { DEFAULT_MODEL, resolveModelSlug } from "./model-logic";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -29,6 +30,7 @@ import {
 
 type Action =
   | { type: "SYNC_SERVER_READ_MODEL"; readModel: OrchestrationReadModel }
+  | { type: "SYNC_PROJECTS"; projects: ProjectListResult }
   | { type: "SET_PROJECT_SCRIPTS"; projectId: string; scripts: ProjectScript[] }
   | { type: "SET_THREADS_HYDRATED"; hydrated: boolean }
   | { type: "TOGGLE_PROJECT"; projectId: string }
@@ -134,6 +136,29 @@ function updateThread(
   updater: (t: Thread) => Thread,
 ): Thread[] {
   return threads.map((t) => (t.id === threadId ? updater(t) : t));
+}
+
+function mapProjects(
+  incoming: ProjectListResult,
+  previous: Project[],
+): Project[] {
+  return incoming.map((project) => {
+    const existing =
+      previous.find((entry) => entry.id === project.id) ??
+      previous.find((entry) => entry.cwd === project.cwd);
+    return {
+      id: project.id,
+      name: project.name,
+      cwd: project.cwd,
+      model: existing?.model ?? DEFAULT_MODEL,
+      expanded:
+        existing?.expanded ??
+        (persistedExpandedProjectCwds.size > 0
+          ? persistedExpandedProjectCwds.has(project.cwd)
+          : true),
+      scripts: normalizeProjectScripts(project.scripts),
+    };
+  });
 }
 
 
@@ -330,21 +355,6 @@ export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SYNC_SERVER_READ_MODEL": {
       const existingThreadById = new Map(state.threads.map((thread) => [thread.id, thread] as const));
-      const projects = action.readModel.projects.map((project) => {
-        const existing = state.projects.find((entry) => entry.id === project.id);
-        return {
-          id: project.id,
-          name: project.name,
-          cwd: project.cwd,
-          model: resolveModelSlug(project.model),
-          expanded:
-            existing?.expanded ??
-            (persistedExpandedProjectCwds.size > 0
-              ? persistedExpandedProjectCwds.has(project.cwd)
-              : true),
-          scripts: existing?.scripts ?? [],
-        };
-      });
       const threads = action.readModel.threads.map((thread) => {
         const existing = existingThreadById.get(thread.id);
         return normalizeThreadTerminals({
@@ -392,11 +402,16 @@ export function reducer(state: AppState, action: Action): AppState {
       });
       return {
         ...state,
-        projects,
         threads,
         threadsHydrated: true,
       };
     }
+
+    case "SYNC_PROJECTS":
+      return {
+        ...state,
+        projects: mapProjects(action.projects, state.projects),
+      };
 
     case "SET_PROJECT_SCRIPTS":
       return {

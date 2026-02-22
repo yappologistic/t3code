@@ -80,17 +80,6 @@ export const OrchestrationThreadSchema = Schema.Struct({
 
 export type OrchestrationThread = Schema.Schema.Type<typeof OrchestrationThreadSchema>;
 
-export const OrchestrationProjectSchema = Schema.Struct({
-  id: IdSchema,
-  name: Schema.String,
-  cwd: Schema.String,
-  model: Schema.String,
-  createdAt: IsoDateTimeSchema,
-  updatedAt: IsoDateTimeSchema,
-});
-
-export type OrchestrationProject = Schema.Schema.Type<typeof OrchestrationProjectSchema>;
-
 export const OrchestrationGitReadModelSchema = Schema.Struct({
   projectId: IdSchema,
   branch: Schema.NullOr(Schema.String),
@@ -104,30 +93,12 @@ export type OrchestrationGitReadModel = Schema.Schema.Type<typeof OrchestrationG
 
 export const OrchestrationReadModelSchema = Schema.Struct({
   sequence: Schema.Number,
-  projects: Schema.Array(OrchestrationProjectSchema),
   threads: Schema.Array(OrchestrationThreadSchema),
   gitByProjectId: Schema.Record({ key: Schema.String, value: OrchestrationGitReadModelSchema }),
   updatedAt: IsoDateTimeSchema,
 });
 
 export type OrchestrationReadModel = Schema.Schema.Type<typeof OrchestrationReadModelSchema>;
-
-export const CreateProjectCommandSchema = Schema.Struct({
-  type: Schema.Literal("project.create"),
-  commandId: IdSchema,
-  projectId: IdSchema,
-  name: Schema.String,
-  cwd: Schema.String,
-  model: Schema.String,
-  createdAt: IsoDateTimeSchema,
-});
-
-export const DeleteProjectCommandSchema = Schema.Struct({
-  type: Schema.Literal("project.delete"),
-  commandId: IdSchema,
-  projectId: IdSchema,
-  createdAt: IsoDateTimeSchema,
-});
 
 export const CreateThreadCommandSchema = Schema.Struct({
   type: Schema.Literal("thread.create"),
@@ -212,8 +183,6 @@ export const RevertThreadCommandSchema = Schema.Struct({
 });
 
 export const OrchestrationCommandSchema = Schema.Union(
-  CreateProjectCommandSchema,
-  DeleteProjectCommandSchema,
   CreateThreadCommandSchema,
   DeleteThreadCommandSchema,
   UpdateThreadMetaCommandSchema,

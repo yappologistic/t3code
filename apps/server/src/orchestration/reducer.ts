@@ -2,11 +2,20 @@ import type {
   OrchestrationEvent,
   OrchestrationGitReadModel,
   OrchestrationMessage,
-  OrchestrationProject,
   OrchestrationReadModel,
   OrchestrationSession,
   OrchestrationThread,
 } from "@t3tools/contracts";
+import {
+  OrchestrationGitReadModelSchema,
+  OrchestrationMessageSchema,
+  OrchestrationReadModelSchema,
+  OrchestrationSessionSchema,
+  OrchestrationThreadSchema,
+  OrchestrationTurnDiffFileSchema,
+  OrchestrationTurnDiffSummarySchema,
+} from "@t3tools/contracts";
+import { Effect, Schema } from "effect";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
 
@@ -18,38 +27,84 @@ function updateThread(
   return threads.map((thread) => (thread.id === threadId ? { ...thread, ...patch } : thread));
 }
 
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") return null;
-  return value as Record<string, unknown>;
-}
+const decodeReadModelSync = Schema.decodeUnknownSync(OrchestrationReadModelSchema);
+const decodeMessage = Schema.decodeUnknown(OrchestrationMessageSchema);
+const decodeSession = Schema.decodeUnknown(OrchestrationSessionSchema);
+const decodeThread = Schema.decodeUnknown(OrchestrationThreadSchema);
+const decodeGitReadModel = Schema.decodeUnknown(OrchestrationGitReadModelSchema);
+const decodeTurnDiffSummary = Schema.decodeUnknown(OrchestrationTurnDiffSummarySchema);
 
-function asString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
+const ThreadCreatedPayloadSchema = Schema.Struct({
+  id: Schema.String,
+  projectId: Schema.String,
+  title: Schema.String,
+  model: Schema.String,
+  branch: Schema.NullOr(Schema.String),
+  worktreePath: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+const decodeThreadCreatedPayload = Schema.decodeUnknown(ThreadCreatedPayloadSchema);
 
-function asNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
+const ThreadMetaUpdatedPayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  title: Schema.optional(Schema.String),
+  model: Schema.optional(Schema.String),
+  branch: Schema.optional(Schema.NullOr(Schema.String)),
+  worktreePath: Schema.optional(Schema.NullOr(Schema.String)),
+  updatedAt: Schema.String,
+});
+const decodeThreadMetaUpdatedPayload = Schema.decodeUnknown(ThreadMetaUpdatedPayloadSchema);
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
+const MessageSentPayloadSchema = Schema.Struct({
+  id: Schema.String,
+  role: Schema.Literal("user", "assistant"),
+  text: Schema.String,
+  threadId: Schema.String,
+  createdAt: Schema.String,
+  streaming: Schema.Boolean,
+});
+const decodeMessageSentPayload = Schema.decodeUnknown(MessageSentPayloadSchema);
+
+const ThreadSessionSetPayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  session: OrchestrationSessionSchema,
+});
+const decodeThreadSessionSetPayload = Schema.decodeUnknown(ThreadSessionSetPayloadSchema);
+
+const ThreadTurnDiffCompletedPayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  turnId: Schema.String,
+  completedAt: Schema.String,
+  status: Schema.optional(Schema.String),
+  files: Schema.Array(OrchestrationTurnDiffFileSchema),
+  assistantMessageId: Schema.optional(Schema.String),
+  checkpointTurnCount: Schema.optional(Schema.Number),
+});
+const decodeThreadTurnDiffCompletedPayload = Schema.decodeUnknown(
+  ThreadTurnDiffCompletedPayloadSchema,
+);
+
+const ThreadRevertedPayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  turnCount: Schema.Number,
+  messageCount: Schema.Number,
+});
+const decodeThreadRevertedPayload = Schema.decodeUnknown(ThreadRevertedPayloadSchema);
 
 export function createEmptyReadModel(nowIso: string): OrchestrationReadModel {
-  return {
+  return decodeReadModelSync({
     sequence: 0,
-    projects: [],
     threads: [],
     gitByProjectId: {},
     updatedAt: nowIso,
-  };
+  });
 }
 
 export function reduceEvent(
   model: OrchestrationReadModel,
   event: OrchestrationEvent,
-): OrchestrationReadModel {
-  const payload = asObject(event.payload);
+): Effect.Effect<OrchestrationReadModel, unknown> {
   const nextBase: OrchestrationReadModel = {
     ...model,
     sequence: event.sequence,
@@ -57,266 +112,215 @@ export function reduceEvent(
   };
 
   switch (event.type) {
-    case "project.created": {
-      if (!payload) return nextBase;
-      const project: OrchestrationProject = {
-        id: asString(payload.id) ?? event.aggregateId,
-        name: asString(payload.name) ?? "project",
-        cwd: asString(payload.cwd) ?? "",
-        model: asString(payload.model) ?? "gpt-5-codex",
-        createdAt: asString(payload.createdAt) ?? event.occurredAt,
-        updatedAt: asString(payload.updatedAt) ?? event.occurredAt,
-      };
-      const existing = nextBase.projects.find((entry) => entry.id === project.id);
-      return {
-        ...nextBase,
-        projects: existing
-          ? nextBase.projects.map((entry) => (entry.id === project.id ? project : entry))
-          : [...nextBase.projects, project],
-      };
-    }
-    case "project.deleted":
-      return {
-        ...nextBase,
-        projects: nextBase.projects.filter((project) => project.id !== event.aggregateId),
-        threads: nextBase.threads.filter((thread) => thread.projectId !== event.aggregateId),
-      };
-    case "thread.created": {
-      if (!payload) return nextBase;
-      const thread: OrchestrationThread = {
-        id: asString(payload.id) ?? event.aggregateId,
-        projectId: asString(payload.projectId) ?? "",
-        title: asString(payload.title) ?? "New thread",
-        model: asString(payload.model) ?? "gpt-5-codex",
-        branch: asString(payload.branch),
-        worktreePath: asString(payload.worktreePath),
-        createdAt: asString(payload.createdAt) ?? event.occurredAt,
-        updatedAt: asString(payload.updatedAt) ?? event.occurredAt,
-        latestTurnId: null,
-        latestTurnStartedAt: null,
-        latestTurnCompletedAt: null,
-        latestTurnDurationMs: null,
-        messages: [],
-        session: null,
-        turnDiffSummaries: [],
-        error: null,
-      };
-      const existing = nextBase.threads.find((entry) => entry.id === thread.id);
-      return {
-        ...nextBase,
-        threads: existing
-          ? nextBase.threads.map((entry) => (entry.id === thread.id ? thread : entry))
-          : [...nextBase.threads, thread],
-      };
-    }
+    case "thread.created":
+      return Effect.gen(function* () {
+        const payload = yield* decodeThreadCreatedPayload(event.payload);
+        const thread: OrchestrationThread = yield* decodeThread({
+          id: payload.id,
+          projectId: payload.projectId,
+          title: payload.title,
+          model: payload.model,
+          branch: payload.branch,
+          worktreePath: payload.worktreePath,
+          createdAt: payload.createdAt,
+          updatedAt: payload.updatedAt,
+          latestTurnId: null,
+          latestTurnStartedAt: null,
+          latestTurnCompletedAt: null,
+          latestTurnDurationMs: null,
+          messages: [],
+          session: null,
+          turnDiffSummaries: [],
+          error: null,
+        });
+        const existing = nextBase.threads.find((entry) => entry.id === thread.id);
+        return {
+          ...nextBase,
+          threads: existing
+            ? nextBase.threads.map((entry) => (entry.id === thread.id ? thread : entry))
+            : [...nextBase.threads, thread],
+        };
+      });
     case "thread.deleted":
-      return {
+      return Effect.succeed({
         ...nextBase,
         threads: nextBase.threads.filter((thread) => thread.id !== event.aggregateId),
-      };
-    case "thread.meta-updated": {
-      if (!payload) return nextBase;
-      const threadId = asString(payload.threadId) ?? event.aggregateId;
-      const thread = nextBase.threads.find((entry) => entry.id === threadId);
-      if (!thread) return nextBase;
-      return {
-        ...nextBase,
-        threads: updateThread(nextBase.threads, threadId, {
-          ...(asString(payload.title) !== null ? { title: asString(payload.title) ?? thread.title } : {}),
-          ...(asString(payload.model) !== null ? { model: asString(payload.model) ?? thread.model } : {}),
-          ...(payload.branch !== undefined ? { branch: asString(payload.branch) } : {}),
-          ...(payload.worktreePath !== undefined ? { worktreePath: asString(payload.worktreePath) } : {}),
-          updatedAt: asString(payload.updatedAt) ?? event.occurredAt,
+      });
+    case "thread.meta-updated":
+      return decodeThreadMetaUpdatedPayload(event.payload).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              ...(payload.title !== undefined ? { title: payload.title } : {}),
+              ...(payload.model !== undefined ? { model: payload.model } : {}),
+              ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
+              ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
+              updatedAt: payload.updatedAt,
+            }),
+          };
         }),
-      };
-    }
-    case "message.sent": {
-      if (!payload) return nextBase;
-      const threadId = asString(payload.threadId) ?? event.aggregateId;
-      const message: OrchestrationMessage = {
-        id: asString(payload.id) ?? crypto.randomUUID(),
-        role: (asString(payload.role) as OrchestrationMessage["role"] | null) ?? "user",
-        text: asString(payload.text) ?? "",
-        createdAt: asString(payload.createdAt) ?? event.occurredAt,
-        streaming: payload.streaming === true,
-      };
-      const targetThread = nextBase.threads.find((thread) => thread.id === threadId);
-      if (!targetThread) return nextBase;
-      const existingMessage = targetThread.messages.find((entry) => entry.id === message.id);
-      const nextMessages = existingMessage
-        ? targetThread.messages.map((entry) =>
-            entry.id === message.id
-              ? {
-                  ...entry,
-                  text:
-                    message.streaming
+      );
+    case "message.sent":
+      return Effect.gen(function* () {
+        const payload = yield* decodeMessageSentPayload(event.payload);
+        const targetThread = nextBase.threads.find((thread) => thread.id === payload.threadId);
+        if (!targetThread) {
+          return nextBase;
+        }
+
+        const message: OrchestrationMessage = yield* decodeMessage({
+          id: payload.id,
+          role: payload.role,
+          text: payload.text,
+          createdAt: payload.createdAt,
+          streaming: payload.streaming,
+        });
+        const existingMessage = targetThread.messages.find((entry) => entry.id === message.id);
+        const nextMessages = existingMessage
+          ? targetThread.messages.map((entry) =>
+              entry.id === message.id
+                ? {
+                    ...entry,
+                    text: message.streaming
                       ? `${entry.text}${message.text}`
                       : message.text.length > 0
                         ? message.text
                         : entry.text,
-                  streaming: message.streaming,
-                  createdAt: message.createdAt,
-                }
-              : entry,
-          )
-        : [...targetThread.messages, message];
-      return {
-        ...nextBase,
-        threads: updateThread(nextBase.threads, threadId, {
-          messages: nextMessages,
-          updatedAt: event.occurredAt,
-        }),
-      };
-    }
-    case "thread.session-set": {
-      if (!payload) return nextBase;
-      const threadId = asString(payload.threadId) ?? event.aggregateId;
-      const thread = nextBase.threads.find((entry) => entry.id === threadId);
-      if (!thread) return nextBase;
-      const sessionPayload = asObject(payload.session);
-      if (!sessionPayload) return nextBase;
-      const session: OrchestrationSession = {
-        sessionId: asString(sessionPayload.sessionId) ?? crypto.randomUUID(),
-        status:
-          (asString(sessionPayload.status) as OrchestrationSession["status"] | null) ?? "connecting",
-        provider:
-          (asString(sessionPayload.provider) as OrchestrationSession["provider"] | null) ?? "codex",
-        threadId,
-        activeTurnId: asString(sessionPayload.activeTurnId),
-        createdAt: asString(sessionPayload.createdAt) ?? event.occurredAt,
-        updatedAt: asString(sessionPayload.updatedAt) ?? event.occurredAt,
-        lastError: asString(sessionPayload.lastError),
-      };
-      return {
-        ...nextBase,
-        threads: updateThread(nextBase.threads, threadId, {
-          session,
-          updatedAt: event.occurredAt,
-          error: session.lastError,
-        }),
-      };
-    }
-    case "thread.turn-diff-completed": {
-      if (!payload) return nextBase;
-      const threadId = asString(payload.threadId) ?? event.aggregateId;
-      const thread = nextBase.threads.find((entry) => entry.id === threadId);
-      const turnId = asString(payload.turnId);
-      if (!thread || !turnId) return nextBase;
+                    streaming: message.streaming,
+                    createdAt: message.createdAt,
+                  }
+                : entry,
+            )
+          : [...targetThread.messages, message];
 
-      const files = asArray(payload.files).flatMap((filePayload) => {
-        const file = asObject(filePayload);
-        const filePath = asString(file?.path);
-        if (!filePath) {
-          return [];
-        }
-
-        const nextFile: {
-          path: string;
-          kind?: string;
-          additions?: number;
-          deletions?: number;
-        } = { path: filePath };
-        const kind = asString(file?.kind);
-        if (kind !== null) {
-          nextFile.kind = kind;
-        }
-        const additions = asNumber(file?.additions);
-        if (additions !== null) {
-          nextFile.additions = additions;
-        }
-        const deletions = asNumber(file?.deletions);
-        if (deletions !== null) {
-          nextFile.deletions = deletions;
-        }
-        return [nextFile];
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            messages: nextMessages,
+            updatedAt: event.occurredAt,
+          }),
+        };
       });
+    case "thread.session-set":
+      return Effect.gen(function* () {
+        const payload = yield* decodeThreadSessionSetPayload(event.payload);
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
 
-      const nextSummary = {
-        turnId,
-        completedAt: asString(payload.completedAt) ?? event.occurredAt,
-        ...(asString(payload.status) !== null ? { status: asString(payload.status) ?? undefined } : {}),
-        files,
-        ...(asString(payload.assistantMessageId) !== null
-          ? { assistantMessageId: asString(payload.assistantMessageId) ?? undefined }
-          : {}),
-        ...(asNumber(payload.checkpointTurnCount) !== null
-          ? { checkpointTurnCount: asNumber(payload.checkpointTurnCount) ?? undefined }
-          : {}),
-      };
-      const turnDiffSummaries = [...thread.turnDiffSummaries.filter((summary) => summary.turnId !== turnId), nextSummary]
-        .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt));
+        const session: OrchestrationSession = yield* decodeSession({
+          ...payload.session,
+          threadId: payload.threadId,
+        });
 
-      return {
-        ...nextBase,
-        threads: updateThread(nextBase.threads, threadId, {
-          latestTurnId: turnId,
-          latestTurnCompletedAt: nextSummary.completedAt,
-          turnDiffSummaries,
-          updatedAt: event.occurredAt,
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            session,
+            updatedAt: event.occurredAt,
+            error: session.lastError,
+          }),
+        };
+      });
+    case "thread.turn-diff-completed":
+      return Effect.gen(function* () {
+        const payload = yield* decodeThreadTurnDiffCompletedPayload(event.payload);
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+
+        const nextSummary = yield* decodeTurnDiffSummary({
+          turnId: payload.turnId,
+          completedAt: payload.completedAt,
+          ...(payload.status !== undefined ? { status: payload.status } : {}),
+          files: payload.files,
+          ...(payload.assistantMessageId !== undefined
+            ? { assistantMessageId: payload.assistantMessageId }
+            : {}),
+          ...(payload.checkpointTurnCount !== undefined
+            ? { checkpointTurnCount: payload.checkpointTurnCount }
+            : {}),
+        });
+        const turnDiffSummaries = [
+          ...thread.turnDiffSummaries.filter((summary) => summary.turnId !== payload.turnId),
+          nextSummary,
+        ].toSorted((left, right) => left.completedAt.localeCompare(right.completedAt));
+
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            latestTurnId: payload.turnId,
+            latestTurnCompletedAt: nextSummary.completedAt,
+            turnDiffSummaries,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+    case "thread.reverted":
+      return decodeThreadRevertedPayload(event.payload).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+
+          const targetTurnCount = Math.max(0, Math.floor(payload.turnCount));
+          const targetMessageCount = Math.max(0, Math.floor(payload.messageCount));
+          const sortedSummaries = [...thread.turnDiffSummaries].toSorted((left, right) =>
+            left.completedAt.localeCompare(right.completedAt),
+          );
+          const inferredTurnCountByTurnId = new Map<string, number>();
+          for (let index = 0; index < sortedSummaries.length; index += 1) {
+            const summary = sortedSummaries[index];
+            if (!summary) continue;
+            inferredTurnCountByTurnId.set(summary.turnId, index + 1);
+          }
+
+          const turnDiffSummaries = thread.turnDiffSummaries
+            .filter((summary) => {
+              const checkpointTurnCount =
+                summary.checkpointTurnCount ?? inferredTurnCountByTurnId.get(summary.turnId) ?? 0;
+              return checkpointTurnCount <= targetTurnCount;
+            })
+            .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt));
+          const latestSummary =
+            turnDiffSummaries.length > 0 ? turnDiffSummaries[turnDiffSummaries.length - 1] : null;
+
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              messages: thread.messages.slice(
+                0,
+                Math.min(targetMessageCount, thread.messages.length),
+              ),
+              turnDiffSummaries,
+              latestTurnId: latestSummary?.turnId ?? null,
+              latestTurnStartedAt: null,
+              latestTurnCompletedAt: latestSummary?.completedAt ?? null,
+              latestTurnDurationMs: null,
+              updatedAt: event.occurredAt,
+            }),
+          };
         }),
-      };
-    }
-    case "thread.reverted": {
-      if (!payload) return nextBase;
-      const threadId = asString(payload.threadId) ?? event.aggregateId;
-      const thread = nextBase.threads.find((entry) => entry.id === threadId);
-      if (!thread) return nextBase;
-
-      const targetTurnCount = Math.max(0, Math.floor(asNumber(payload.turnCount) ?? 0));
-      const targetMessageCount = Math.max(0, Math.floor(asNumber(payload.messageCount) ?? 0));
-      const sortedSummaries = [...thread.turnDiffSummaries].toSorted((left, right) =>
-        left.completedAt.localeCompare(right.completedAt),
       );
-      const inferredTurnCountByTurnId = new Map<string, number>();
-      for (let index = 0; index < sortedSummaries.length; index += 1) {
-        const summary = sortedSummaries[index];
-        if (!summary) continue;
-        inferredTurnCountByTurnId.set(summary.turnId, index + 1);
-      }
-
-      const turnDiffSummaries = thread.turnDiffSummaries
-        .filter((summary) => {
-          const checkpointTurnCount =
-            summary.checkpointTurnCount ?? inferredTurnCountByTurnId.get(summary.turnId) ?? 0;
-          return checkpointTurnCount <= targetTurnCount;
-        })
-        .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt));
-      const latestSummary =
-        turnDiffSummaries.length > 0 ? turnDiffSummaries[turnDiffSummaries.length - 1] : null;
-
-      return {
-        ...nextBase,
-        threads: updateThread(nextBase.threads, threadId, {
-          messages: thread.messages.slice(0, Math.min(targetMessageCount, thread.messages.length)),
-          turnDiffSummaries,
-          latestTurnId: latestSummary?.turnId ?? null,
-          latestTurnStartedAt: null,
-          latestTurnCompletedAt: latestSummary?.completedAt ?? null,
-          latestTurnDurationMs: null,
-          updatedAt: event.occurredAt,
-        }),
-      };
-    }
-    case "git.read-model-upsert": {
-      if (!payload) return nextBase;
-      const projectId = asString(payload.projectId) ?? event.aggregateId;
-      const gitReadModel: OrchestrationGitReadModel = {
-        projectId,
-        branch: asString(payload.branch),
-        hasWorkingTreeChanges: payload.hasWorkingTreeChanges === true,
-        aheadCount: asNumber(payload.aheadCount) ?? 0,
-        behindCount: asNumber(payload.behindCount) ?? 0,
-        updatedAt: asString(payload.updatedAt) ?? event.occurredAt,
-      };
-      return {
-        ...nextBase,
-        gitByProjectId: {
-          ...nextBase.gitByProjectId,
-          [projectId]: gitReadModel,
-        },
-      };
-    }
+    case "git.read-model-upsert":
+      return decodeGitReadModel(event.payload).pipe(
+        Effect.map((gitReadModel: OrchestrationGitReadModel) => ({
+          ...nextBase,
+          gitByProjectId: {
+            ...nextBase.gitByProjectId,
+            [gitReadModel.projectId]: gitReadModel,
+          },
+        })),
+      );
     default:
-      return nextBase;
+      return Effect.succeed(nextBase);
   }
 }

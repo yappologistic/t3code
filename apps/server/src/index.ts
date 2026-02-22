@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 
 import { fixPath } from "./fixPath";
 import { createLogger } from "./logger";
-import { ProjectRegistry } from "./projectRegistry";
 import { createServer } from "./wsServer";
 
 fixPath();
@@ -102,7 +101,6 @@ async function main() {
   const port =
     requestedPort ?? (mode === "desktop" ? DEFAULT_PORT : await findAvailablePort(DEFAULT_PORT));
   const stateDir = resolveStateDir(process.env.T3CODE_STATE_DIR);
-  const projectRegistry = new ProjectRegistry(stateDir);
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const noBrowser = parseBooleanEnv(process.env.T3CODE_NO_BROWSER) ?? mode === "desktop";
   const authToken = process.env.T3CODE_AUTH_TOKEN;
@@ -121,7 +119,6 @@ async function main() {
     stateDir,
     staticDir,
     devUrl,
-    projectRegistry,
     authToken,
   });
   await server.start();

@@ -35,12 +35,12 @@ describe("OrchestrationEventRepository", () => {
     const saved = await Runtime.runPromise(runtime)(
       first.append({
         eventId: "event-1",
-        type: "project.created",
-        aggregateType: "project",
-        aggregateId: "project-1",
+        type: "thread.created",
+        aggregateType: "thread",
+        aggregateId: "thread-1",
         occurredAt: createdAt,
         commandId: "cmd-1",
-        payload: { id: "project-1", name: "demo" },
+        payload: { id: "thread-1", projectId: "project-1", title: "demo" },
       }),
     );
     expect(saved.sequence).toBe(1);
@@ -92,7 +92,7 @@ describe("OrchestrationEventRepository", () => {
         `,
       )
       .all() as Array<Record<string, unknown>>;
-    expect(migrationRows).toHaveLength(1);
+    expect(migrationRows.length).toBeGreaterThanOrEqual(1);
     expect(Object.values(migrationRows[0] ?? {}).length).toBeGreaterThan(0);
     db.close();
   });

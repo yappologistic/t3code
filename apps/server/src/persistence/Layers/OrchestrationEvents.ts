@@ -1,15 +1,10 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import type { OrchestrationEvent } from "@t3tools/contracts";
 import { OrchestrationEventSchema } from "@t3tools/contracts";
-import type { SqlClient as SqlClientService } from "@effect/sql/SqlClient";
 import * as SqlClient from "@effect/sql/SqlClient";
 import * as SqlSchema from "@effect/sql/SqlSchema";
-import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { runMigrations } from "../Migrations";
+import { makeSqlitePersistenceLive } from "./Sqlite";
 import {
   OrchestrationEventRepository,
   type OrchestrationEventRepositoryShape,
@@ -45,11 +40,6 @@ const ReadFromSequenceRequestSchema = Schema.Struct({
   limit: Schema.Number,
 });
 
-class OrchestrationSql extends Context.Tag("persistence/OrchestrationSql")<
-  OrchestrationSql,
-  SqlClientService
->() {}
-
 function eventRowToOrchestrationEvent(row: EventRow): OrchestrationEvent {
   return decodeEvent({
     sequence: row.sequence,
@@ -64,7 +54,7 @@ function eventRowToOrchestrationEvent(row: EventRow): OrchestrationEvent {
 }
 
 const makeRepository = Effect.gen(function* () {
-  const sql = yield* OrchestrationSql;
+  const sql = yield* SqlClient.SqlClient;
 
   const appendEventRow = SqlSchema.single({
     Request: AppendEventRequestSchema,
@@ -155,24 +145,5 @@ export const OrchestrationEventRepositoryLive = Layer.effect(
 );
 
 export function makeSqliteOrchestrationEventRepositoryLive(dbPath: string) {
-  const SqliteClientLive = Effect.gen(function* () {
-    yield* Effect.try({
-      try: () => fs.mkdirSync(path.dirname(dbPath), { recursive: true }),
-      catch: (error) => Effect.die(error),
-    })
-    return SqliteClient.layer({ filename: dbPath });
-  }).pipe(Layer.unwrapEffect)
-
-  const OrchestrationSqlLive = Layer.scoped(
-    OrchestrationSql,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`PRAGMA journal_mode = WAL;`;
-      yield* sql`PRAGMA foreign_keys = ON;`;
-      yield* runMigrations;
-      return sql;
-    }),
-  ).pipe(Layer.provide(SqliteClientLive));
-
-  return OrchestrationEventRepositoryLive.pipe(Layer.provide(OrchestrationSqlLive));
+  return OrchestrationEventRepositoryLive.pipe(Layer.provide(makeSqlitePersistenceLive(dbPath)));
 }
