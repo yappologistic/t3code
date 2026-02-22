@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DatabaseSync, StatementSync } from "node:sqlite";
-import type { SQLOutputValue } from "node:sqlite";
 
 import type { OrchestrationEvent } from "@t3tools/contracts";
-import { Effect } from "effect";
+import { OrchestrationEventSchema } from "@t3tools/contracts";
+import type { SqlClient as SqlClientService } from "@effect/sql/SqlClient";
+import * as SqlClient  from "@effect/sql/SqlClient";
+import * as SqlSchema from "@effect/sql/SqlSchema";
+import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
+import { Effect, ManagedRuntime, Schema } from "effect";
 
 export interface OrchestrationEventStore {
   append(event: Omit<OrchestrationEvent, "sequence">): Effect.Effect<OrchestrationEvent>;
@@ -13,130 +16,187 @@ export interface OrchestrationEventStore {
   close(): void;
 }
 
-interface EventRow {
-  sequence: number;
-  event_id: string;
-  event_type: string;
-  aggregate_type: string;
-  aggregate_id: string;
-  occurred_at: string;
-  command_id: string | null;
-  payload_json: string;
-}
+const decodeEvent = Schema.decodeUnknownSync(OrchestrationEventSchema);
 
-function readRequiredString(
-  row: Record<string, SQLOutputValue>,
-  column: keyof EventRow,
-): string {
-  const value = row[column];
-  if (typeof value !== "string") {
-    throw new Error(`Invalid SQLite value for ${String(column)}: expected string`);
-  }
-  return value;
-}
+const EventRowSchema = Schema.Struct({
+  sequence: Schema.Number,
+  eventId: Schema.String,
+  type: Schema.String,
+  aggregateType: Schema.String,
+  aggregateId: Schema.String,
+  occurredAt: Schema.String,
+  commandId: Schema.NullOr(Schema.String),
+  payloadJson: Schema.String,
+});
 
-function readOptionalString(
-  row: Record<string, SQLOutputValue>,
-  column: keyof EventRow,
-): string | null {
-  const value = row[column];
-  if (value === null) return null;
-  if (typeof value !== "string") {
-    throw new Error(`Invalid SQLite value for ${String(column)}: expected string or null`);
-  }
-  return value;
-}
+type EventRow = Schema.Schema.Type<typeof EventRowSchema>;
 
-function readRequiredNumber(
-  row: Record<string, SQLOutputValue>,
-  column: keyof EventRow,
-): number {
-  const value = row[column];
-  if (typeof value === "number") return value;
-  if (typeof value === "bigint") return Number(value);
-  throw new Error(`Invalid SQLite value for ${String(column)}: expected number`);
+const AppendEventRequestSchema = Schema.Struct({
+  eventId: Schema.String,
+  type: Schema.String,
+  aggregateType: Schema.String,
+  aggregateId: Schema.String,
+  occurredAt: Schema.String,
+  commandId: Schema.NullOr(Schema.String),
+  payloadJson: Schema.String,
+});
+
+const ReadFromSequenceRequestSchema = Schema.Struct({
+  sequenceExclusive: Schema.Number,
+  limit: Schema.Number,
+});
+
+const appendEventRow = SqlSchema.single({
+  Request: AppendEventRequestSchema,
+  Result: EventRowSchema,
+  execute: (request) =>
+    Effect.flatMap(SqlClient.SqlClient, (sql) =>
+      sql`
+        INSERT INTO orchestration_events (
+          event_id,
+          event_type,
+          aggregate_type,
+          aggregate_id,
+          occurred_at,
+          command_id,
+          payload_json
+        )
+        VALUES (
+          ${request.eventId},
+          ${request.type},
+          ${request.aggregateType},
+          ${request.aggregateId},
+          ${request.occurredAt},
+          ${request.commandId},
+          ${request.payloadJson}
+        )
+        RETURNING
+          sequence,
+          event_id AS "eventId",
+          event_type AS "type",
+          aggregate_type AS "aggregateType",
+          aggregate_id AS "aggregateId",
+          occurred_at AS "occurredAt",
+          command_id AS "commandId",
+          payload_json AS "payloadJson"
+      `,
+    ),
+});
+
+const readEventRowsFromSequence = SqlSchema.findAll({
+  Request: ReadFromSequenceRequestSchema,
+  Result: EventRowSchema,
+  execute: (request) =>
+    Effect.flatMap(SqlClient.SqlClient, (sql) =>
+      sql`
+        SELECT
+          sequence,
+          event_id AS "eventId",
+          event_type AS "type",
+          aggregate_type AS "aggregateType",
+          aggregate_id AS "aggregateId",
+          occurred_at AS "occurredAt",
+          command_id AS "commandId",
+          payload_json AS "payloadJson"
+        FROM orchestration_events
+        WHERE sequence > ${request.sequenceExclusive}
+        ORDER BY sequence ASC
+        LIMIT ${request.limit}
+      `,
+    ),
+});
+
+function eventRowToOrchestrationEvent(row: EventRow): OrchestrationEvent {
+  return decodeEvent({
+    sequence: row.sequence,
+    eventId: row.eventId,
+    type: row.type,
+    aggregateType: row.aggregateType,
+    aggregateId: row.aggregateId,
+    occurredAt: row.occurredAt,
+    commandId: row.commandId,
+    payload: JSON.parse(row.payloadJson) as unknown,
+  });
 }
 
 export class SqliteEventStore implements OrchestrationEventStore {
-  private readonly db: DatabaseSync;
-  private readonly insertStatement: StatementSync;
+  private readonly runtime: ManagedRuntime.ManagedRuntime<SqlClientService, unknown>;
+  private readonly migrated: Promise<void>;
   private closed = false;
 
   constructor(dbPath: string) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    this.db = new DatabaseSync(dbPath);
-    this.db.exec("PRAGMA journal_mode = WAL;");
-    this.db.exec("PRAGMA foreign_keys = ON;");
-    this.migrate();
-    this.insertStatement = this.db.prepare(`
-      INSERT INTO orchestration_events (
-        event_id, event_type, aggregate_type, aggregate_id, occurred_at, command_id, payload_json
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    this.runtime = ManagedRuntime.make(
+      SqliteClient.layer({
+        filename: dbPath,
+      }),
+    );
+    this.migrated = this.runtime.runPromise(this.migrate()).then(() => undefined);
   }
 
-  private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS orchestration_events (
-        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id TEXT NOT NULL UNIQUE,
-        event_type TEXT NOT NULL,
-        aggregate_type TEXT NOT NULL,
-        aggregate_id TEXT NOT NULL,
-        occurred_at TEXT NOT NULL,
-        command_id TEXT,
-        payload_json TEXT NOT NULL
-      );
+  private provideSql<A, E>(
+    effect: Effect.Effect<A, E, SqlClientService>,
+  ): Effect.Effect<A, E | unknown> {
+    return Effect.provide(effect, this.runtime);
+  }
 
-      CREATE INDEX IF NOT EXISTS idx_orch_events_aggregate
-      ON orchestration_events(aggregate_type, aggregate_id, sequence);
-    `);
+  private ensureMigrated(): Effect.Effect<void> {
+    return Effect.promise(() => this.migrated);
+  }
+
+  private migrate(): Effect.Effect<void, unknown, SqlClientService> {
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`PRAGMA journal_mode = WAL;`;
+      yield* sql`PRAGMA foreign_keys = ON;`;
+      yield* sql`
+        CREATE TABLE IF NOT EXISTS orchestration_events (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id TEXT NOT NULL UNIQUE,
+          event_type TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          occurred_at TEXT NOT NULL,
+          command_id TEXT,
+          payload_json TEXT NOT NULL
+        )
+      `;
+      yield* sql`
+        CREATE INDEX IF NOT EXISTS idx_orch_events_aggregate
+        ON orchestration_events(aggregate_type, aggregate_id, sequence)
+      `;
+    });
   }
 
   append(event: Omit<OrchestrationEvent, "sequence">): Effect.Effect<OrchestrationEvent> {
-    return Effect.sync(() => {
-      const result = this.insertStatement.run(
-        event.eventId,
-        event.type,
-        event.aggregateType,
-        event.aggregateId,
-        event.occurredAt,
-        event.commandId,
-        JSON.stringify(event.payload),
+    return Effect.gen(this, function* () {
+      yield* this.ensureMigrated();
+      const row = yield* this.provideSql(
+        appendEventRow({
+          eventId: event.eventId,
+          type: event.type,
+          aggregateType: event.aggregateType,
+          aggregateId: event.aggregateId,
+          occurredAt: event.occurredAt,
+          commandId: event.commandId,
+          payloadJson: JSON.stringify(event.payload),
+        }),
       );
-
-      return {
-        ...event,
-        sequence: Number(result.lastInsertRowid),
-      };
-    });
+      return eventRowToOrchestrationEvent(row);
+    }).pipe(Effect.orDie);
   }
 
   readFromSequence(sequenceExclusive: number, limit = 1_000): Effect.Effect<OrchestrationEvent[]> {
-    return Effect.sync(() => {
-      const rows = this.db
-        .prepare(
-          `
-          SELECT sequence, event_id, event_type, aggregate_type, aggregate_id, occurred_at, command_id, payload_json
-          FROM orchestration_events
-          WHERE sequence > ?
-          ORDER BY sequence ASC
-          LIMIT ?
-        `,
-        )
-        .all(sequenceExclusive, limit);
-      return rows.map((row) => ({
-        sequence: readRequiredNumber(row, "sequence"),
-        eventId: readRequiredString(row, "event_id"),
-        type: readRequiredString(row, "event_type"),
-        aggregateType: readRequiredString(row, "aggregate_type"),
-        aggregateId: readRequiredString(row, "aggregate_id"),
-        occurredAt: readRequiredString(row, "occurred_at"),
-        commandId: readOptionalString(row, "command_id"),
-        payload: JSON.parse(readRequiredString(row, "payload_json")) as unknown,
-      }));
-    });
+    return Effect.gen(this, function* () {
+      yield* this.ensureMigrated();
+      const rows = yield* this.provideSql(
+        readEventRowsFromSequence({
+          sequenceExclusive,
+          limit,
+        }),
+      );
+      return rows.map(eventRowToOrchestrationEvent);
+    }).pipe(Effect.orDie);
   }
 
   readAll(): Effect.Effect<OrchestrationEvent[]> {
@@ -148,6 +208,6 @@ export class SqliteEventStore implements OrchestrationEventStore {
       return;
     }
     this.closed = true;
-    this.db.close();
+    void this.runtime.dispose();
   }
 }
