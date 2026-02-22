@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { Runtime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeSqliteOrchestrationEventRepository } from "./eventStore";
+import { makeSqliteOrchestrationEventRepository } from "./OrchestrationEvents";
 
 const tempDirs: string[] = [];
 
@@ -69,17 +69,21 @@ describe("SqliteEventStore", () => {
         `
           SELECT name
           FROM sqlite_master
-          WHERE type = 'table' AND name = 'orchestration_sql_migrations'
+          WHERE type = 'table' AND name IN ('effect_sql_migrations', 'orchestration_sql_migrations')
+          ORDER BY name ASC
         `,
       )
       .get() as { name: string } | undefined;
-    expect(tableRow?.name).toBe("orchestration_sql_migrations");
+    expect(tableRow?.name).toBeDefined();
+    if (!tableRow) {
+      throw new Error("Expected migrations table to exist");
+    }
 
     const migrationRows = db
       .prepare(
         `
           SELECT *
-          FROM orchestration_sql_migrations
+          FROM ${tableRow.name}
         `,
       )
       .all() as Array<Record<string, unknown>>;

@@ -2,9 +2,9 @@ import path from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { OrchestrationEventRepository } from "./eventRepository";
+import { OrchestrationEventRepository } from "../persistence/Services/OrchestrationEvents";
+import { makeSqliteOrchestrationEventRepository } from "../persistence/Layers/OrchestrationEvents";
 import { OrchestrationEngine } from "./engine";
-import { makeSqliteOrchestrationEventRepository } from "./eventStore";
 import { OrchestrationConfig, OrchestrationEngineService } from "./services";
 
 export const OrchestrationEventRepositoryLive = Layer.effect(

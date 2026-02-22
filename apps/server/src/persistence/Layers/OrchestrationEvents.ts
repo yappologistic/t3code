@@ -9,8 +9,8 @@ import * as SqlSchema from "@effect/sql/SqlSchema";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Effect, ManagedRuntime, Schema } from "effect";
 
-import type { OrchestrationEventRepositoryShape } from "./eventRepository";
-import { runOrchestrationMigrations } from "./migrations";
+import type { OrchestrationEventRepositoryShape } from "../Services/OrchestrationEvents";
+import { runMigrations } from "../Migrations";
 
 const decodeEvent = Schema.decodeUnknownSync(OrchestrationEventSchema);
 
@@ -135,7 +135,7 @@ export function makeSqliteOrchestrationEventRepository(
     const sql = yield* SqlClient.SqlClient;
     yield* sql`PRAGMA journal_mode = WAL;`;
     yield* sql`PRAGMA foreign_keys = ON;`;
-    yield* runOrchestrationMigrations;
+    yield* runMigrations;
   });
 
   const initialized = runtime.runPromise(initialize).then(() => undefined);

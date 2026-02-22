@@ -20,8 +20,8 @@ import {
 } from "effect";
 
 import { createLogger } from "../logger";
-import type { OrchestrationEventRepositoryShape } from "./eventRepository";
-import { makeSqliteOrchestrationEventRepository } from "./eventStore";
+import type { OrchestrationEventRepositoryShape } from "../persistence/Services/OrchestrationEvents";
+import { makeSqliteOrchestrationEventRepository } from "../persistence/Layers/OrchestrationEvents";
 import { createEmptyReadModel, reduceEvent } from "./reducer";
 import { UI_ENTITY_CONTRACTS } from "./uiContractInventory";
 

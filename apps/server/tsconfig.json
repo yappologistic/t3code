@@ -3,7 +3,9 @@
   "compilerOptions": {
     "composite": true,
     "types": ["node"],
-    "lib": ["ES2023", "esnext.disposable"]
+    "lib": ["ES2023", "esnext.disposable"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "tsdown.config.ts"]
 }

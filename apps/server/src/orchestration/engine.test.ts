@@ -6,8 +6,8 @@ import type { OrchestrationEvent } from "@t3tools/contracts";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { OrchestrationEventRepositoryShape } from "../persistence/Services/OrchestrationEvents";
 import { OrchestrationEngine } from "./engine";
-import type { OrchestrationEventRepositoryShape } from "./eventRepository";
 
 const tempDirs: string[] = [];
 
