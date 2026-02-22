@@ -80,9 +80,8 @@ describe("OrchestrationEventRepository", () => {
       )
       .get() as { name: string } | undefined;
     expect(tableRow?.name).toBeDefined();
-    if (!tableRow) {
-      throw new Error("Expected migrations table to exist");
-    }
+    expect(tableRow).toBeDefined();
+    if (!tableRow) return;
 
     const migrationRows = db
       .prepare(

@@ -4,13 +4,20 @@ import * as SqlClient from "@effect/sql/SqlClient";
 import * as SqlSchema from "@effect/sql/SqlSchema";
 import { Effect, Layer, Schema } from "effect";
 
+import {
+  toPersistenceDecodeCauseError,
+  toPersistenceDecodeError,
+  toPersistenceSerializationError,
+  toPersistenceSqlError,
+  type OrchestrationEventRepositoryError,
+} from "../Errors";
 import { makeSqlitePersistenceLive } from "./Sqlite";
 import {
   OrchestrationEventRepository,
   type OrchestrationEventRepositoryShape,
 } from "../Services/OrchestrationEvents";
 
-const decodeEvent = Schema.decodeUnknownSync(OrchestrationEventSchema);
+const decodeEvent = Schema.decodeUnknown(OrchestrationEventSchema);
 
 const EventRowSchema = Schema.Struct({
   sequence: Schema.Number,
@@ -40,17 +47,27 @@ const ReadFromSequenceRequestSchema = Schema.Struct({
   limit: Schema.Number,
 });
 
-function eventRowToOrchestrationEvent(row: EventRow): OrchestrationEvent {
-  return decodeEvent({
-    sequence: row.sequence,
-    eventId: row.eventId,
-    type: row.type,
-    aggregateType: row.aggregateType,
-    aggregateId: row.aggregateId,
-    occurredAt: row.occurredAt,
-    commandId: row.commandId,
-    payload: JSON.parse(row.payloadJson) as unknown,
-  });
+function eventRowToOrchestrationEvent(
+  row: EventRow,
+  operation: string,
+): Effect.Effect<OrchestrationEvent, OrchestrationEventRepositoryError> {
+  return Effect.try({
+    try: () => JSON.parse(row.payloadJson) as unknown,
+    catch: toPersistenceDecodeCauseError(`${operation}:parsePayloadJson`),
+  }).pipe(
+    Effect.flatMap((payload) =>
+      decodeEvent({
+        sequence: row.sequence,
+        eventId: row.eventId,
+        type: row.type,
+        aggregateType: row.aggregateType,
+        aggregateId: row.aggregateId,
+        occurredAt: row.occurredAt,
+        commandId: row.commandId,
+        payload,
+      }).pipe(Effect.mapError(toPersistenceDecodeError(`${operation}:decodeEvent`))),
+    ),
+  );
 }
 
 const makeRepository = Effect.gen(function* () {
@@ -113,23 +130,42 @@ const makeRepository = Effect.gen(function* () {
   });
 
   const append: OrchestrationEventRepositoryShape["append"] = (event) =>
-    appendEventRow({
-      eventId: event.eventId,
-      type: event.type,
-      aggregateType: event.aggregateType,
-      aggregateId: event.aggregateId,
-      occurredAt: event.occurredAt,
-      commandId: event.commandId,
-      payloadJson: JSON.stringify(event.payload),
-    }).pipe(Effect.map(eventRowToOrchestrationEvent), Effect.orDie);
+    Effect.try({
+      try: () => JSON.stringify(event.payload),
+      catch: toPersistenceSerializationError("OrchestrationEventRepository.append:encodePayload"),
+    }).pipe(
+      Effect.flatMap((payloadJson) =>
+        appendEventRow({
+          eventId: event.eventId,
+          type: event.type,
+          aggregateType: event.aggregateType,
+          aggregateId: event.aggregateId,
+          occurredAt: event.occurredAt,
+          commandId: event.commandId,
+          payloadJson,
+        }).pipe(
+          Effect.mapError(toPersistenceSqlError("OrchestrationEventRepository.append:insert")),
+          Effect.flatMap((row) =>
+            eventRowToOrchestrationEvent(row, "OrchestrationEventRepository.append:rowToEvent"),
+          ),
+        ),
+      ),
+    );
 
   const readFromSequence: OrchestrationEventRepositoryShape["readFromSequence"] = (
     sequenceExclusive,
     limit = 1_000,
   ) =>
     readEventRowsFromSequence({ sequenceExclusive, limit }).pipe(
-      Effect.map((rows) => rows.map(eventRowToOrchestrationEvent)),
-      Effect.orDie,
+      Effect.mapError(toPersistenceSqlError("OrchestrationEventRepository.readFromSequence:query")),
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, (row) =>
+          eventRowToOrchestrationEvent(
+            row,
+            "OrchestrationEventRepository.readFromSequence:rowToEvent",
+          ),
+        ),
+      ),
     );
 
   return {

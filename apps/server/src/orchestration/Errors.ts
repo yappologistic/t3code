@@ -1,0 +1,95 @@
+import { ParseResult, Schema } from "effect";
+
+import type { OrchestrationEventRepositoryError } from "../persistence/Errors";
+
+export class OrchestrationCommandJsonParseError extends Schema.TaggedError<OrchestrationCommandJsonParseError>()(
+  "OrchestrationCommandJsonParseError",
+  {
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Invalid orchestration command JSON: ${this.detail}`;
+  }
+}
+
+export class OrchestrationCommandDecodeError extends Schema.TaggedError<OrchestrationCommandDecodeError>()(
+  "OrchestrationCommandDecodeError",
+  {
+    issue: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Invalid orchestration command payload: ${this.issue}`;
+  }
+}
+
+export class OrchestrationReducerDecodeError extends Schema.TaggedError<OrchestrationReducerDecodeError>()(
+  "OrchestrationReducerDecodeError",
+  {
+    eventType: Schema.String,
+    issue: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Reducer decode failed for ${this.eventType}: ${this.issue}`;
+  }
+}
+
+export class OrchestrationListenerCallbackError extends Schema.TaggedError<OrchestrationListenerCallbackError>()(
+  "OrchestrationListenerCallbackError",
+  {
+    listener: Schema.Literal("read-model", "domain-event"),
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Orchestration ${this.listener} listener failed: ${this.detail}`;
+  }
+}
+
+export type OrchestrationDispatchError =
+  | OrchestrationEventRepositoryError
+  | OrchestrationReducerDecodeError
+  | OrchestrationListenerCallbackError;
+
+export type OrchestrationEngineError =
+  | OrchestrationDispatchError
+  | OrchestrationCommandJsonParseError
+  | OrchestrationCommandDecodeError;
+
+export function toOrchestrationCommandDecodeError(error: ParseResult.ParseError) {
+  return new OrchestrationCommandDecodeError({
+    issue: ParseResult.TreeFormatter.formatErrorSync(error),
+    cause: error,
+  });
+}
+
+export function toReducerDecodeError(eventType: string) {
+  return (error: ParseResult.ParseError): OrchestrationReducerDecodeError =>
+    new OrchestrationReducerDecodeError({
+      eventType,
+      issue: ParseResult.TreeFormatter.formatErrorSync(error),
+      cause: error,
+    });
+}
+
+export function toOrchestrationJsonParseError(cause: unknown) {
+  return new OrchestrationCommandJsonParseError({
+    detail: `Failed to parse orchestration command JSON: ${cause}`,
+    cause,
+  });
+}
+
+export function toListenerCallbackError(listener: "read-model" | "domain-event") {
+  return (cause: unknown): OrchestrationListenerCallbackError =>
+    new OrchestrationListenerCallbackError({
+      listener,
+      detail: `Failed to invoke orchestration ${listener} listener: ${cause}`,
+      cause,
+    });
+}

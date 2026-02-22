@@ -10,6 +10,7 @@ import {
   OrchestrationEventRepository,
   type OrchestrationEventRepositoryShape,
 } from "../persistence/Services/OrchestrationEvents";
+import { PersistenceSqlError } from "../persistence/Errors";
 
 import { Layer, ManagedRuntime } from "effect";
 
@@ -375,7 +376,12 @@ describe("OrchestrationEngine", () => {
       append(event) {
         if (shouldFailFirstAppend) {
           shouldFailFirstAppend = false;
-          return Effect.die(new Error("append failed"));
+          return Effect.fail(
+            new PersistenceSqlError({
+              operation: "test.append",
+              detail: "append failed",
+            }),
+          );
         }
         const savedEvent = {
           ...event,

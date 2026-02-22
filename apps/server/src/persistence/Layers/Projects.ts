@@ -8,6 +8,7 @@ import type {
   ProjectListResult,
   ProjectRecord,
   ProjectScript,
+  ProjectUpdateScriptsInput,
   ProjectUpdateScriptsResult,
 } from "@t3tools/contracts";
 import {
@@ -22,6 +23,16 @@ import * as SqlClient from "@effect/sql/SqlClient";
 import * as SqlSchema from "@effect/sql/SqlSchema";
 import { Effect, Layer, Option, Schema } from "effect";
 
+import {
+  PersistenceDecodeError,
+  ProjectNotFoundError,
+  ProjectPathMissingError,
+  ProjectValidationError,
+  toPersistenceDecodeCauseError,
+  toPersistenceSerializationError,
+  toPersistenceSqlError,
+  type ProjectRepositoryError,
+} from "../Errors";
 import { ProjectRepository, type ProjectRepositoryShape } from "../Services/Projects";
 
 const ProjectRowSchema = Schema.Struct({
@@ -98,25 +109,101 @@ function inferProjectName(cwd: string): string {
   return name.length > 0 ? name : "project";
 }
 
-function parseScriptsJson(raw: string): ProjectScript[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const scripts = projectScriptsSchema.parse(parsed);
-    return normalizeProjectScripts(scripts);
-  } catch {
-    return [];
+function parseProjectScripts(
+  value: unknown,
+  operation: string,
+): Effect.Effect<ProjectScript[], PersistenceDecodeError> {
+  const parsed = projectScriptsSchema.safeParse(value);
+  if (!parsed.success) {
+    return Effect.fail(
+      new PersistenceDecodeError({
+        operation,
+        issue: parsed.error.message,
+        cause: (parsed.error as { cause?: unknown }).cause,
+      }),
+    );
   }
+  return Effect.succeed(normalizeProjectScripts(parsed.data));
 }
 
-function rowToProjectRecord(row: ProjectRow): ProjectRecord {
-  return projectRecordSchema.parse({
-    id: row.id,
-    cwd: row.cwd,
-    name: row.name,
-    scripts: parseScriptsJson(row.scriptsJson),
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  });
+function decodeScriptsJson(
+  raw: string,
+  operation: string,
+): Effect.Effect<ProjectScript[], ProjectRepositoryError> {
+  return Effect.try({
+    try: () => JSON.parse(raw) as unknown,
+    catch: toPersistenceDecodeCauseError(`${operation}:parseScriptsJson`),
+  }).pipe(Effect.flatMap((value) => parseProjectScripts(value, `${operation}:decodeScripts`)));
+}
+
+function rowToProjectRecord(
+  row: ProjectRow,
+  operation: string,
+): Effect.Effect<ProjectRecord, ProjectRepositoryError> {
+  return decodeScriptsJson(row.scriptsJson, `${operation}:scripts`).pipe(
+    Effect.flatMap((scripts) => {
+      const parsed = projectRecordSchema.safeParse({
+        id: row.id,
+        cwd: row.cwd,
+        name: row.name,
+        scripts,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+      if (!parsed.success) {
+        return Effect.fail(
+          new PersistenceDecodeError({
+            operation: `${operation}:projectRecord`,
+            issue: parsed.error.message,
+            cause: (parsed.error as { cause?: unknown }).cause,
+          }),
+        );
+      }
+      return Effect.succeed(parsed.data);
+    }),
+  );
+}
+
+function decodeAddInput(rawInput: ProjectAddInput) {
+  const parsed = projectAddInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return Effect.fail(
+      new ProjectValidationError({
+        operation: "ProjectRepository.add",
+        issue: parsed.error.message,
+        cause: (parsed.error as { cause?: unknown }).cause,
+      }),
+    );
+  }
+  return Effect.succeed(parsed.data);
+}
+
+function decodeUpdateScriptsInput(rawInput: ProjectUpdateScriptsInput) {
+  const parsed = projectUpdateScriptsInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return Effect.fail(
+      new ProjectValidationError({
+        operation: "ProjectRepository.updateScripts",
+        issue: parsed.error.message,
+        cause: (parsed.error as { cause?: unknown }).cause,
+      }),
+    );
+  }
+  return Effect.succeed(parsed.data);
+}
+
+function decodeRemoveInput(rawInput: unknown) {
+  const parsed = projectRemoveInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return Effect.fail(
+      new ProjectValidationError({
+        operation: "ProjectRepository.remove",
+        issue: parsed.error.message,
+        cause: (parsed.error as { cause?: unknown }).cause,
+      }),
+    );
+  }
+  return Effect.succeed(parsed.data);
 }
 
 const makeRepository = Effect.gen(function* () {
@@ -231,24 +318,31 @@ const makeRepository = Effect.gen(function* () {
 
   const list: ProjectRepositoryShape["list"] = () =>
     listProjectRows(undefined).pipe(
-      Effect.map((rows): ProjectListResult => rows.map(rowToProjectRecord)),
-      Effect.map((projects) =>
-        projects.map((project) => ({ ...project, scripts: cloneScripts(project.scripts) })),
+      Effect.mapError(toPersistenceSqlError("ProjectRepository.list:query")),
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, (row) =>
+          rowToProjectRecord(row, "ProjectRepository.list:rowToProject"),
+        ),
       ),
-      Effect.orDie,
+      Effect.map(
+        (projects): ProjectListResult =>
+          projects.map((project) => ({ ...project, scripts: cloneScripts(project.scripts) })),
+      ),
     );
 
   const add: ProjectRepositoryShape["add"] = (rawInput) =>
     Effect.gen(function* () {
-      const input = projectAddInputSchema.parse(rawInput as ProjectAddInput);
+      const input = yield* decodeAddInput(rawInput);
       const normalizedCwd = normalizeCwd(input.cwd);
       if (!isDirectory(normalizedCwd)) {
-        return yield* Effect.fail(new Error(`Project path does not exist: ${normalizedCwd}`));
+        return yield* Effect.fail(new ProjectPathMissingError({ cwd: normalizedCwd }));
       }
 
-      const existing = yield* findProjectByCwd({ cwd: normalizedCwd }).pipe(Effect.orDie);
+      const existing = yield* findProjectByCwd({ cwd: normalizedCwd }).pipe(
+        Effect.mapError(toPersistenceSqlError("ProjectRepository.add:findByCwd")),
+      );
       if (Option.isSome(existing)) {
-        const project = rowToProjectRecord(existing.value);
+        const project = yield* rowToProjectRecord(existing.value, "ProjectRepository.add:existing");
         const result: ProjectAddResult = {
           project: {
             ...project,
@@ -267,9 +361,9 @@ const makeRepository = Effect.gen(function* () {
         scriptsJson: "[]",
         createdAt: now,
         updatedAt: now,
-      }).pipe(Effect.orDie);
+      }).pipe(Effect.mapError(toPersistenceSqlError("ProjectRepository.add:insert")));
 
-      const created = rowToProjectRecord(row);
+      const created = yield* rowToProjectRecord(row, "ProjectRepository.add:created");
       const result: ProjectAddResult = {
         project: {
           ...created,
@@ -282,27 +376,48 @@ const makeRepository = Effect.gen(function* () {
 
   const remove: ProjectRepositoryShape["remove"] = (rawInput) =>
     Effect.gen(function* () {
-      const input = projectRemoveInputSchema.parse(rawInput);
-      yield* deleteProject({ id: input.id }).pipe(Effect.orDie);
+      const input = yield* decodeRemoveInput(rawInput);
+      const existing = yield* findProjectById({ id: input.id }).pipe(
+        Effect.mapError(toPersistenceSqlError("ProjectRepository.remove:findById")),
+      );
+      if (Option.isNone(existing)) {
+        return yield* Effect.fail(new ProjectNotFoundError({ projectId: input.id }));
+      }
+
+      yield* deleteProject({ id: input.id }).pipe(
+        Effect.mapError(toPersistenceSqlError("ProjectRepository.remove:delete")),
+      );
     });
 
   const updateScripts: ProjectRepositoryShape["updateScripts"] = (rawInput) =>
     Effect.gen(function* () {
-      const input = projectUpdateScriptsInputSchema.parse(rawInput);
-      const existing = yield* findProjectById({ id: input.id }).pipe(Effect.orDie);
+      const input = yield* decodeUpdateScriptsInput(rawInput);
+      const existing = yield* findProjectById({ id: input.id }).pipe(
+        Effect.mapError(toPersistenceSqlError("ProjectRepository.updateScripts:findById")),
+      );
       if (Option.isNone(existing)) {
-        return yield* Effect.fail(new Error(`Project not found: ${input.id}`));
+        return yield* Effect.fail(new ProjectNotFoundError({ projectId: input.id }));
       }
 
-      const nextScripts = normalizeProjectScripts(projectScriptsSchema.parse(input.scripts));
+      const nextScripts = yield* parseProjectScripts(
+        input.scripts,
+        "ProjectRepository.updateScripts:decodeScripts",
+      );
+      const scriptsJson = yield* Effect.try({
+        try: () => JSON.stringify(nextScripts),
+        catch: toPersistenceSerializationError("ProjectRepository.updateScripts:encodeScripts"),
+      });
       const nextUpdatedAt = new Date().toISOString();
       const updatedRow = yield* updateProjectScripts({
         id: input.id,
-        scriptsJson: JSON.stringify(nextScripts),
+        scriptsJson,
         updatedAt: nextUpdatedAt,
-      }).pipe(Effect.orDie);
+      }).pipe(Effect.mapError(toPersistenceSqlError("ProjectRepository.updateScripts:update")));
 
-      const updated = rowToProjectRecord(updatedRow);
+      const updated = yield* rowToProjectRecord(
+        updatedRow,
+        "ProjectRepository.updateScripts:updated",
+      );
       const result: ProjectUpdateScriptsResult = {
         project: {
           ...updated,
@@ -314,17 +429,19 @@ const makeRepository = Effect.gen(function* () {
 
   const pruneMissing: ProjectRepositoryShape["pruneMissing"] = () =>
     listProjectRows(undefined).pipe(
+      Effect.mapError(toPersistenceSqlError("ProjectRepository.pruneMissing:query")),
       Effect.flatMap((rows) =>
         Effect.forEach(rows, (row) => {
           const normalizedCwd = normalizeCwd(row.cwd);
           if (isDirectory(normalizedCwd)) {
             return Effect.void;
           }
-          return deleteProject({ id: row.id }).pipe(Effect.orDie);
+          return deleteProject({ id: row.id }).pipe(
+            Effect.mapError(toPersistenceSqlError("ProjectRepository.pruneMissing:delete")),
+          );
         }),
       ),
       Effect.asVoid,
-      Effect.orDie,
     );
 
   return {
