@@ -208,13 +208,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     });
   }
 
-  const onTerminalEvent = Effect.fnUntraced(function* (event: TerminalEvent) {
-    const push: WsPush = {
-      type: "push",
-      channel: WS_CHANNELS.terminalEvent,
-      data: event,
-    };
-    const message = yield* Schema.encodeEffect(Schema.fromJsonString(WsPush))(push);
+  const encodePush = Schema.encodeEffect(Schema.fromJsonString(WsPush));
+  const broadcastPush = Effect.fnUntraced(function* (push: WsPush) {
+    const message = yield* encodePush(push);
     let recipients = 0;
     for (const client of yield* Ref.get(clients)) {
       if (client.readyState === client.OPEN) {
@@ -223,6 +219,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       }
     }
     logOutgoingPush(push, recipients);
+  });
+
+  const onTerminalEvent = Effect.fnUntraced(function* (event: TerminalEvent) {
+    yield* broadcastPush({
+      type: "push",
+      channel: WS_CHANNELS.terminalEvent,
+      data: event,
+    });
   });
 
   // HTTP server — serves static files or redirects to Vite dev server
@@ -317,20 +321,21 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   yield* Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) =>
     Effect.gen(function* () {
-      const push: WsPush = {
+      yield* broadcastPush({
         type: "push",
         channel: ORCHESTRATION_WS_CHANNELS.domainEvent,
         data: event,
-      };
-      const message = yield* Schema.encodeEffect(Schema.fromJsonString(WsPush))(push);
-      let recipients = 0;
-      for (const client of yield* Ref.get(clients)) {
-        if (client.readyState === client.OPEN) {
-          client.send(message);
-          recipients += 1;
-        }
-      }
-      logOutgoingPush(push, recipients);
+      });
+    }),
+  ).pipe(Effect.forkIn(subscriptionsScope));
+
+  yield* Stream.runForEach(keybindingsManager.changes, (event) =>
+    Effect.gen(function* () {
+      yield* broadcastPush({
+        type: "push",
+        channel: WS_CHANNELS.serverConfigUpdated,
+        data: event,
+      });
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
@@ -472,13 +477,18 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       }
 
       case WS_METHODS.serverGetConfig:
-        const keybindingsConfig = yield* keybindingsManager.loadResolvedKeybindingsConfig;
-        return { cwd, keybindingsConfigPath, keybindings: keybindingsConfig };
+        const keybindingsConfig = yield* keybindingsManager.loadConfigState;
+        return {
+          cwd,
+          keybindingsConfigPath,
+          keybindings: keybindingsConfig.keybindings,
+          issues: keybindingsConfig.issues,
+        };
 
       case WS_METHODS.serverUpsertKeybinding: {
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
-        return { keybindings: keybindingsConfig };
+        return { keybindings: keybindingsConfig, issues: [] };
       }
 
       default: {

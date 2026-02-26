@@ -96,6 +96,57 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("delivers and caches valid server.configUpdated payloads", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { createWsNativeApi, onServerConfigUpdated } = await import("./wsNativeApi");
+
+    createWsNativeApi();
+    const listener = vi.fn();
+    onServerConfigUpdated(listener);
+
+    const payload = {
+      issues: [
+        {
+          kind: "keybindings.invalid-entry",
+          index: 1,
+          message: "Entry at index 1 is invalid.",
+        },
+      ],
+    } as const;
+    emitPush(WS_CHANNELS.serverConfigUpdated, payload);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(payload);
+
+    const lateListener = vi.fn();
+    onServerConfigUpdated(lateListener);
+    expect(lateListener).toHaveBeenCalledTimes(1);
+    expect(lateListener).toHaveBeenCalledWith(payload);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("drops malformed server.configUpdated payloads", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { createWsNativeApi, onServerConfigUpdated } = await import("./wsNativeApi");
+
+    createWsNativeApi();
+    const listener = vi.fn();
+    onServerConfigUpdated(listener);
+
+    emitPush(WS_CHANNELS.serverConfigUpdated, {
+      issues: [{ kind: "keybindings.invalid-entry", message: "missing index" }],
+    });
+    emitPush(WS_CHANNELS.serverConfigUpdated, {
+      issues: [{ kind: "keybindings.malformed-config", message: "bad json" }],
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({
+      issues: [{ kind: "keybindings.malformed-config", message: "bad json" }],
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards valid terminal and orchestration events", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { createWsNativeApi } = await import("./wsNativeApi");

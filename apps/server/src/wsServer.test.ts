@@ -517,6 +517,7 @@ describe("WebSocket Server", () => {
       cwd: "/my/workspace",
       keybindingsConfigPath: keybindingsPath,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [],
     });
   });
 
@@ -539,10 +540,126 @@ describe("WebSocket Server", () => {
       cwd: "/my/workspace",
       keybindingsConfigPath: keybindingsPath,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [],
     });
 
     const persistedConfig = JSON.parse(fs.readFileSync(keybindingsPath, "utf8")) as KeybindingsConfig;
     expect(persistedConfig).toEqual(DEFAULT_KEYBINDINGS);
+  });
+
+  it("falls back to defaults and reports malformed keybindings config issues", async () => {
+    const stateDir = makeTempDir("t3code-state-malformed-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "{ not-json", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindingsConfigPath: keybindingsPath,
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [
+        {
+          kind: "keybindings.malformed-config",
+          message: expect.stringContaining("expected JSON array"),
+        },
+      ],
+    });
+    expect(fs.readFileSync(keybindingsPath, "utf8")).toBe("{ not-json");
+  });
+
+  it("ignores invalid keybinding entries but keeps valid entries and reports issues", async () => {
+    const stateDir = makeTempDir("t3code-state-partial-invalid-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([
+        { key: "mod+j", command: "terminal.toggle" },
+        { key: "mod+shift+d+o", command: "terminal.new" },
+        { key: "mod+x", command: "not-a-real-command" },
+      ]),
+      "utf8",
+    );
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    const result = response.result as {
+      cwd: string;
+      keybindingsConfigPath: string;
+      keybindings: ResolvedKeybindingsConfig;
+      issues: Array<{ kind: string; index?: number; message: string }>;
+    };
+    expect(result.cwd).toBe("/my/workspace");
+    expect(result.keybindingsConfigPath).toBe(keybindingsPath);
+    expect(result.issues).toEqual([
+      {
+        kind: "keybindings.invalid-entry",
+        index: 1,
+        message: expect.any(String),
+      },
+      {
+        kind: "keybindings.invalid-entry",
+        index: 2,
+        message: expect.any(String),
+      },
+    ]);
+    expect(result.keybindings).toHaveLength(DEFAULT_RESOLVED_KEYBINDINGS.length);
+    expect(result.keybindings.some((entry) => entry.command === "terminal.toggle")).toBe(true);
+    expect(result.keybindings.some((entry) => entry.command === "terminal.new")).toBe(true);
+  });
+
+  it("pushes server.configUpdated issues when keybindings file changes", async () => {
+    const stateDir = makeTempDir("t3code-state-keybindings-watch-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    fs.writeFileSync(keybindingsPath, "{ not-json", "utf8");
+    const malformedPush = await waitForPush(
+      ws,
+      WS_CHANNELS.serverConfigUpdated,
+      (push) =>
+        Array.isArray((push.data as { issues?: unknown[] }).issues) &&
+        Boolean((push.data as { issues: Array<{ kind: string }> }).issues[0]) &&
+        (push.data as { issues: Array<{ kind: string }> }).issues[0]!.kind ===
+          "keybindings.malformed-config",
+    );
+    expect(malformedPush.data).toEqual({
+      issues: [{ kind: "keybindings.malformed-config", message: expect.any(String) }],
+    });
+
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+    const successPush = await waitForPush(
+      ws,
+      WS_CHANNELS.serverConfigUpdated,
+      (push) =>
+        Array.isArray((push.data as { issues?: unknown[] }).issues) &&
+        (push.data as { issues: unknown[] }).issues.length === 0,
+    );
+    expect(successPush.data).toEqual({ issues: [] });
   });
 
   it("routes shell.openInEditor through the injected open service", async () => {
@@ -599,6 +716,7 @@ describe("WebSocket Server", () => {
       cwd: "/my/workspace",
       keybindingsConfigPath: keybindingsPath,
       keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
   });
 
@@ -632,6 +750,7 @@ describe("WebSocket Server", () => {
     expect(persistedCommands.has("script.run-tests.run")).toBe(true);
     expect(upsertResponse.result).toEqual({
       keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
 
     const configResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
@@ -640,6 +759,7 @@ describe("WebSocket Server", () => {
       cwd: "/my/workspace",
       keybindingsConfigPath: keybindingsPath,
       keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
   });
 

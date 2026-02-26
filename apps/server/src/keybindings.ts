@@ -15,6 +15,7 @@ import {
   MAX_WHEN_EXPRESSION_DEPTH,
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
+  type ServerConfigIssue,
 } from "@t3tools/contracts";
 import { Mutable } from "effect/Types";
 import {
@@ -27,11 +28,13 @@ import {
   Layer,
   Option,
   Predicate,
+  PubSub,
   Schema,
   SchemaGetter,
   SchemaIssue,
   SchemaTransformation,
   ServiceMap,
+  Stream,
 } from "effect";
 import * as Semaphore from "effect/Semaphore";
 import { ServerConfig } from "./config";
@@ -412,6 +415,35 @@ const KeybindingsConfigPrettyJson = KeybindingsConfigJson.pipe(
   }),
 );
 
+export interface KeybindingsConfigState {
+  readonly keybindings: ResolvedKeybindingsConfig;
+  readonly issues: readonly ServerConfigIssue[];
+}
+
+export interface KeybindingsChangeEvent {
+  readonly issues: readonly ServerConfigIssue[];
+}
+
+function trimIssueMessage(message: string): string {
+  const trimmed = message.trim();
+  return trimmed.length > 0 ? trimmed : "Invalid keybindings configuration.";
+}
+
+function malformedConfigIssue(detail: string): ServerConfigIssue {
+  return {
+    kind: "keybindings.malformed-config",
+    message: trimIssueMessage(detail),
+  };
+}
+
+function invalidEntryIssue(index: number, detail: string): ServerConfigIssue {
+  return {
+    kind: "keybindings.invalid-entry",
+    index,
+    message: trimIssueMessage(detail),
+  };
+}
+
 function mergeWithDefaultKeybindings(custom: ResolvedKeybindingsConfig): ResolvedKeybindingsConfig {
   if (custom.length === 0) {
     return [...DEFAULT_RESOLVED_KEYBINDINGS];
@@ -442,14 +474,14 @@ export interface KeybindingsShape {
   readonly syncDefaultKeybindingsOnStartup: Effect.Effect<void, KeybindingsConfigError>;
 
   /**
-   * Load and resolve keybindings from disk merged with defaults.
-   *
-   * Returns an in-memory cached result after the first successful load.
+   * Load runtime keybindings state along with non-fatal configuration issues.
    */
-  readonly loadResolvedKeybindingsConfig: Effect.Effect<
-    readonly ResolvedKeybindingRule[],
-    KeybindingsConfigError
-  >;
+  readonly loadConfigState: Effect.Effect<KeybindingsConfigState, KeybindingsConfigError>;
+
+  /**
+   * Stream keybindings config change events.
+   */
+  readonly changes: Stream.Stream<KeybindingsChangeEvent>;
 
   /**
    * Upsert a keybinding rule and persist the resulting configuration.
@@ -475,6 +507,10 @@ const makeKeybindings = Effect.gen(function* () {
   const path = yield* Path.Path;
   const upsertSemaphore = yield* Semaphore.make(1);
   const resolvedConfigCacheKey = "resolved" as const;
+  const changesPubSub = yield* PubSub.unbounded<KeybindingsChangeEvent>();
+
+  const emitChange = (issues: readonly ServerConfigIssue[]) =>
+    PubSub.publish(changesPubSub, { issues }).pipe(Effect.asVoid);
 
   const readConfigExists = fs.exists(keybindingsConfigPath).pipe(
     Effect.mapError(
@@ -487,7 +523,18 @@ const makeKeybindings = Effect.gen(function* () {
     ),
   );
 
-  const loadCustomKeybindingsConfig = Effect.fn(function* (): Effect.fn.Return<
+  const readRawConfig = fs.readFileString(keybindingsConfigPath).pipe(
+    Effect.mapError(
+      (cause) =>
+        new KeybindingsConfigError({
+          configPath: keybindingsConfigPath,
+          detail: "failed to read keybindings config",
+          cause,
+        }),
+    ),
+  );
+
+  const loadWritableCustomKeybindingsConfig = Effect.fn(function* (): Effect.fn.Return<
     readonly KeybindingRule[],
     KeybindingsConfigError
   > {
@@ -495,7 +542,7 @@ const makeKeybindings = Effect.gen(function* () {
       return [];
     }
 
-    const rawConfig = yield* fs.readFileString(keybindingsConfigPath).pipe(
+    const rawConfig = yield* readRawConfig.pipe(
       Effect.flatMap(Schema.decodeEffect(RawKeybindingsEntries)),
       Effect.mapError(
         (cause) =>
@@ -532,6 +579,61 @@ const makeKeybindings = Effect.gen(function* () {
     ).pipe(Effect.map(Array.filter(Predicate.isNotNull)));
   });
 
+  const loadRuntimeCustomKeybindingsConfig = Effect.fn(function* (): Effect.fn.Return<
+    {
+      readonly keybindings: readonly KeybindingRule[];
+      readonly issues: readonly ServerConfigIssue[];
+    },
+    KeybindingsConfigError
+  > {
+    if (!(yield* readConfigExists)) {
+      return { keybindings: [], issues: [] };
+    }
+
+    const rawConfig = yield* readRawConfig;
+    const decodedEntries = Schema.decodeUnknownExit(RawKeybindingsEntries)(rawConfig);
+    if (decodedEntries._tag === "Failure") {
+      const detail = `expected JSON array (${Cause.pretty(decodedEntries.cause)})`;
+      return {
+        keybindings: [],
+        issues: [malformedConfigIssue(detail)],
+      };
+    }
+
+    const keybindings: KeybindingRule[] = [];
+    const issues: ServerConfigIssue[] = [];
+    for (const [index, entry] of decodedEntries.value.entries()) {
+      const decodedRule = Schema.decodeUnknownExit(KeybindingRule)(entry);
+      if (decodedRule._tag === "Failure") {
+        const detail = Cause.pretty(decodedRule.cause);
+        issues.push(invalidEntryIssue(index, detail));
+        yield* Effect.logWarning("ignoring invalid keybinding entry", {
+          path: keybindingsConfigPath,
+          index,
+          entry,
+          error: detail,
+        });
+        continue;
+      }
+
+      const resolvedRule = Schema.decodeExit(ResolvedKeybindingFromConfig)(decodedRule.value);
+      if (resolvedRule._tag === "Failure") {
+        const detail = Cause.pretty(resolvedRule.cause);
+        issues.push(invalidEntryIssue(index, detail));
+        yield* Effect.logWarning("ignoring invalid keybinding entry", {
+          path: keybindingsConfigPath,
+          index,
+          entry,
+          error: detail,
+        });
+        continue;
+      }
+      keybindings.push(decodedRule.value);
+    }
+
+    return { keybindings, issues };
+  });
+
   const writeConfigAtomically = (rules: readonly KeybindingRule[]) => {
     const tempPath = `${keybindingsConfigPath}.${process.pid}.${Date.now()}.tmp`;
 
@@ -551,19 +653,64 @@ const makeKeybindings = Effect.gen(function* () {
     );
   };
 
-  const loadResolvedFromDisk = loadCustomKeybindingsConfig().pipe(
-    Effect.map(compileResolvedKeybindingsConfig),
-    Effect.map(mergeWithDefaultKeybindings),
+  const loadConfigStateFromDisk = loadRuntimeCustomKeybindingsConfig().pipe(
+    Effect.map(({ keybindings, issues }) => ({
+      keybindings: mergeWithDefaultKeybindings(compileResolvedKeybindingsConfig(keybindings)),
+      issues,
+    })),
   );
 
   const resolvedConfigCache = yield* Cache.make<
     typeof resolvedConfigCacheKey,
-    ResolvedKeybindingsConfig,
+    KeybindingsConfigState,
     KeybindingsConfigError
   >({
     capacity: 1,
-    lookup: () => loadResolvedFromDisk,
+    lookup: () => loadConfigStateFromDisk,
   });
+
+  const loadConfigStateFromCacheOrDisk = Cache.get(resolvedConfigCache, resolvedConfigCacheKey);
+
+  const revalidateAndEmit = upsertSemaphore.withPermits(1)(
+    Effect.gen(function* () {
+      yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+      const configState = yield* loadConfigStateFromCacheOrDisk;
+      yield* emitChange(configState.issues);
+    }),
+  );
+
+  const keybindingsConfigDir = path.dirname(keybindingsConfigPath);
+  const keybindingsConfigFile = path.basename(keybindingsConfigPath);
+  const keybindingsConfigPathResolved = path.resolve(keybindingsConfigPath);
+  yield* fs
+    .makeDirectory(keybindingsConfigDir, { recursive: true })
+    .pipe(Effect.orElseSucceed(() => undefined));
+  yield* Stream.runForEach(fs.watch(keybindingsConfigDir), (event) => {
+    const isTargetConfigEvent =
+      event.path === keybindingsConfigFile ||
+      event.path === keybindingsConfigPath ||
+      path.resolve(keybindingsConfigDir, event.path) === keybindingsConfigPathResolved;
+    if (!isTargetConfigEvent) {
+      return Effect.void;
+    }
+    return revalidateAndEmit.pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("failed to revalidate keybindings config after file update", {
+          path: keybindingsConfigPath,
+          detail: error.detail,
+          cause: error.cause,
+        }),
+      ),
+    );
+  }).pipe(
+    Effect.catch((cause) =>
+      Effect.logWarning("keybindings config watcher stopped unexpectedly", {
+        path: keybindingsConfigPath,
+        cause,
+      }),
+    ),
+    Effect.forkScoped,
+  );
 
   const syncDefaultKeybindingsOnStartup = upsertSemaphore.withPermits(1)(
     Effect.gen(function* () {
@@ -574,7 +721,19 @@ const makeKeybindings = Effect.gen(function* () {
         return;
       }
 
-      const customConfig = yield* loadCustomKeybindingsConfig();
+      const runtimeConfig = yield* loadRuntimeCustomKeybindingsConfig();
+      if (runtimeConfig.issues.length > 0) {
+        yield* Effect.logWarning(
+          "skipping startup keybindings default sync because config has issues",
+          {
+            path: keybindingsConfigPath,
+            issues: runtimeConfig.issues,
+          },
+        );
+        yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+        return;
+      }
+      const customConfig = runtimeConfig.keybindings;
       const existingCommands = new Set(customConfig.map((entry) => entry.command));
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
@@ -643,15 +802,14 @@ const makeKeybindings = Effect.gen(function* () {
     }),
   );
 
-  const loadResolvedFromCacheOrDisk = Cache.get(resolvedConfigCache, resolvedConfigCacheKey);
-
   return {
     syncDefaultKeybindingsOnStartup,
-    loadResolvedKeybindingsConfig: loadResolvedFromCacheOrDisk,
+    loadConfigState: loadConfigStateFromCacheOrDisk,
+    changes: Stream.fromPubSub(changesPubSub),
     upsertKeybindingRule: (rule) =>
       upsertSemaphore.withPermits(1)(
         Effect.gen(function* () {
-          const customConfig = yield* loadCustomKeybindingsConfig();
+          const customConfig = yield* loadWritableCustomKeybindingsConfig();
           const nextConfig = [
             ...customConfig.filter((entry) => entry.command !== rule.command),
             rule,
@@ -670,7 +828,11 @@ const makeKeybindings = Effect.gen(function* () {
           const nextResolved = mergeWithDefaultKeybindings(
             compileResolvedKeybindingsConfig(cappedConfig),
           );
-          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, nextResolved);
+          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, {
+            keybindings: nextResolved,
+            issues: [],
+          });
+          yield* emitChange([]);
           return nextResolved;
         }),
       ),

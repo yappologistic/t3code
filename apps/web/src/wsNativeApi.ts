@@ -3,6 +3,7 @@ import {
   ORCHESTRATION_WS_CHANNELS,
   ORCHESTRATION_WS_METHODS,
   type NativeApi,
+  ServerConfigUpdatedPayload,
   TerminalEvent,
   WS_CHANNELS,
   WS_METHODS,
@@ -15,7 +16,9 @@ import { WsTransport } from "./wsTransport";
 
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
+const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
 let lastWelcome: WsWelcomePayload | null = null;
+let lastServerConfigUpdated: ServerConfigUpdatedPayload | null = null;
 
 const decodeAndWarnOnFailure = <T>(
   schema: Schema.Schema<T> & { readonly DecodingServices: never },
@@ -55,6 +58,28 @@ export function onServerWelcome(listener: (payload: WsWelcomePayload) => void): 
   };
 }
 
+/**
+ * Subscribe to server config update events. Replays the latest update for
+ * late subscribers to avoid missing config validation feedback.
+ */
+export function onServerConfigUpdated(
+  listener: (payload: ServerConfigUpdatedPayload) => void,
+): () => void {
+  serverConfigUpdatedListeners.add(listener);
+
+  if (lastServerConfigUpdated) {
+    try {
+      listener(lastServerConfigUpdated);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+
+  return () => {
+    serverConfigUpdatedListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -67,6 +92,18 @@ export function createWsNativeApi(): NativeApi {
     if (!payload) return;
     lastWelcome = payload;
     for (const listener of welcomeListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.serverConfigUpdated, (data) => {
+    const payload = decodeAndWarnOnFailure(ServerConfigUpdatedPayload, data);
+    if (!payload) return;
+    lastServerConfigUpdated = payload;
+    for (const listener of serverConfigUpdatedListeners) {
       try {
         listener(payload);
       } catch {

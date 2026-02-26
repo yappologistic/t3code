@@ -3,15 +3,17 @@ import {
   createRootRouteWithContext,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
-import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
+import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
+import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useStore } from "../store";
-import { onServerWelcome } from "../wsNativeApi";
+import { preferredTerminalEditor } from "../terminal-links";
+import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
 import { providerQueryKeys } from "../lib/providerReactQuery";
 
 export const Route = createRootRouteWithContext<{
@@ -119,6 +121,7 @@ function errorDetails(error: unknown): string {
 function EventRouter() {
   const { dispatch } = useStore();
   const queryClient = useQueryClient();
+  const lastConfigIssuesSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     const api = readNativeApi();
@@ -170,10 +173,56 @@ function EventRouter() {
     const unsubWelcome = onServerWelcome(() => {
       void syncSnapshot();
     });
+    const unsubServerConfigUpdated = onServerConfigUpdated((payload) => {
+      const signature = JSON.stringify(payload.issues);
+      if (lastConfigIssuesSignatureRef.current === signature) {
+        return;
+      }
+      lastConfigIssuesSignatureRef.current = signature;
+
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.config() });
+      const issue = payload.issues.find((entry) => entry.kind.startsWith("keybindings."));
+      if (!issue) {
+        toastManager.add({
+          type: "success",
+          title: "Keybindings updated",
+          description: "Keybindings configuration reloaded successfully.",
+        });
+        return;
+      }
+
+      toastManager.add({
+        type: "warning",
+        title: "Invalid keybindings configuration",
+        description: issue.message,
+        actionProps: {
+          children: "Open keybindings.json",
+          onClick: () => {
+            void queryClient
+              .ensureQueryData(serverConfigQueryOptions())
+              .then((config) =>
+                api.shell.openInEditor(
+                  config.keybindingsConfigPath,
+                  preferredTerminalEditor(),
+                ),
+              )
+              .catch((error) => {
+                toastManager.add({
+                  type: "error",
+                  title: "Unable to open keybindings file",
+                  description:
+                    error instanceof Error ? error.message : "Unknown error opening file.",
+                });
+              });
+          },
+        },
+      });
+    });
     return () => {
       disposed = true;
       unsubDomainEvent();
       unsubWelcome();
+      unsubServerConfigUpdated();
     };
   }, [dispatch, queryClient]);
 

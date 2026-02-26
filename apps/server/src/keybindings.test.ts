@@ -12,6 +12,7 @@ import {
   KeybindingsLive,
   ResolvedKeybindingFromConfig,
   compileResolvedKeybindingRule,
+  compileResolvedKeybindingsConfig,
   parseKeybindingShortcut,
 } from "./keybindings";
 
@@ -163,6 +164,55 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
 
       const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
       assert.deepEqual(persisted, DEFAULT_KEYBINDINGS);
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("uses defaults in runtime when config is malformed without overriding file", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { keybindingsConfigPath } = yield* ServerConfig;
+      yield* fs.writeFileString(keybindingsConfigPath, "{ not-json");
+
+      const configState = yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings;
+        return yield* keybindings.loadConfigState;
+      });
+
+      assert.deepEqual(configState.keybindings, compileResolvedKeybindingsConfig(DEFAULT_KEYBINDINGS));
+      assert.deepEqual(configState.issues, [
+        {
+          kind: "keybindings.malformed-config",
+          message: configState.issues[0]?.message ?? "",
+        },
+      ]);
+      assert.equal(yield* fs.readFileString(keybindingsConfigPath), "{ not-json");
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("ignores invalid entries in runtime and reports them as issues", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { keybindingsConfigPath } = yield* ServerConfig;
+      yield* fs.writeFileString(
+        keybindingsConfigPath,
+        JSON.stringify([
+          { key: "mod+j", command: "terminal.toggle" },
+          { key: "mod+shift+d+o", command: "terminal.new" },
+          { key: "mod+x", command: "invalid.command" },
+        ]),
+      );
+
+      const configState = yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings;
+        return yield* keybindings.loadConfigState;
+      });
+
+      assert.isTrue(configState.keybindings.some((entry) => entry.command === "terminal.toggle"));
+      assert.isFalse(configState.keybindings.some((entry) => entry.command === "invalid.command"));
+      assert.deepEqual(configState.issues, [
+        { kind: "keybindings.invalid-entry", index: 1, message: configState.issues[0]?.message ?? "" },
+        { kind: "keybindings.invalid-entry", index: 2, message: configState.issues[1]?.message ?? "" },
+      ]);
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
@@ -365,23 +415,18 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
 
       const [first, second] = yield* Effect.gen(function* () {
         const keybindings = yield* Keybindings;
-        const firstLoad = yield* keybindings.loadResolvedKeybindingsConfig;
-        yield* writeKeybindingsConfig(keybindingsConfigPath, [
-          { key: "mod+x", command: "script.setup.run" },
-        ]);
-        const secondLoad = yield* keybindings.loadResolvedKeybindingsConfig;
+        const firstLoad = (yield* keybindings.loadConfigState).keybindings;
+        const secondLoad = (yield* keybindings.loadConfigState).keybindings;
         return [firstLoad, secondLoad] as const;
       });
 
       assert.deepEqual(first, second);
       assert.isTrue(second.some((entry) => entry.command === "terminal.toggle"));
-      assert.isFalse(second.some((entry) => entry.command === "script.setup.run"));
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
   it.effect("updates cached resolved config after upsert", () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
       const { keybindingsConfigPath } = yield* ServerConfig;
       yield* writeKeybindingsConfig(keybindingsConfigPath, [
         { key: "mod+j", command: "terminal.toggle" },
@@ -389,13 +434,12 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
 
       const loadedAfterUpsert = yield* Effect.gen(function* () {
         const keybindings = yield* Keybindings;
-        yield* keybindings.loadResolvedKeybindingsConfig;
+        yield* keybindings.loadConfigState;
         yield* keybindings.upsertKeybindingRule({
           key: "mod+shift+r",
           command: "script.run-tests.run",
         });
-        yield* fs.writeFileString(keybindingsConfigPath, "{ not-json");
-        return yield* keybindings.loadResolvedKeybindingsConfig;
+        return (yield* keybindings.loadConfigState).keybindings;
       });
 
       assert.isTrue(loadedAfterUpsert.some((entry) => entry.command === "script.run-tests.run"));
