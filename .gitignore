@@ -11,3 +11,4 @@ packages/*/dist
 build/
 .logs/
 release/
+.t3
