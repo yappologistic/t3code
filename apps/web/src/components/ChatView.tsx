@@ -615,6 +615,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "terminal.close"),
     [keybindings],
   );
+  const diffPanelShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "diff.toggle"),
+    [keybindings],
+  );
+  const onToggleDiff = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId },
+      search: (previous) => {
+        const rest = stripDiffSearchParams(previous);
+        return diffOpen ? rest : { ...rest, diff: "1" };
+      },
+    });
+  }, [diffOpen, navigate, threadId]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -1147,6 +1161,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "diff.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleDiff();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -1168,6 +1189,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runProjectScript,
     splitTerminal,
     keybindings,
+    onToggleDiff,
     toggleTerminalVisibility,
   ]);
 
@@ -1612,16 +1634,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onExpandTimelineImage = useCallback((image: ExpandedImagePreview) => {
     setExpandedImage(image);
   }, []);
-  const onToggleDiff = useCallback(() => {
-    void navigate({
-      to: "/$threadId",
-      params: { threadId },
-      search: (previous) => {
-        const rest = stripDiffSearchParams(previous);
-        return diffOpen ? rest : { ...rest, diff: "1" };
-      },
-    });
-  }, [diffOpen, navigate, threadId]);
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       void navigate({
@@ -1692,6 +1704,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
           }
           keybindings={keybindings}
+          diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
           onRunProjectScript={(script) => {
@@ -2043,6 +2056,7 @@ interface ChatHeaderProps {
   activeProjectScripts: ProjectScript[] | undefined;
   preferredScriptId: string | null;
   keybindings: ResolvedKeybindingsConfig;
+  diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
@@ -2058,6 +2072,7 @@ const ChatHeader = memo(function ChatHeader({
   activeProjectScripts,
   preferredScriptId,
   keybindings,
+  diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
   onRunProjectScript,
@@ -2101,6 +2116,9 @@ const ChatHeader = memo(function ChatHeader({
           pressed={diffOpen}
           onPressedChange={onToggleDiff}
           aria-label="Toggle diff panel"
+          title={
+            diffToggleShortcutLabel ? `Toggle diff panel (${diffToggleShortcutLabel})` : undefined
+          }
           variant="outline"
           size="xs"
         >

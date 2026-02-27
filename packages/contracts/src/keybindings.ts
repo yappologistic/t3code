@@ -14,6 +14,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "terminal.split",
   "terminal.new",
   "terminal.close",
+  "diff.toggle",
   "chat.new",
   "chat.newLocal",
   "editor.openFavorite",
