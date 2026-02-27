@@ -18,6 +18,7 @@ import {
 
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import { fixPath } from "./fixPath";
+import { resolveDesktopStateDir } from "./stateDir";
 
 fixPath();
 
@@ -26,7 +27,7 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
-const STATE_DIR = path.join(os.homedir(), ".t3", "userdata");
+const STATE_DIR = resolveDesktopStateDir();
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);

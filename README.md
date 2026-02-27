@@ -68,6 +68,9 @@ npx t3
 - `bun run dev` — Starts contracts, server, and web in `turbo watch` mode.
 - `bun run dev:server` — Starts just the WebSocket server (uses Bun TypeScript execution).
 - `bun run dev:web` — Starts just the Vite dev server for the web app.
+- Dev commands default `T3CODE_STATE_DIR` to `~/.t3/dev` to keep dev state isolated from desktop/prod state.
+- Override server CLI-equivalent flags from root dev commands with `--`, for example:
+  `bun run dev -- --state-dir ~/.t3/another-dev-state`
 - `bun run start` — Runs the production server (serves built web app as static files).
 - `bun run build` — Builds contracts, web app, and server through Turbo.
 - `bun run typecheck` — Strict TypeScript checks for all packages.
