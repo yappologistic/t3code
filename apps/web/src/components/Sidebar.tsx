@@ -578,7 +578,9 @@ export default function Sidebar() {
                                 size="sm"
                                 isActive={isActive}
                                 className={`h-7 w-full translate-x-0 justify-start px-2 text-left hover:bg-accent hover:text-foreground ${
-                                  isActive ? "text-foreground" : "text-muted-foreground"
+                                  isActive
+                                    ? "bg-accent/85 text-foreground font-medium ring-1 ring-border/70 dark:bg-accent/55 dark:ring-border/50"
+                                    : "text-muted-foreground"
                                 }`}
                                 onClick={() => {
                                   void navigate({
@@ -624,7 +626,11 @@ export default function Sidebar() {
                                       />
                                     </span>
                                   )}
-                                  <span className="text-[10px] text-muted-foreground/40">
+                                  <span
+                                    className={`text-[10px] ${
+                                      isActive ? "text-foreground/65" : "text-muted-foreground/40"
+                                    }`}
+                                  >
                                     {formatRelativeTime(thread.createdAt)}
                                   </span>
                                 </div>
