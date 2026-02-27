@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, assert } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { GitCommandError } from "../Errors.ts";
 import { GitServiceLive } from "./GitService.ts";
@@ -50,7 +50,7 @@ layer("GitServiceLive", (it) => {
 
       assert.equal(result._tag, "Failure");
       if (result._tag === "Failure") {
-        assert.ok(result.failure instanceof GitCommandError);
+        assert.ok(Schema.is(GitCommandError)(result.failure));
         assert.equal(result.failure.operation, "GitProcess.test.failOnNonZero");
         assert.equal(result.failure.command, "git rev-parse --verify __definitely_missing_ref__");
       }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
+import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { TextGenerationError } from "../Errors.ts";
@@ -40,7 +40,7 @@ function normalizeCodexError(
   error: unknown,
   fallback: string,
 ): TextGenerationError {
-  if (error instanceof TextGenerationError) {
+  if (Schema.is(TextGenerationError)(error)) {
     return error;
   }
 

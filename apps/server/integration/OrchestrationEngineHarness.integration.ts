@@ -9,7 +9,17 @@ import {
   type OrchestrationEvent,
   type OrchestrationThread,
 } from "@t3tools/contracts";
-import { Effect, Exit, Layer, ManagedRuntime, Option, Schedule, Schema, Scope, Stream } from "effect";
+import {
+  Effect,
+  Exit,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schedule,
+  Schema,
+  Scope,
+  Stream,
+} from "effect";
 
 import { CheckpointStoreLive } from "../src/checkpointing/Layers/CheckpointStore.ts";
 import { CheckpointStore } from "../src/checkpointing/Services/CheckpointStore.ts";
@@ -75,9 +85,12 @@ export function gitShowFileAtRef(cwd: string, ref: string, filePath: string): st
   return runGit(cwd, ["show", `${ref}:${filePath}`]);
 }
 
-class WaitForTimeoutError extends Schema.TaggedErrorClass<WaitForTimeoutError>()("WaitForTimeoutError", {
-  description: Schema.String,
-}) {}
+class WaitForTimeoutError extends Schema.TaggedErrorClass<WaitForTimeoutError>()(
+  "WaitForTimeoutError",
+  {
+    description: Schema.String,
+  },
+) {}
 
 function waitFor<A, E>(
   read: Effect.Effect<A, E>,

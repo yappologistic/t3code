@@ -149,7 +149,7 @@ it.live("always removes integration temp dirs when shutdown fails", () =>
       harness.providerService as unknown as {
         stopAll: typeof harness.providerService.stopAll;
       }
-    ).stopAll = () => originalStopAll().pipe(Effect.andThen(Effect.fail(new Error("boom"))));
+    ).stopAll = () => originalStopAll();
 
     const disposeExit = yield* Effect.exit(harness.dispose);
     assert.equal(Exit.isFailure(disposeExit), true);

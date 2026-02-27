@@ -6,7 +6,7 @@
  *
  * @module GitServiceLive
  */
-import { Effect, Layer, Option, Stream } from "effect";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { GitCommandError } from "../Errors.ts";
 import {
@@ -28,7 +28,7 @@ function toGitCommandError(
   detail: string,
 ) {
   return (cause: unknown) =>
-    cause instanceof GitCommandError
+    Schema.is(GitCommandError)(cause)
       ? cause
       : new GitCommandError({
           operation: input.operation,
