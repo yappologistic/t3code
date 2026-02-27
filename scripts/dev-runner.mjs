@@ -151,8 +151,18 @@ export function parseDevRunnerArgs(rawArgs) {
   };
 }
 
-function resolveStateDir(envOverrides) {
-  return envOverrides.T3CODE_STATE_DIR ?? DEFAULT_DEV_STATE_DIR;
+function resolveStateDir(env, envOverrides) {
+  const overrideValue = envOverrides?.T3CODE_STATE_DIR?.trim();
+  if (overrideValue) {
+    return overrideValue;
+  }
+
+  const envValue = env?.T3CODE_STATE_DIR?.trim();
+  if (envValue) {
+    return envValue;
+  }
+
+  return DEFAULT_DEV_STATE_DIR;
 }
 
 export function createDevRunnerEnv({ mode, env, offset, envOverrides }) {
@@ -169,12 +179,15 @@ export function createDevRunnerEnv({ mode, env, offset, envOverrides }) {
     ...envOverrides,
   };
 
-  output.T3CODE_STATE_DIR = resolveStateDir(envOverrides);
+  output.T3CODE_STATE_DIR = resolveStateDir(env, envOverrides);
 
   const parsedServerPort = Number(output.T3CODE_PORT);
-  if (Number.isInteger(parsedServerPort) && parsedServerPort > 0 && parsedServerPort <= 65535) {
-    output.VITE_WS_URL = `ws://localhost:${parsedServerPort}`;
+  if (!Number.isInteger(parsedServerPort) || parsedServerPort < 1 || parsedServerPort > 65535) {
+    throw new Error(
+      `Invalid T3CODE_PORT override: '${String(output.T3CODE_PORT)}'. Expected an integer between 1 and 65535.`,
+    );
   }
+  output.VITE_WS_URL = `ws://localhost:${parsedServerPort}`;
 
   if (mode === "dev" || mode === "dev:server" || mode === "dev:web") {
     // Running server/web in browser mode should not inherit desktop launcher state.

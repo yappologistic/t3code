@@ -42,12 +42,23 @@ describe("createDevRunnerEnv", () => {
   it("defaults state dir to ~/.t3/dev when not provided", () => {
     const env = createDevRunnerEnv({
       mode: "dev",
-      env: { T3CODE_STATE_DIR: "/tmp/prod-state" },
+      env: {},
       offset: 0,
       envOverrides: {},
     });
 
     expect(env.T3CODE_STATE_DIR).toBe(DEFAULT_DEV_STATE_DIR);
+  });
+
+  it("uses existing env state dir when --state-dir is not provided", () => {
+    const env = createDevRunnerEnv({
+      mode: "dev:server",
+      env: { T3CODE_STATE_DIR: "/tmp/existing-state" },
+      offset: 0,
+      envOverrides: {},
+    });
+
+    expect(env.T3CODE_STATE_DIR).toBe("/tmp/existing-state");
   });
 
   it("lets --state-dir override existing env state dir", () => {
@@ -59,6 +70,17 @@ describe("createDevRunnerEnv", () => {
     });
 
     expect(env.T3CODE_STATE_DIR).toBe("/tmp/override-state");
+  });
+
+  it("treats whitespace-only --state-dir as missing and falls back to env/default", () => {
+    const env = createDevRunnerEnv({
+      mode: "dev:server",
+      env: { T3CODE_STATE_DIR: "/tmp/existing-state" },
+      offset: 0,
+      envOverrides: { T3CODE_STATE_DIR: "   " },
+    });
+
+    expect(env.T3CODE_STATE_DIR).toBe("/tmp/existing-state");
   });
 
   it("recomputes websocket url when port is overridden", () => {
@@ -88,5 +110,16 @@ describe("createDevRunnerEnv", () => {
 
     expect(env.T3CODE_NO_BROWSER).toBe("1");
     expect(env.T3CODE_AUTH_TOKEN).toBe("cli-token");
+  });
+
+  it("fails fast for invalid port overrides", () => {
+    expect(() =>
+      createDevRunnerEnv({
+        mode: "dev",
+        env: {},
+        offset: 0,
+        envOverrides: { T3CODE_PORT: "not-a-port" },
+      }),
+    ).toThrow("Invalid T3CODE_PORT override");
   });
 });
