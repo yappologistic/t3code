@@ -1,22 +1,33 @@
+import * as Http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, Exit, Layer, PubSub, Scope, Stream } from "effect";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { createServer } from "./wsServer";
 import WebSocket from "ws";
+import { ServerConfig, type ServerConfigShape } from "./config";
+import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
 
 import {
   DEFAULT_TERMINAL_ID,
+  EventId,
+  ORCHESTRATION_WS_CHANNELS,
+  ORCHESTRATION_WS_METHODS,
+  ProviderItemId,
+  ProviderSessionId,
+  ProviderThreadId,
+  ProviderTurnId,
   WS_CHANNELS,
   WS_METHODS,
+  type WebSocketResponse,
+  type ProviderRuntimeEvent,
   type KeybindingsConfig,
   type ResolvedKeybindingsConfig,
   type WsPush,
-  type WsResponse,
 } from "@t3tools/contracts";
-import { ProjectRegistry } from "./projectRegistry";
 import { compileResolvedKeybindingRule, DEFAULT_KEYBINDINGS } from "./keybindings";
 import type {
   TerminalClearInput,
@@ -27,7 +38,15 @@ import type {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from "@t3tools/contracts";
-import type { TerminalManager } from "./terminalManager";
+import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager";
+import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "./persistence/Layers/Sqlite";
+import { SqlClient } from "effect/unstable/sql";
+import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService";
+import { Open, type OpenShape } from "./open";
+import { GitManager, type GitManagerShape } from "./git/Services/GitManager.ts";
+import type { GitCoreShape } from "./git/Services/GitCore.ts";
+import { GitCore } from "./git/Services/GitCore.ts";
+import { GitCommandError, GitManagerError } from "./git/Errors.ts";
 
 interface PendingMessages {
   queue: unknown[];
@@ -36,111 +55,147 @@ interface PendingMessages {
 
 const pendingBySocket = new WeakMap<WebSocket, PendingMessages>();
 
-class MockTerminalManager extends EventEmitter<{ event: [event: TerminalEvent] }> {
+const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
+const asProviderSessionId = (value: string): ProviderSessionId =>
+  ProviderSessionId.makeUnsafe(value);
+const asProviderThreadId = (value: string): ProviderThreadId => ProviderThreadId.makeUnsafe(value);
+const asProviderTurnId = (value: string): ProviderTurnId => ProviderTurnId.makeUnsafe(value);
+const asProviderItemId = (value: string): ProviderItemId => ProviderItemId.makeUnsafe(value);
+
+const defaultOpenService: OpenShape = {
+  openBrowser: () => Effect.void,
+  openInEditor: () => Effect.void,
+};
+
+class MockTerminalManager implements TerminalManagerShape {
   private readonly sessions = new Map<string, TerminalSessionSnapshot>();
+  private readonly listeners = new Set<(event: TerminalEvent) => void>();
 
   private key(threadId: string, terminalId: string): string {
     return `${threadId}\u0000${terminalId}`;
   }
 
-  async open(input: TerminalOpenInput): Promise<TerminalSessionSnapshot> {
-    const now = new Date().toISOString();
-    const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
-    const snapshot: TerminalSessionSnapshot = {
-      threadId: input.threadId,
-      terminalId,
-      cwd: input.cwd,
-      status: "running",
-      pid: 4242,
-      history: "",
-      exitCode: null,
-      exitSignal: null,
-      updatedAt: now,
-    };
-    this.sessions.set(this.key(input.threadId, terminalId), snapshot);
-    queueMicrotask(() => {
-      this.emit("event", {
-        type: "started",
-        threadId: input.threadId,
-        terminalId,
-        createdAt: now,
-        snapshot,
-      });
-    });
-    return snapshot;
-  }
-
-  async write(input: TerminalWriteInput): Promise<void> {
-    const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
-    const existing = this.sessions.get(this.key(input.threadId, terminalId));
-    if (!existing) {
-      throw new Error(`Unknown terminal thread: ${input.threadId}`);
+  emitEvent(event: TerminalEvent): void {
+    for (const listener of this.listeners) {
+      listener(event);
     }
-    queueMicrotask(() => {
-      this.emit("event", {
-        type: "output",
-        threadId: input.threadId,
-        terminalId,
-        createdAt: new Date().toISOString(),
-        data: input.data,
-      });
-    });
   }
 
-  async resize(_input: TerminalResizeInput): Promise<void> {}
-
-  async clear(input: TerminalClearInput): Promise<void> {
-    const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
-    queueMicrotask(() => {
-      this.emit("event", {
-        type: "cleared",
-        threadId: input.threadId,
-        terminalId,
-        createdAt: new Date().toISOString(),
-      });
-    });
+  subscriptionCount(): number {
+    return this.listeners.size;
   }
 
-  async restart(input: TerminalOpenInput): Promise<TerminalSessionSnapshot> {
-    const now = new Date().toISOString();
-    const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
-    const snapshot: TerminalSessionSnapshot = {
-      threadId: input.threadId,
-      terminalId,
-      cwd: input.cwd,
-      status: "running",
-      pid: 5252,
-      history: "",
-      exitCode: null,
-      exitSignal: null,
-      updatedAt: now,
-    };
-    this.sessions.set(this.key(input.threadId, terminalId), snapshot);
-    queueMicrotask(() => {
-      this.emit("event", {
-        type: "restarted",
+  readonly open: TerminalManagerShape["open"] = (input: TerminalOpenInput) =>
+    Effect.sync(() => {
+      const now = new Date().toISOString();
+      const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
+      const snapshot: TerminalSessionSnapshot = {
         threadId: input.threadId,
         terminalId,
-        createdAt: now,
-        snapshot,
+        cwd: input.cwd,
+        status: "running",
+        pid: 4242,
+        history: "",
+        exitCode: null,
+        exitSignal: null,
+        updatedAt: now,
+      };
+      this.sessions.set(this.key(input.threadId, terminalId), snapshot);
+      queueMicrotask(() => {
+        this.emitEvent({
+          type: "started",
+          threadId: input.threadId,
+          terminalId,
+          createdAt: now,
+          snapshot,
+        });
       });
+      return snapshot;
     });
-    return snapshot;
-  }
 
-  async close(input: TerminalCloseInput): Promise<void> {
-    if (input.terminalId) {
-      this.sessions.delete(this.key(input.threadId, input.terminalId));
-      return;
-    }
-    for (const key of [...this.sessions.keys()]) {
-      if (key.startsWith(`${input.threadId}\u0000`)) {
-        this.sessions.delete(key);
+  readonly write: TerminalManagerShape["write"] = (input: TerminalWriteInput) =>
+    Effect.sync(() => {
+      const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
+      const existing = this.sessions.get(this.key(input.threadId, terminalId));
+      if (!existing) {
+        throw new Error(`Unknown terminal thread: ${input.threadId}`);
       }
-    }
-  }
+      queueMicrotask(() => {
+        this.emitEvent({
+          type: "output",
+          threadId: input.threadId,
+          terminalId,
+          createdAt: new Date().toISOString(),
+          data: input.data,
+        });
+      });
+    });
 
-  dispose(): void {}
+  readonly resize: TerminalManagerShape["resize"] = (_input: TerminalResizeInput) => Effect.void;
+
+  readonly clear: TerminalManagerShape["clear"] = (input: TerminalClearInput) =>
+    Effect.sync(() => {
+      const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
+      queueMicrotask(() => {
+        this.emitEvent({
+          type: "cleared",
+          threadId: input.threadId,
+          terminalId,
+          createdAt: new Date().toISOString(),
+        });
+      });
+    });
+
+  readonly restart: TerminalManagerShape["restart"] = (input: TerminalOpenInput) =>
+    Effect.sync(() => {
+      const now = new Date().toISOString();
+      const terminalId = input.terminalId ?? DEFAULT_TERMINAL_ID;
+      const snapshot: TerminalSessionSnapshot = {
+        threadId: input.threadId,
+        terminalId,
+        cwd: input.cwd,
+        status: "running",
+        pid: 5252,
+        history: "",
+        exitCode: null,
+        exitSignal: null,
+        updatedAt: now,
+      };
+      this.sessions.set(this.key(input.threadId, terminalId), snapshot);
+      queueMicrotask(() => {
+        this.emitEvent({
+          type: "restarted",
+          threadId: input.threadId,
+          terminalId,
+          createdAt: now,
+          snapshot,
+        });
+      });
+      return snapshot;
+    });
+
+  readonly close: TerminalManagerShape["close"] = (input: TerminalCloseInput) =>
+    Effect.sync(() => {
+      if (input.terminalId) {
+        this.sessions.delete(this.key(input.threadId, input.terminalId));
+        return;
+      }
+      for (const key of this.sessions.keys()) {
+        if (key.startsWith(`${input.threadId}\u0000`)) {
+          this.sessions.delete(key);
+        }
+      }
+    });
+
+  readonly subscribe: TerminalManagerShape["subscribe"] = (listener) =>
+    Effect.sync(() => {
+      this.listeners.add(listener);
+      return () => {
+        this.listeners.delete(listener);
+      };
+    });
+
+  readonly dispose: TerminalManagerShape["dispose"] = Effect.void;
 }
 
 function connectWs(port: number, token?: string): Promise<WebSocket> {
@@ -181,22 +236,68 @@ function waitForMessage(ws: WebSocket): Promise<unknown> {
   });
 }
 
-async function sendRequest(ws: WebSocket, method: string, params?: unknown): Promise<WsResponse> {
+function asWebSocketResponse(message: unknown): WebSocketResponse | null {
+  if (typeof message !== "object" || message === null) return null;
+  if (!("id" in message)) return null;
+  const id = (message as { id?: unknown }).id;
+  if (typeof id !== "string") return null;
+  return message as WebSocketResponse;
+}
+
+async function sendRequest(
+  ws: WebSocket,
+  method: string,
+  params?: unknown,
+): Promise<WebSocketResponse> {
   const id = crypto.randomUUID();
-  const message = JSON.stringify({ id, method, ...(params !== undefined ? { params } : {}) });
+  const body =
+    method === ORCHESTRATION_WS_METHODS.dispatchCommand
+      ? { _tag: method, command: params }
+      : params && typeof params === "object" && !Array.isArray(params)
+        ? { _tag: method, ...(params as Record<string, unknown>) }
+        : { _tag: method };
+  const message = JSON.stringify({ id, body });
   ws.send(message);
 
   // Wait for response with matching id
   while (true) {
-    const parsed = (await waitForMessage(ws)) as Record<string, unknown>;
+    const parsed = asWebSocketResponse(await waitForMessage(ws));
+    if (!parsed) {
+      continue;
+    }
     if (parsed.id === id) {
-      return parsed as WsResponse;
+      return parsed;
+    }
+    if (parsed.id === "unknown") {
+      return parsed;
     }
   }
 }
 
+async function waitForPush(
+  ws: WebSocket,
+  channel: string,
+  predicate?: (push: WsPush) => boolean,
+  maxMessages = 120,
+): Promise<WsPush> {
+  const take = async (remaining: number): Promise<WsPush> => {
+    if (remaining <= 0) {
+      throw new Error(`Timed out waiting for push on ${channel}`);
+    }
+    const message = (await waitForMessage(ws)) as WsPush;
+    if (message.type !== "push" || message.channel !== channel) {
+      return take(remaining - 1);
+    }
+    if (!predicate || predicate(message)) {
+      return message;
+    }
+    return take(remaining - 1);
+  };
+  return take(maxMessages);
+}
+
 function compileKeybindings(bindings: KeybindingsConfig): ResolvedKeybindingsConfig {
-  const resolved: ResolvedKeybindingsConfig = [];
+  const resolved: Array<ResolvedKeybindingsConfig[number]> = [];
   for (const binding of bindings) {
     const compiled = compileResolvedKeybindingRule(binding);
     if (!compiled) {
@@ -209,20 +310,9 @@ function compileKeybindings(bindings: KeybindingsConfig): ResolvedKeybindingsCon
 
 const DEFAULT_RESOLVED_KEYBINDINGS = compileKeybindings([...DEFAULT_KEYBINDINGS]);
 
-function mergeWithDefaultsForTest(custom: KeybindingsConfig): ResolvedKeybindingsConfig {
-  if (custom.length === 0) {
-    return DEFAULT_RESOLVED_KEYBINDINGS;
-  }
-
-  const overriddenCommands = new Set(custom.map((binding) => binding.command));
-  const retainedDefaults = DEFAULT_KEYBINDINGS.filter(
-    (binding) => !overriddenCommands.has(binding.command),
-  );
-  return compileKeybindings([...retainedDefaults, ...custom].slice(-256));
-}
-
 describe("WebSocket Server", () => {
-  let server: ReturnType<typeof createServer> | null = null;
+  let server: Http.Server | null = null;
+  let serverScope: Scope.Closeable | null = null;
   const connections: WebSocket[] = [];
   const tempDirs: string[] = [];
 
@@ -232,29 +322,88 @@ describe("WebSocket Server", () => {
     return dir;
   }
 
-  function createTestServer(
+  async function createTestServer(
     options: {
+      persistenceLayer?: Layer.Layer<SqlClient.SqlClient, never>;
       cwd?: string;
+      autoBootstrapProjectFromCwd?: boolean;
+      logWebSocketEvents?: boolean;
       devUrl?: string;
       authToken?: string;
       stateDir?: string;
-      gitManager?: {
-        status: (input: { cwd: string }) => Promise<unknown>;
-        runStackedAction: (input: { cwd: string; action: string }) => Promise<unknown>;
-      };
-      terminalManager?: TerminalManager;
+      providerLayer?: Layer.Layer<ProviderService, never>;
+      open?: OpenShape;
+      gitManager?: GitManagerShape;
+      gitCore?: Pick<GitCoreShape, "listBranches" | "initRepo" | "pullCurrentBranch">;
+      terminalManager?: TerminalManagerShape;
     } = {},
-  ): ReturnType<typeof createServer> {
+  ): Promise<Http.Server> {
+    if (serverScope) {
+      throw new Error("Test server is already running");
+    }
+
     const stateDir = options.stateDir ?? makeTempDir("t3code-ws-state-");
-    return createServer({
+    const scope = await Effect.runPromise(Scope.make("sequential"));
+    const persistenceLayer = options.persistenceLayer ?? SqlitePersistenceMemory;
+    const providerLayer = options.providerLayer ?? makeServerProviderLayer();
+    const openLayer = Layer.succeed(Open, options.open ?? defaultOpenService);
+    const serverConfigLayer = Layer.succeed(ServerConfig, {
+      mode: "web",
       port: 0,
+      host: undefined,
       cwd: options.cwd ?? "/test/project",
-      ...(options.devUrl ? { devUrl: options.devUrl } : {}),
-      ...(options.authToken ? { authToken: options.authToken } : {}),
-      projectRegistry: new ProjectRegistry(stateDir),
-      ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
-      ...(options.terminalManager ? { terminalManager: options.terminalManager } : {}),
-    });
+      keybindingsConfigPath: path.join(stateDir, "keybindings.json"),
+      stateDir,
+      staticDir: undefined,
+      devUrl: options.devUrl ? new URL(options.devUrl) : undefined,
+      noBrowser: true,
+      authToken: options.authToken,
+      autoBootstrapProjectFromCwd: options.autoBootstrapProjectFromCwd ?? false,
+      logWebSocketEvents: options.logWebSocketEvents ?? Boolean(options.devUrl),
+    } satisfies ServerConfigShape);
+    const infrastructureLayer = providerLayer.pipe(Layer.provideMerge(persistenceLayer));
+    const runtimeOverrides = Layer.mergeAll(
+      options.gitManager ? Layer.succeed(GitManager, options.gitManager) : Layer.empty,
+      options.gitCore
+        ? Layer.succeed(GitCore, options.gitCore as unknown as GitCoreShape)
+        : Layer.empty,
+      options.terminalManager
+        ? Layer.succeed(TerminalManager, options.terminalManager)
+        : Layer.empty,
+    );
+    const runtimeLayer = Layer.merge(
+      Layer.merge(
+        makeServerRuntimeServicesLayer().pipe(Layer.provide(infrastructureLayer)),
+        infrastructureLayer,
+      ),
+      runtimeOverrides,
+    );
+    const dependenciesLayer = Layer.empty.pipe(
+      Layer.provideMerge(runtimeLayer),
+      Layer.provideMerge(openLayer),
+      Layer.provideMerge(serverConfigLayer),
+    );
+    const runtimeServices = await Effect.runPromise(
+      Layer.build(dependenciesLayer).pipe(Scope.provide(scope)),
+    );
+
+    try {
+      const runtime = await Effect.runPromise(
+        createServer().pipe(Effect.provide(runtimeServices), Scope.provide(scope)),
+      );
+      serverScope = scope;
+      return runtime;
+    } catch (error) {
+      await Effect.runPromise(Scope.close(scope, Exit.void));
+      throw error;
+    }
+  }
+
+  async function closeTestServer() {
+    if (!serverScope) return;
+    const scope = serverScope;
+    serverScope = null;
+    await Effect.runPromise(Scope.close(scope, Exit.void));
   }
 
   afterEach(async () => {
@@ -262,9 +411,7 @@ describe("WebSocket Server", () => {
       ws.close();
     }
     connections.length = 0;
-    if (server) {
-      await server.stop();
-    }
+    await closeTestServer();
     server = null;
     for (const dir of tempDirs.splice(0, tempDirs.length)) {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -273,10 +420,9 @@ describe("WebSocket Server", () => {
   });
 
   it("sends welcome message on connect", async () => {
-    server = createTestServer({ cwd: "/test/project" });
+    server = await createTestServer({ cwd: "/test/project" });
     // Get the actual port after listen
-    await server.start();
-    const addr = server.httpServer.address();
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
     expect(port).toBeGreaterThan(0);
 
@@ -292,17 +438,140 @@ describe("WebSocket Server", () => {
     });
   });
 
+  it("bootstraps the cwd project on startup when enabled", async () => {
+    server = await createTestServer({
+      cwd: "/test/bootstrap-workspace",
+      autoBootstrapProjectFromCwd: true,
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    const welcome = (await waitForMessage(ws)) as WsPush; // welcome
+    expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
+    expect(welcome.data).toEqual(
+      expect.objectContaining({
+        cwd: "/test/bootstrap-workspace",
+        projectName: "bootstrap-workspace",
+        bootstrapProjectId: expect.any(String),
+        bootstrapThreadId: expect.any(String),
+      }),
+    );
+
+    const snapshotResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getSnapshot);
+    expect(snapshotResponse.error).toBeUndefined();
+    const snapshot = snapshotResponse.result as {
+      projects: Array<{
+        id: string;
+        workspaceRoot: string;
+        title: string;
+        defaultModel: string | null;
+      }>;
+      threads: Array<{
+        id: string;
+        projectId: string;
+        title: string;
+        model: string;
+        branch: string | null;
+        worktreePath: string | null;
+      }>;
+    };
+    const bootstrapProjectId = (welcome.data as { bootstrapProjectId?: string }).bootstrapProjectId;
+    const bootstrapThreadId = (welcome.data as { bootstrapThreadId?: string }).bootstrapThreadId;
+    expect(bootstrapProjectId).toBeDefined();
+    expect(bootstrapThreadId).toBeDefined();
+
+    expect(snapshot.projects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: bootstrapProjectId,
+          workspaceRoot: "/test/bootstrap-workspace",
+          title: "bootstrap-workspace",
+          defaultModel: "gpt-5-codex",
+        }),
+      ]),
+    );
+    expect(snapshot.threads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: bootstrapThreadId,
+          projectId: bootstrapProjectId,
+          title: "New thread",
+          model: "gpt-5-codex",
+          branch: null,
+          worktreePath: null,
+        }),
+      ]),
+    );
+  });
+
+  it("includes bootstrap ids in welcome when cwd project and thread already exist", async () => {
+    const stateDir = makeTempDir("t3code-state-bootstrap-existing-");
+    const persistenceLayer = makeSqlitePersistenceLive(
+      path.join(stateDir, "state.sqlite"),
+    ).pipe(Layer.provide(NodeServices.layer)) as unknown as Layer.Layer<SqlClient.SqlClient, never>;
+    const cwd = "/test/bootstrap-existing";
+
+    server = await createTestServer({
+      cwd,
+      stateDir,
+      persistenceLayer,
+      autoBootstrapProjectFromCwd: true,
+    });
+    let addr = server.address();
+    let port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const firstWs = await connectWs(port);
+    connections.push(firstWs);
+    const firstWelcome = (await waitForMessage(firstWs)) as WsPush;
+    const firstBootstrapProjectId = (firstWelcome.data as { bootstrapProjectId?: string })
+      .bootstrapProjectId;
+    const firstBootstrapThreadId = (firstWelcome.data as { bootstrapThreadId?: string })
+      .bootstrapThreadId;
+    expect(firstBootstrapProjectId).toBeDefined();
+    expect(firstBootstrapThreadId).toBeDefined();
+
+    firstWs.close();
+    await closeTestServer();
+    server = null;
+
+    server = await createTestServer({
+      cwd,
+      stateDir,
+      persistenceLayer,
+      autoBootstrapProjectFromCwd: true,
+    });
+    addr = server.address();
+    port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const secondWs = await connectWs(port);
+    connections.push(secondWs);
+    const secondWelcome = (await waitForMessage(secondWs)) as WsPush;
+    expect(secondWelcome.channel).toBe(WS_CHANNELS.serverWelcome);
+    expect(secondWelcome.data).toEqual(
+      expect.objectContaining({
+        cwd,
+        projectName: "bootstrap-existing",
+        bootstrapProjectId: firstBootstrapProjectId,
+        bootstrapThreadId: firstBootstrapThreadId,
+      }),
+    );
+  });
+
   it("logs outbound websocket push events in dev mode", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {
       // Keep test output clean while verifying websocket logs.
     });
 
-    server = createTestServer({
+    server = await createTestServer({
       cwd: "/test/project",
       devUrl: "http://localhost:5173",
     });
-    await server.start();
-    const addr = server.httpServer.address();
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
     expect(port).toBeGreaterThan(0);
 
@@ -323,11 +592,12 @@ describe("WebSocket Server", () => {
   });
 
   it("responds to server.getConfig", async () => {
-    const fakeHome = makeTempDir("t3code-home-");
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
+    const stateDir = makeTempDir("t3code-state-get-config-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -340,65 +610,195 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      keybindingsConfigPath: keybindingsPath,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [],
     });
   });
 
-  it("reads keybindings from ~/.t3/keybindings.json", async () => {
-    const fakeHome = makeTempDir("t3code-home-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(configDir, "keybindings.json"),
-      JSON.stringify([
-        { key: "cmd+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
-      ]),
-      "utf8",
-    );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+  it("bootstraps default keybindings file when missing", async () => {
+    const stateDir = makeTempDir("t3code-state-bootstrap-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    expect(fs.existsSync(keybindingsPath)).toBe(false);
 
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
     connections.push(ws);
-
     await waitForMessage(ws);
 
     const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: mergeWithDefaultsForTest([
-        { key: "cmd+j", command: "terminal.toggle" },
-        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
-        { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
-      ]),
+      keybindingsConfigPath: keybindingsPath,
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [],
     });
+
+    const persistedConfig = JSON.parse(
+      fs.readFileSync(keybindingsPath, "utf8"),
+    ) as KeybindingsConfig;
+    expect(persistedConfig).toEqual(DEFAULT_KEYBINDINGS);
   });
 
-  it("warns and ignores invalid keybinding entries", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fakeHome = makeTempDir("t3code-home-invalid-entry-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
+  it("falls back to defaults and reports malformed keybindings config issues", async () => {
+    const stateDir = makeTempDir("t3code-state-malformed-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "{ not-json", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      keybindingsConfigPath: keybindingsPath,
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      issues: [
+        {
+          kind: "keybindings.malformed-config",
+          message: expect.stringContaining("expected JSON array"),
+        },
+      ],
+    });
+    expect(fs.readFileSync(keybindingsPath, "utf8")).toBe("{ not-json");
+  });
+
+  it("ignores invalid keybinding entries but keeps valid entries and reports issues", async () => {
+    const stateDir = makeTempDir("t3code-state-partial-invalid-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
     fs.writeFileSync(
-      path.join(configDir, "keybindings.json"),
+      keybindingsPath,
       JSON.stringify([
         { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+z", command: "invalid.command", when: "terminalFocus" },
+        { key: "mod+shift+d+o", command: "terminal.new" },
+        { key: "mod+x", command: "not-a-real-command" },
       ]),
       "utf8",
     );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
 
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    const result = response.result as {
+      cwd: string;
+      keybindingsConfigPath: string;
+      keybindings: ResolvedKeybindingsConfig;
+      issues: Array<{ kind: string; index?: number; message: string }>;
+    };
+    expect(result.cwd).toBe("/my/workspace");
+    expect(result.keybindingsConfigPath).toBe(keybindingsPath);
+    expect(result.issues).toEqual([
+      {
+        kind: "keybindings.invalid-entry",
+        index: 1,
+        message: expect.any(String),
+      },
+      {
+        kind: "keybindings.invalid-entry",
+        index: 2,
+        message: expect.any(String),
+      },
+    ]);
+    expect(result.keybindings).toHaveLength(DEFAULT_RESOLVED_KEYBINDINGS.length);
+    expect(result.keybindings.some((entry) => entry.command === "terminal.toggle")).toBe(true);
+    expect(result.keybindings.some((entry) => entry.command === "terminal.new")).toBe(true);
+  });
+
+  it("pushes server.configUpdated issues when keybindings file changes", async () => {
+    const stateDir = makeTempDir("t3code-state-keybindings-watch-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    fs.writeFileSync(keybindingsPath, "{ not-json", "utf8");
+    const malformedPush = await waitForPush(
+      ws,
+      WS_CHANNELS.serverConfigUpdated,
+      (push) =>
+        Array.isArray((push.data as { issues?: unknown[] }).issues) &&
+        Boolean((push.data as { issues: Array<{ kind: string }> }).issues[0]) &&
+        (push.data as { issues: Array<{ kind: string }> }).issues[0]!.kind ===
+          "keybindings.malformed-config",
+    );
+    expect(malformedPush.data).toEqual({
+      issues: [{ kind: "keybindings.malformed-config", message: expect.any(String) }],
+    });
+
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+    const successPush = await waitForPush(
+      ws,
+      WS_CHANNELS.serverConfigUpdated,
+      (push) =>
+        Array.isArray((push.data as { issues?: unknown[] }).issues) &&
+        (push.data as { issues: unknown[] }).issues.length === 0,
+    );
+    expect(successPush.data).toEqual({ issues: [] });
+  });
+
+  it("routes shell.openInEditor through the injected open service", async () => {
+    const openCalls: Array<{ cwd: string; editor: string }> = [];
+    const openService: OpenShape = {
+      openBrowser: () => Effect.void,
+      openInEditor: (input) => {
+        openCalls.push({ cwd: input.cwd, editor: input.editor });
+        return Effect.void;
+      },
+    };
+
+    server = await createTestServer({ cwd: "/my/workspace", open: openService });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.shellOpenInEditor, {
+      cwd: "/my/workspace",
+      editor: "cursor",
+    });
+    expect(response.error).toBeUndefined();
+    expect(openCalls).toEqual([{ cwd: "/my/workspace", editor: "cursor" }]);
+  });
+
+  it("reads keybindings from the configured state directory", async () => {
+    const stateDir = makeTempDir("t3code-state-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(
+      keybindingsPath,
+      JSON.stringify([
+        { key: "cmd+j", command: "terminal.toggle" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
+      ]),
+      "utf8",
+    );
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -408,106 +808,28 @@ describe("WebSocket Server", () => {
 
     const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
     expect(response.error).toBeUndefined();
+    const persistedConfig = JSON.parse(
+      fs.readFileSync(keybindingsPath, "utf8"),
+    ) as KeybindingsConfig;
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: mergeWithDefaultsForTest([{ key: "mod+j", command: "terminal.toggle" }]),
+      keybindingsConfigPath: keybindingsPath,
+      keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
-    expect(
-      warnSpy.mock.calls.some(([message]) =>
-        String(message).includes("ignoring invalid keybinding entries"),
-      ),
-    ).toBe(true);
-  });
-
-  it("warns and ignores keybindings with malformed when expressions", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fakeHome = makeTempDir("t3code-home-invalid-when-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(configDir, "keybindings.json"),
-      JSON.stringify([{ key: "mod+j", command: "terminal.toggle", when: "terminalFocus && (" }]),
-      "utf8",
-    );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
-
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
-    expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({
-      cwd: "/my/workspace",
-      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
-    });
-    expect(
-      warnSpy.mock.calls.some(([message]) =>
-        String(message).includes("ignoring invalid keybinding entries"),
-      ),
-    ).toBe(true);
-  });
-
-  it("reads keybindings once at startup and caches the resolved config", async () => {
-    const fakeHome = makeTempDir("t3code-home-cached-config-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    const keybindingsPath = path.join(configDir, "keybindings.json");
-    fs.writeFileSync(
-      keybindingsPath,
-      JSON.stringify([{ key: "cmd+j", command: "terminal.toggle" }]),
-      "utf8",
-    );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
-
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-    await waitForMessage(ws);
-
-    const firstResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
-    expect(firstResponse.error).toBeUndefined();
-    expect(firstResponse.result).toEqual({
-      cwd: "/my/workspace",
-      keybindings: mergeWithDefaultsForTest([{ key: "cmd+j", command: "terminal.toggle" }]),
-    });
-
-    fs.writeFileSync(
-      keybindingsPath,
-      JSON.stringify([{ key: "cmd+k", command: "terminal.toggle" }]),
-      "utf8",
-    );
-
-    const secondResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
-    expect(secondResponse.error).toBeUndefined();
-    expect(secondResponse.result).toEqual(firstResponse.result);
   });
 
   it("upserts keybinding rules and updates cached server config", async () => {
-    const fakeHome = makeTempDir("t3code-home-upsert-keybinding-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    const keybindingsPath = path.join(configDir, "keybindings.json");
+    const stateDir = makeTempDir("t3code-state-upsert-keybinding-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
     fs.writeFileSync(
       keybindingsPath,
       JSON.stringify([{ key: "mod+j", command: "terminal.toggle" }]),
       "utf8",
     );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
 
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -519,174 +841,266 @@ describe("WebSocket Server", () => {
       command: "script.run-tests.run",
     });
     expect(upsertResponse.error).toBeUndefined();
+    const persistedConfig = JSON.parse(
+      fs.readFileSync(keybindingsPath, "utf8"),
+    ) as KeybindingsConfig;
+    const persistedCommands = new Set(persistedConfig.map((entry) => entry.command));
+    for (const defaultRule of DEFAULT_KEYBINDINGS) {
+      expect(persistedCommands.has(defaultRule.command)).toBe(true);
+    }
+    expect(persistedCommands.has("script.run-tests.run")).toBe(true);
     expect(upsertResponse.result).toEqual({
-      keybindings: mergeWithDefaultsForTest([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+shift+r", command: "script.run-tests.run" },
-      ]),
+      keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
-
-    const persistedConfig = JSON.parse(fs.readFileSync(keybindingsPath, "utf8")) as Array<{
-      key: string;
-      command: string;
-    }>;
-    expect(persistedConfig).toEqual([
-      { key: "mod+j", command: "terminal.toggle" },
-      { key: "mod+shift+r", command: "script.run-tests.run" },
-    ]);
 
     const configResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
     expect(configResponse.error).toBeUndefined();
     expect(configResponse.result).toEqual({
       cwd: "/my/workspace",
-      keybindings: mergeWithDefaultsForTest([
-        { key: "mod+j", command: "terminal.toggle" },
-        { key: "mod+shift+r", command: "script.run-tests.run" },
-      ]),
+      keybindingsConfigPath: keybindingsPath,
+      keybindings: compileKeybindings(persistedConfig),
+      issues: [],
     });
-  });
-
-  it("warns and ignores unsupported keybindings config format", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fakeHome = makeTempDir("t3code-home-unsupported-format-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(configDir, "keybindings.json"),
-      JSON.stringify({ "terminal.toggle": "mod+j" }),
-      "utf8",
-    );
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
-
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
-    expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({
-      cwd: "/my/workspace",
-      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
-    });
-    expect(
-      warnSpy.mock.calls.some(([message]) =>
-        String(message).includes("unsupported format; expected array"),
-      ),
-    ).toBe(true);
-  });
-
-  it("warns and ignores malformed keybindings config files", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fakeHome = makeTempDir("t3code-home-invalid-");
-    const configDir = path.join(fakeHome, ".t3");
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(path.join(configDir, "keybindings.json"), "{not-json", "utf8");
-    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
-
-    server = createTestServer({ cwd: "/my/workspace" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
-    expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({
-      cwd: "/my/workspace",
-      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
-    });
-    expect(
-      warnSpy.mock.calls.some(([message]) =>
-        String(message).includes("ignoring malformed keybindings config"),
-      ),
-    ).toBe(true);
   });
 
   it("returns error for unknown methods", async () => {
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
     connections.push(ws);
 
-    // Consume welcome
+    // Consume welcome push
     await waitForMessage(ws);
 
     const response = await sendRequest(ws, "nonexistent.method");
     expect(response.error).toBeDefined();
-    expect(response.error!.message).toContain("Unknown method");
+    expect(response.error!.message).toContain("Invalid request format");
   });
 
-  it("responds to providers.listSessions with empty array", async () => {
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-
-    // Consume welcome
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.providersListSessions);
-    expect(response.error).toBeUndefined();
-    expect(response.result).toEqual([]);
-  });
-
-  it("returns unknown-session errors for checkpoint RPCs without an active provider session", async () => {
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+  it("returns error when requesting turn diff for unknown thread", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
     connections.push(ws);
     await waitForMessage(ws);
 
-    const listResponse = await sendRequest(ws, WS_METHODS.providersListCheckpoints, {
-      sessionId: "missing-session",
+    const response = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getTurnDiff, {
+      threadId: "thread-missing",
+      fromTurnCount: 1,
+      toTurnCount: 2,
     });
-    expect(listResponse.result).toBeUndefined();
-    expect(listResponse.error?.message).toContain("Unknown provider session");
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("Thread 'thread-missing' not found.");
+  });
 
-    const revertResponse = await sendRequest(ws, WS_METHODS.providersRevertToCheckpoint, {
-      sessionId: "missing-session",
-      turnCount: 0,
+  it("returns error when requesting turn diff with an inverted range", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getTurnDiff, {
+      threadId: "thread-any",
+      fromTurnCount: 2,
+      toTurnCount: 1,
     });
-    expect(revertResponse.result).toBeUndefined();
-    expect(revertResponse.error?.message).toContain("Unknown provider session");
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "fromTurnCount must be less than or equal to toTurnCount",
+    );
+  });
 
-    const diffResponse = await sendRequest(ws, WS_METHODS.providersGetCheckpointDiff, {
-      sessionId: "missing-session",
+  it("returns error when requesting full thread diff for unknown thread", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getFullThreadDiff, {
+      threadId: "thread-missing",
+      toTurnCount: 2,
+    });
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("Thread 'thread-missing' not found.");
+  });
+
+  it("returns retryable error when requested turn exceeds current checkpoint turn count", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const createdAt = new Date().toISOString();
+    const createProjectResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "project.create",
+      commandId: "cmd-diff-project-create",
+      projectId: "project-diff",
+      title: "Diff Project",
+      workspaceRoot: "/tmp/ws-diff-project",
+      defaultModel: "gpt-5-codex",
+      createdAt,
+    });
+    expect(createProjectResponse.error).toBeUndefined();
+    const createThreadResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.create",
+      commandId: "cmd-diff-thread-create",
+      threadId: "thread-diff",
+      projectId: "project-diff",
+      title: "Diff Thread",
+      model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
+      createdAt,
+    });
+    expect(createThreadResponse.error).toBeUndefined();
+
+    const response = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getTurnDiff, {
+      threadId: "thread-diff",
       fromTurnCount: 0,
       toTurnCount: 1,
     });
-    expect(diffResponse.result).toBeUndefined();
-    expect(diffResponse.error?.message).toContain("Unknown provider session");
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("exceeds current turn count");
+  });
+
+  it("keeps orchestration domain push behavior for provider runtime events", async () => {
+    const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
+    const sessionId = asProviderSessionId("sess-test");
+    const emitRuntimeEvent = (event: ProviderRuntimeEvent) => {
+      Effect.runSync(PubSub.publish(runtimeEventPubSub, event));
+    };
+    const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
+    const providerService: ProviderServiceShape = {
+      startSession: () =>
+        Effect.succeed({
+          sessionId,
+          provider: "codex",
+          status: "ready",
+          threadId: asProviderThreadId("provider-thread-1"),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      sendTurn: () =>
+        Effect.succeed({
+          threadId: asProviderThreadId("provider-thread-1"),
+          turnId: asProviderTurnId("provider-turn-1"),
+        }),
+      interruptTurn: () => unsupported(),
+      respondToRequest: () => unsupported(),
+      stopSession: () => unsupported(),
+      listSessions: () => Effect.succeed([]),
+      rollbackConversation: () => unsupported(),
+      stopAll: () => Effect.void,
+      streamEvents: Stream.fromPubSub(runtimeEventPubSub),
+    };
+    const providerLayer = Layer.succeed(ProviderService, providerService);
+
+    server = await createTestServer({
+      cwd: "/test",
+      providerLayer,
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const createdAt = new Date().toISOString();
+    const createProjectResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "project.create",
+      commandId: "cmd-ws-project-create",
+      projectId: "project-1",
+      title: "WS Project",
+      workspaceRoot: "/tmp/ws-project",
+      defaultModel: "gpt-5-codex",
+      createdAt,
+    });
+    expect(createProjectResponse.error).toBeUndefined();
+    const createThreadResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.create",
+      commandId: "cmd-ws-runtime-thread-create",
+      threadId: "thread-1",
+      projectId: "project-1",
+      title: "Thread 1",
+      model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
+      createdAt,
+    });
+    expect(createThreadResponse.error).toBeUndefined();
+
+    const startTurnResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.turn.start",
+      commandId: "cmd-ws-runtime-turn-start",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-ws-runtime-1",
+        role: "user",
+        text: "hello",
+        attachments: [],
+      },
+      assistantDeliveryMode: "streaming",
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write",
+      createdAt,
+    });
+    expect(startTurnResponse.error).toBeUndefined();
+
+    await waitForPush(ws, ORCHESTRATION_WS_CHANNELS.domainEvent, (push) => {
+      const event = push.data as { type?: string };
+      return event.type === "thread.session-set";
+    });
+
+    emitRuntimeEvent({
+      type: "message.delta",
+      eventId: asEventId("evt-ws-runtime-message-delta"),
+      provider: "codex",
+      sessionId,
+      createdAt: new Date().toISOString(),
+      turnId: asProviderTurnId("turn-1"),
+      itemId: asProviderItemId("item-1"),
+      delta: "hello from runtime",
+    });
+
+    const domainPush = await waitForPush(ws, ORCHESTRATION_WS_CHANNELS.domainEvent, (push) => {
+      const event = push.data as { type?: string; payload?: { messageId?: string; text?: string } };
+      return (
+        event.type === "thread.message-sent" && event.payload?.messageId === "assistant:item-1"
+      );
+    });
+
+    const domainEvent = domainPush.data as {
+      type: string;
+      payload: { messageId: string; text: string };
+    };
+    expect(domainEvent.type).toBe("thread.message-sent");
+    expect(domainEvent.payload.messageId).toBe("assistant:item-1");
+    expect(domainEvent.payload.text).toBe("hello from runtime");
   });
 
   it("routes terminal RPC methods and broadcasts terminal events", async () => {
     const cwd = makeTempDir("t3code-ws-terminal-cwd-");
     const terminalManager = new MockTerminalManager();
-    server = createTestServer({
+    server = await createTestServer({
       cwd: "/test",
-      terminalManager: terminalManager as unknown as TerminalManager,
+      terminalManager,
     });
-    await server.start();
-    const addr = server.httpServer.address();
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -742,7 +1156,7 @@ describe("WebSocket Server", () => {
       createdAt: new Date().toISOString(),
       data: "manual test output\n",
     };
-    terminalManager.emit("event", manualEvent);
+    terminalManager.emitEvent(manualEvent);
 
     const push = (await waitForMessage(ws)) as WsPush;
     expect(push.type).toBe("push");
@@ -752,24 +1166,22 @@ describe("WebSocket Server", () => {
 
   it("detaches terminal event listener on stop for injected manager", async () => {
     const terminalManager = new MockTerminalManager();
-    server = createTestServer({
+    server = await createTestServer({
       cwd: "/test",
-      terminalManager: terminalManager as unknown as TerminalManager,
+      terminalManager,
     });
-    await server.start();
 
-    expect(terminalManager.listenerCount("event")).toBe(1);
+    expect(terminalManager.subscriptionCount()).toBe(1);
 
-    await server.stop();
+    await closeTestServer();
     server = null;
 
-    expect(terminalManager.listenerCount("event")).toBe(0);
+    expect(terminalManager.subscriptionCount()).toBe(0);
   });
 
   it("returns validation errors for invalid terminal open params", async () => {
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -786,9 +1198,8 @@ describe("WebSocket Server", () => {
   });
 
   it("handles invalid JSON gracefully", async () => {
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -800,106 +1211,125 @@ describe("WebSocket Server", () => {
     // Send garbage
     ws.send("not json at all");
 
-    const response = (await waitForMessage(ws)) as WsResponse;
-    expect(response.error).toBeDefined();
-    expect(response.error!.message).toContain("Invalid request format");
+    let response: WebSocketResponse | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const message = asWebSocketResponse(await waitForMessage(ws));
+      if (!message) {
+        continue;
+      }
+      if (message.id === "unknown") {
+        response = message;
+        break;
+      }
+      if (message.error) {
+        response = message;
+        break;
+      }
+    }
+    expect(response).toBeDefined();
+    expect(response!.error).toBeDefined();
+    expect(response!.error!.message).toContain("Invalid request format");
   });
 
-  it("supports projects list/add/dedupe/remove", async () => {
-    const stateDir = makeTempDir("t3code-ws-projects-state-");
-    const firstProjectCwd = makeTempDir("t3code-ws-project-a-");
+  it("catches websocket message handler rejections and keeps the socket usable", async () => {
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
 
-    server = createTestServer({ stateDir, cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    const brokenOpenService: OpenShape = {
+      openBrowser: () => Effect.void,
+      openInEditor: () =>
+        Effect.sync(() => BigInt(1)).pipe(Effect.map((result) => result as unknown as void)),
+    };
+
+    try {
+      server = await createTestServer({ cwd: "/test", open: brokenOpenService });
+      const addr = server.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      ws.send(
+        JSON.stringify({
+          id: "req-broken-open",
+          body: {
+            _tag: WS_METHODS.shellOpenInEditor,
+            cwd: "/tmp",
+            editor: "cursor",
+          },
+        }),
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(unhandledRejections).toHaveLength(0);
+
+      const workspace = makeTempDir("t3code-ws-handler-still-usable-");
+      fs.writeFileSync(path.join(workspace, "file.txt"), "ok\n", "utf8");
+      const response = await sendRequest(ws, WS_METHODS.projectsSearchEntries, {
+        cwd: workspace,
+        query: "file",
+        limit: 5,
+      });
+      expect(response.error).toBeUndefined();
+      expect(response.result).toEqual(
+        expect.objectContaining({
+          entries: expect.arrayContaining([
+            expect.objectContaining({
+              path: "file.txt",
+              kind: "file",
+            }),
+          ]),
+        }),
+      );
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+  });
+
+  it("returns errors for removed projects CRUD methods", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
     connections.push(ws);
     await waitForMessage(ws);
 
-    const emptyList = await sendRequest(ws, WS_METHODS.projectsList);
-    expect(emptyList.error).toBeUndefined();
-    expect(emptyList.result).toEqual([]);
+    const listResponse = await sendRequest(ws, WS_METHODS.projectsList);
+    expect(listResponse.result).toBeUndefined();
+    expect(listResponse.error?.message).toContain("Invalid request format");
 
-    const created = await sendRequest(ws, WS_METHODS.projectsAdd, {
-      cwd: firstProjectCwd,
+    const addResponse = await sendRequest(ws, WS_METHODS.projectsAdd, {
+      cwd: "/tmp/project-a",
     });
-    expect(created.error).toBeUndefined();
-    expect((created.result as { created: boolean }).created).toBe(true);
+    expect(addResponse.result).toBeUndefined();
+    expect(addResponse.error?.message).toContain("Invalid request format");
 
-    const duplicate = await sendRequest(ws, WS_METHODS.projectsAdd, {
-      cwd: firstProjectCwd,
+    const removeResponse = await sendRequest(ws, WS_METHODS.projectsRemove, {
+      id: "project-a",
     });
-    expect(duplicate.error).toBeUndefined();
-    expect((duplicate.result as { created: boolean }).created).toBe(false);
-
-    const listed = await sendRequest(ws, WS_METHODS.projectsList);
-    expect(listed.error).toBeUndefined();
-    const listedProjects = listed.result as Array<{ id: string; cwd: string }>;
-    expect(listedProjects).toHaveLength(1);
-
-    const projectId = listedProjects[0]?.id;
-    expect(projectId).toBeTruthy();
-    if (!projectId) return;
-
-    const updatedScripts = await sendRequest(ws, WS_METHODS.projectsUpdateScripts, {
-      id: projectId,
-      scripts: [
-        {
-          id: "setup",
-          name: "Setup",
-          command: "bun install",
-          icon: "configure",
-          runOnWorktreeCreate: true,
-        },
-      ],
-    });
-    expect(updatedScripts.error).toBeUndefined();
-    const scriptPayload = (
-      updatedScripts.result as {
-        project: {
-          scripts: Array<{
-            id: string;
-            name: string;
-            command: string;
-            icon: string;
-            runOnWorktreeCreate: boolean;
-          }>;
-        };
-      }
-    ).project.scripts;
-    expect(scriptPayload).toEqual([
-      {
-        id: "setup",
-        name: "Setup",
-        command: "bun install",
-        icon: "configure",
-        runOnWorktreeCreate: true,
-      },
-    ]);
-
-    const removed = await sendRequest(ws, WS_METHODS.projectsRemove, {
-      id: projectId,
-    });
-    expect(removed.error).toBeUndefined();
-
-    const afterRemove = await sendRequest(ws, WS_METHODS.projectsList);
-    expect(afterRemove.error).toBeUndefined();
-    expect(afterRemove.result).toEqual([]);
+    expect(removeResponse.result).toBeUndefined();
+    expect(removeResponse.error?.message).toContain("Invalid request format");
   });
 
   it("supports projects.searchEntries", async () => {
     const workspace = makeTempDir("t3code-ws-workspace-entries-");
     fs.mkdirSync(path.join(workspace, "src", "components"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "src", "components", "Composer.tsx"), "export {};", "utf8");
+    fs.writeFileSync(
+      path.join(workspace, "src", "components", "Composer.tsx"),
+      "export {};",
+      "utf8",
+    );
     fs.writeFileSync(path.join(workspace, "README.md"), "# test", "utf8");
     fs.mkdirSync(path.join(workspace, ".git"), { recursive: true });
     fs.writeFileSync(path.join(workspace, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
 
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -921,69 +1351,57 @@ describe("WebSocket Server", () => {
     });
   });
 
-  it("supports git methods over websocket", async () => {
-    const repoCwd = makeTempDir("t3code-ws-git-project-");
+  it("routes git core methods over websocket", async () => {
+    const listBranches = vi.fn(() =>
+      Effect.succeed({
+        branches: [],
+        isRepo: false,
+      }),
+    );
+    const initRepo = vi.fn(() => Effect.void);
+    const pullCurrentBranch = vi.fn(() =>
+      Effect.fail(
+        new GitCommandError({
+          operation: "GitCore.test.pullCurrentBranch",
+          detail: "No upstream configured",
+          command: "git pull",
+          cwd: "/repo/path",
+        }),
+      ),
+    );
 
-    server = createTestServer({ cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({
+      cwd: "/test",
+      gitCore: {
+        listBranches,
+        initRepo,
+        pullCurrentBranch,
+      },
+    });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
     connections.push(ws);
     await waitForMessage(ws);
 
-    const beforeInit = await sendRequest(ws, WS_METHODS.gitListBranches, { cwd: repoCwd });
-    expect(beforeInit.error).toBeUndefined();
-    expect(beforeInit.result).toEqual({ branches: [], isRepo: false });
+    const listResponse = await sendRequest(ws, WS_METHODS.gitListBranches, { cwd: "/repo/path" });
+    expect(listResponse.error).toBeUndefined();
+    expect(listResponse.result).toEqual({ branches: [], isRepo: false });
+    expect(listBranches).toHaveBeenCalledWith({ cwd: "/repo/path" });
 
-    const initResponse = await sendRequest(ws, WS_METHODS.gitInit, { cwd: repoCwd });
+    const initResponse = await sendRequest(ws, WS_METHODS.gitInit, { cwd: "/repo/path" });
     expect(initResponse.error).toBeUndefined();
+    expect(initRepo).toHaveBeenCalledWith({ cwd: "/repo/path" });
 
-    const afterInit = await sendRequest(ws, WS_METHODS.gitListBranches, {
-      cwd: repoCwd,
-    });
-    expect(afterInit.error).toBeUndefined();
-    expect((afterInit.result as { isRepo: boolean }).isRepo).toBe(true);
-
-    const pullResponse = await sendRequest(ws, WS_METHODS.gitPull, { cwd: repoCwd });
+    const pullResponse = await sendRequest(ws, WS_METHODS.gitPull, { cwd: "/repo/path" });
     expect(pullResponse.result).toBeUndefined();
-    expect(pullResponse.error?.message).toBeDefined();
-    expect(pullResponse.error?.message).not.toContain("Unknown method");
+    expect(pullResponse.error?.message).toContain("No upstream configured");
+    expect(pullCurrentBranch).toHaveBeenCalledWith("/repo/path");
   });
 
-  it("responds to git.status via the git manager", async () => {
-    const gitManager = {
-      status: vi.fn().mockResolvedValue({
-        branch: "feature/test",
-        hasWorkingTreeChanges: true,
-        workingTree: {
-          files: [{ path: "src/index.ts", insertions: 7, deletions: 2 }],
-          insertions: 7,
-          deletions: 2,
-        },
-        hasUpstream: false,
-        aheadCount: 0,
-        behindCount: 0,
-        pr: null,
-      }),
-      runStackedAction: vi.fn(),
-    };
-
-    server = createTestServer({ cwd: "/test", gitManager });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.gitStatus, {
-      cwd: "/test",
-    });
-    expect(response.error).toBeUndefined();
-    expect(response.result).toEqual({
+  it("supports git.status over websocket", async () => {
+    const statusResult = {
       branch: "feature/test",
       hasWorkingTreeChanges: true,
       workingTree: {
@@ -995,19 +1413,44 @@ describe("WebSocket Server", () => {
       aheadCount: 0,
       behindCount: 0,
       pr: null,
+    };
+
+    const status = vi.fn(() => Effect.succeed(statusResult));
+    const runStackedAction = vi.fn(() => Effect.void as any);
+    const gitManager: GitManagerShape = { status, runStackedAction };
+
+    server = await createTestServer({ cwd: "/test", gitManager });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.gitStatus, {
+      cwd: "/test",
     });
-    expect(gitManager.status).toHaveBeenCalledWith({ cwd: "/test" });
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual(statusResult);
+    expect(status).toHaveBeenCalledWith({ cwd: "/test" });
   });
 
   it("returns errors from git.runStackedAction", async () => {
-    const gitManager = {
-      status: vi.fn(),
-      runStackedAction: vi.fn().mockRejectedValue(new Error("Cannot push from detached HEAD.")),
+    const runStackedAction = vi.fn(() =>
+      Effect.fail(
+        new GitManagerError({
+          operation: "GitManager.test.runStackedAction",
+          detail: "Cannot push from detached HEAD.",
+        }),
+      ),
+    );
+    const gitManager: GitManagerShape = {
+      status: vi.fn(() => Effect.void as any),
+      runStackedAction,
     };
 
-    server = createTestServer({ cwd: "/test", gitManager });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test", gitManager });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     const ws = await connectWs(port);
@@ -1020,66 +1463,15 @@ describe("WebSocket Server", () => {
     });
     expect(response.result).toBeUndefined();
     expect(response.error?.message).toContain("detached HEAD");
-    expect(gitManager.runStackedAction).toHaveBeenCalledWith({
+    expect(runStackedAction).toHaveBeenCalledWith({
       cwd: "/test",
       action: "commit_push",
     });
   });
 
-  it("prunes missing projects on startup", async () => {
-    const stateDir = makeTempDir("t3code-ws-prune-state-");
-    const existing = makeTempDir("t3code-ws-existing-project-");
-    const missing = path.join(stateDir, "definitely-missing");
-    const now = new Date().toISOString();
-    const projectsFile = path.join(stateDir, "projects.json");
-
-    fs.writeFileSync(
-      projectsFile,
-      JSON.stringify(
-        {
-          version: 1,
-          projects: [
-            {
-              id: "project-existing",
-              cwd: existing,
-              name: "existing",
-              createdAt: now,
-              updatedAt: now,
-            },
-            {
-              id: "project-missing",
-              cwd: missing,
-              name: "missing",
-              createdAt: now,
-              updatedAt: now,
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-    );
-
-    server = createTestServer({ stateDir, cwd: "/test" });
-    await server.start();
-    const addr = server.httpServer.address();
-    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-
-    const ws = await connectWs(port);
-    connections.push(ws);
-    await waitForMessage(ws);
-
-    const response = await sendRequest(ws, WS_METHODS.projectsList);
-    expect(response.error).toBeUndefined();
-    const listed = response.result as Array<{ id: string }>;
-    expect(listed).toHaveLength(1);
-    expect(listed[0]?.id).toBe("project-existing");
-  });
-
   it("rejects websocket connections without a valid auth token", async () => {
-    server = createTestServer({ cwd: "/test", authToken: "secret-token" });
-    await server.start();
-    const addr = server.httpServer.address();
+    server = await createTestServer({ cwd: "/test", authToken: "secret-token" });
+    const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
     await expect(connectWs(port)).rejects.toThrow("WebSocket connection failed");

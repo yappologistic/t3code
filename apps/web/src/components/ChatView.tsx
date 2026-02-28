@@ -1,66 +1,50 @@
 import {
+  type ApprovalRequestId,
+  DEFAULT_MODEL,
+  DEFAULT_REASONING,
   EDITORS,
   type EditorId,
-  type NativeApi,
+  type KeybindingCommand,
+  type MessageId,
+  MODEL_OPTIONS,
+  type ProjectId,
   type ProjectEntry,
   type ProjectScript,
   ModelSlug,
-  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  REASONING_OPTIONS,
+  type ReasoningEffort,
   type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
-  type ProviderSendTurnAttachmentInput,
+  type ThreadId,
+  type TurnId,
+  resolveModelSlug,
 } from "@t3tools/contracts";
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  memo,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
-import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
-import { useAppSettings } from "../appSettings";
-import { buildBootstrapInput } from "../historyBootstrap";
 import {
   type ComposerTriggerKind,
   detectComposerTrigger,
   replaceTextRange,
 } from "../composer-logic";
 import {
-  DEFAULT_MODEL,
-  DEFAULT_REASONING,
-  MODEL_OPTIONS,
-  REASONING_OPTIONS,
-  ReasoningEffort,
-  resolveModelSlug,
-} from "../model-logic";
-import {
   derivePendingApprovals,
   derivePhase,
-  deriveTurnDiffFilesFromUnifiedDiff,
   deriveTimelineEntries,
-  type TurnDiffSummary,
   type PendingApproval,
   deriveWorkLogEntries,
-  formatDuration,
+  hasToolActivityForTurn,
+  isLatestTurnSettled,
   formatElapsed,
   formatTimestamp,
 } from "../session-logic";
@@ -70,8 +54,9 @@ import { truncateTitle } from "../truncateTitle";
 import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_THREAD_TERMINAL_COUNT,
+  type ChatMessage,
   type ChatImageAttachment,
-  type TurnDiffFileChange,
+  type TurnDiffSummary,
 } from "../types";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
@@ -85,7 +70,6 @@ import {
 } from "../keybindings";
 import ChatMarkdown from "./ChatMarkdown";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { useNativeApi } from "../hooks/useNativeApi";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   BotIcon,
@@ -100,6 +84,8 @@ import {
   LockOpenIcon,
   Undo2Icon,
   XIcon,
+  CopyIcon,
+  CheckIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
@@ -109,7 +95,9 @@ import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "./ui/menu"
 import { CursorIcon, Icon } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { Badge } from "./ui/badge";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Command, CommandInput, CommandItem, CommandList } from "./ui/command";
+import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {
   commandForProjectScript,
@@ -119,6 +107,10 @@ import {
   setupProjectScript,
 } from "~/projectScripts";
 import { Toggle } from "./ui/toggle";
+import { SidebarTrigger } from "./ui/sidebar";
+import { newCommandId, newMessageId } from "~/lib/utils";
+import { readNativeApi } from "~/nativeApi";
+import { useAppSettings } from "../appSettings";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -168,14 +160,6 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   return "text-muted-foreground/40";
 }
 
-type SessionContinuityState = "resumed" | "new" | "fallback_new";
-
-interface EnsuredSessionInfo {
-  sessionId: string;
-  resolvedThreadId: string | null;
-  continuityState: SessionContinuityState;
-}
-
 interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"> {
   previewUrl: string;
   file: File;
@@ -184,33 +168,6 @@ interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"
 interface ExpandedImagePreview {
   src: string;
   name: string;
-}
-
-type TurnCheckpointFilesState =
-  | {
-      status: "pending" | "loading";
-      files: TurnDiffFileChange[];
-      errorMessage?: undefined;
-    }
-  | {
-      status: "error";
-      files: TurnDiffFileChange[];
-      errorMessage: string;
-    }
-  | {
-      status: "ready";
-      files: TurnDiffFileChange[];
-      errorMessage?: undefined;
-    };
-
-function checkpointErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim().length > 0) {
-    return error;
-  }
-  return "Checkpoint diff is unavailable.";
 }
 
 type ComposerCommandItem =
@@ -235,6 +192,8 @@ type ComposerCommandItem =
       label: string;
       description: string;
     };
+
+type SendPhase = "idle" | "preparing-worktree" | "sending-turn";
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -332,7 +291,7 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   triggerKind: ComposerTriggerKind | null;
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
-  commandInputRef: RefObject<HTMLInputElement | null>;
+  commandInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
     <Command
@@ -372,32 +331,33 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 });
 
 interface ChatViewProps {
-  threadId: string;
+  threadId: ThreadId;
 }
 
 export default function ChatView({ threadId }: ChatViewProps) {
   const { state, dispatch } = useStore();
+  const { settings } = useAppSettings();
   const navigate = useNavigate();
-  const rawSearch = useSearch({ strict: false });
-  const api = useNativeApi();
+  const rawSearch = useSearch({
+    strict: false,
+    select: (params) => parseDiffRouteSearch(params),
+  });
   const { resolvedTheme } = useTheme();
-  const { settings: appSettings } = useAppSettings();
   const queryClient = useQueryClient();
-  const createWorktreeMutation = useMutation(
-    gitCreateWorktreeMutationOptions({ api, queryClient }),
-  );
+  const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ queryClient }));
   const [prompt, setPrompt] = useState("");
   const promptRef = useRef(prompt);
   const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([]);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-  const [isSending, setIsSending] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
+  const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [selectedEffort, setSelectedEffort] = useState(DEFAULT_REASONING);
   const [envMode, setEnvMode] = useState<"local" | "worktree">("local");
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
-  const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>([]);
+  const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
@@ -411,10 +371,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerCommandInputRef = useRef<HTMLInputElement>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
+  const sendInFlightRef = useRef(false);
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
-  const checkpointHydrationSessionRequestRef = useRef(new Set<string>());
-  const checkpointTurnCountSyncFingerprintRef = useRef(new Map<string, string>());
 
   const activeThread = state.threads.find((t) => t.id === threadId);
   const diffSearch = useMemo(
@@ -423,117 +382,79 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const diffOpen = diffSearch.diff === "1";
   const activeThreadId = activeThread?.id ?? null;
-  const activeSessionId = activeThread?.session?.sessionId ?? null;
-  const activeThreadRuntimeId =
-    activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
+  const activeLatestTurn = activeThread?.latestTurn ?? null;
+  const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
+
+  useEffect(() => {
+    if (!activeThread?.id) return;
+    if (!latestTurnSettled) return;
+    if (!activeLatestTurn?.completedAt) return;
+    const turnCompletedAt = Date.parse(activeLatestTurn.completedAt);
+    if (Number.isNaN(turnCompletedAt)) return;
+    const lastVisitedAt = activeThread.lastVisitedAt ? Date.parse(activeThread.lastVisitedAt) : NaN;
+    if (!Number.isNaN(lastVisitedAt) && lastVisitedAt >= turnCompletedAt) return;
+
+    dispatch({
+      type: "MARK_THREAD_VISITED",
+      threadId: activeThread.id,
+    });
+  }, [
+    activeThread?.id,
+    activeThread?.lastVisitedAt,
+    activeLatestTurn?.completedAt,
+    latestTurnSettled,
+    dispatch,
+  ]);
+
   const selectedModel = resolveModelSlug(
     activeThread?.model ?? activeProject?.model ?? DEFAULT_MODEL,
   );
   const phase = derivePhase(activeThread?.session ?? null);
-  const isWorking = phase === "running" || isSending || isConnecting || isRevertingCheckpoint;
+  const isSendBusy = sendPhase !== "idle";
+  const isPreparingWorktree = sendPhase === "preparing-worktree";
+  const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
   const nowIso = new Date(nowTick).toISOString();
+  const threadActivities = activeThread?.activities ?? [];
   const workLogEntries = useMemo(
-    () => deriveWorkLogEntries(activeThread?.events ?? [], undefined),
-    [activeThread?.events],
+    () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
+    [activeLatestTurn?.turnId, threadActivities],
   );
-  const latestTurnWorkEntries = useMemo(
-    () => deriveWorkLogEntries(activeThread?.events ?? [], activeThread?.latestTurnId),
-    [activeThread?.events, activeThread?.latestTurnId],
-  );
+  const latestTurnHasToolActivity = useMemo(() => {
+    return hasToolActivityForTurn(threadActivities, activeLatestTurn?.turnId);
+  }, [activeLatestTurn?.turnId, threadActivities]);
   const pendingApprovals = useMemo(
-    () => derivePendingApprovals(activeThread?.events ?? []),
-    [activeThread?.events],
+    () => derivePendingApprovals(threadActivities),
+    [threadActivities],
   );
-  const assistantCompletionByItemId = useMemo(() => {
-    const map = new Map<string, string>();
-    const ordered = [...(activeThread?.events ?? [])].toReversed();
-    for (const event of ordered) {
-      if (event.method !== "item/completed") continue;
-      if (!event.itemId) continue;
-      map.set(event.itemId, event.createdAt);
+  const timelineMessages = useMemo(() => {
+    const serverMessages = activeThread?.messages ?? [];
+    if (optimisticUserMessages.length === 0) {
+      return serverMessages;
     }
-    return map;
-  }, [activeThread?.events]);
+    const serverIds = new Set(serverMessages.map((message) => message.id));
+    const pendingMessages = optimisticUserMessages.filter((message) => !serverIds.has(message.id));
+    if (pendingMessages.length === 0) {
+      return serverMessages;
+    }
+    return [...serverMessages, ...pendingMessages];
+  }, [activeThread?.messages, optimisticUserMessages]);
   const timelineEntries = useMemo(
-    () => deriveTimelineEntries(activeThread?.messages ?? [], workLogEntries),
-    [activeThread?.messages, workLogEntries],
+    () => deriveTimelineEntries(timelineMessages, workLogEntries),
+    [timelineMessages, workLogEntries],
   );
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
-    const byMessageId = new Map<string, TurnDiffSummary>();
+    const byMessageId = new Map<MessageId, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
       if (!summary.assistantMessageId) continue;
       byMessageId.set(summary.assistantMessageId, summary);
     }
     return byMessageId;
   }, [turnDiffSummaries]);
-  const checkpointDiffInputsByTurn = useMemo(
-    () =>
-      turnDiffSummaries
-        .filter((summary) => summary.assistantMessageId)
-        .map((summary) => {
-          const checkpointTurnCount =
-            summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
-          return {
-            turnId: summary.turnId,
-            checkpointTurnCount:
-              typeof checkpointTurnCount === "number" ? checkpointTurnCount : null,
-          };
-        }),
-    [inferredCheckpointTurnCountByTurnId, turnDiffSummaries],
-  );
-  const checkpointDiffQueriesByTurn = useQueries({
-    queries: checkpointDiffInputsByTurn.map((input) =>
-      checkpointDiffQueryOptions(api, {
-        sessionId: activeSessionId,
-        threadRuntimeId: activeThreadRuntimeId,
-        fromTurnCount:
-          typeof input.checkpointTurnCount === "number"
-            ? Math.max(0, input.checkpointTurnCount - 1)
-            : null,
-        toTurnCount: input.checkpointTurnCount,
-        cacheScope: `turn:${input.turnId}`,
-      }),
-    ),
-  });
-  const turnCheckpointFilesByTurnId = useMemo(() => {
-    const byTurnId = new Map<string, TurnCheckpointFilesState>();
-    for (let index = 0; index < checkpointDiffInputsByTurn.length; index += 1) {
-      const input = checkpointDiffInputsByTurn[index];
-      const query = checkpointDiffQueriesByTurn[index];
-      if (!input || !query) continue;
-
-      if (!activeSessionId || typeof input.checkpointTurnCount !== "number") {
-        byTurnId.set(input.turnId, { status: "pending", files: [] });
-        continue;
-      }
-
-      const diff = query.data?.diff;
-      if (typeof diff === "string") {
-        byTurnId.set(input.turnId, {
-          status: "ready",
-          files: deriveTurnDiffFilesFromUnifiedDiff(diff),
-        });
-        continue;
-      }
-
-      if (query.isError) {
-        byTurnId.set(input.turnId, {
-          status: "error",
-          files: [],
-          errorMessage: checkpointErrorMessage(query.error),
-        });
-        continue;
-      }
-
-      byTurnId.set(input.turnId, { status: "loading", files: [] });
-    }
-    return byTurnId;
-  }, [activeSessionId, checkpointDiffInputsByTurn, checkpointDiffQueriesByTurn]);
   const revertTurnCountByUserMessageId = useMemo(() => {
-    const byUserMessageId = new Map<string, number>();
+    const byUserMessageId = new Map<MessageId, number>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
       const entry = timelineEntries[index];
       if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
@@ -565,69 +486,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return byUserMessageId;
   }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
 
-  useEffect(() => {
-    if (!activeThreadId || turnDiffSummaries.length === 0) {
-      return;
-    }
-
-    const inferredMissingTurnCounts = turnDiffSummaries.reduce<Record<string, number>>(
-      (acc, summary) => {
-        if (typeof summary.checkpointTurnCount === "number") {
-          return acc;
-        }
-        const inferredTurnCount = inferredCheckpointTurnCountByTurnId[summary.turnId];
-        if (typeof inferredTurnCount !== "number") {
-          return acc;
-        }
-        acc[summary.turnId] = inferredTurnCount;
-        return acc;
-      },
-      {},
-    );
-    if (Object.keys(inferredMissingTurnCounts).length === 0) {
-      return;
-    }
-
-    dispatch({
-      type: "SET_THREAD_TURN_CHECKPOINT_COUNTS",
-      threadId: activeThreadId,
-      checkpointTurnCountByTurnId: inferredMissingTurnCounts,
-    });
-  }, [activeThreadId, dispatch, inferredCheckpointTurnCountByTurnId, turnDiffSummaries]);
-
   const completionSummary = useMemo(() => {
-    if (!activeThread?.latestTurnStartedAt) return null;
-    if (!activeThread.latestTurnCompletedAt) return null;
-    if (!latestTurnWorkEntries.some((entry) => entry.tone === "tool")) {
-      return null;
-    }
+    if (!latestTurnSettled) return null;
+    if (!activeLatestTurn?.startedAt) return null;
+    if (!activeLatestTurn.completedAt) return null;
+    if (!latestTurnHasToolActivity) return null;
 
-    if (
-      typeof activeThread.latestTurnDurationMs === "number" &&
-      Number.isFinite(activeThread.latestTurnDurationMs) &&
-      activeThread.latestTurnDurationMs >= 0
-    ) {
-      return `Worked for ${formatDuration(activeThread.latestTurnDurationMs)}`;
-    }
-
-    const elapsed = formatElapsed(
-      activeThread.latestTurnStartedAt,
-      activeThread.latestTurnCompletedAt,
-    );
+    const elapsed = formatElapsed(activeLatestTurn.startedAt, activeLatestTurn.completedAt);
     return elapsed ? `Worked for ${elapsed}` : null;
   }, [
-    activeThread?.latestTurnStartedAt,
-    activeThread?.latestTurnCompletedAt,
-    activeThread?.latestTurnDurationMs,
-    latestTurnWorkEntries,
+    activeLatestTurn?.completedAt,
+    activeLatestTurn?.startedAt,
+    latestTurnHasToolActivity,
+    latestTurnSettled,
   ]);
   const completionDividerBeforeEntryId = useMemo(() => {
-    if (!activeThread?.latestTurnStartedAt) return null;
-    if (!activeThread.latestTurnCompletedAt) return null;
+    if (!latestTurnSettled) return null;
+    if (!activeLatestTurn?.startedAt) return null;
+    if (!activeLatestTurn.completedAt) return null;
     if (!completionSummary) return null;
 
-    const turnStartedAt = Date.parse(activeThread.latestTurnStartedAt);
-    const turnCompletedAt = Date.parse(activeThread.latestTurnCompletedAt);
+    const turnStartedAt = Date.parse(activeLatestTurn.startedAt);
+    const turnCompletedAt = Date.parse(activeLatestTurn.completedAt);
     if (Number.isNaN(turnStartedAt)) return null;
     if (Number.isNaN(turnCompletedAt)) return null;
 
@@ -645,16 +525,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return inRangeMatch ?? fallbackMatch;
   }, [
-    activeThread?.latestTurnCompletedAt,
-    activeThread?.latestTurnStartedAt,
+    activeLatestTurn?.completedAt,
+    activeLatestTurn?.startedAt,
     completionSummary,
+    latestTurnSettled,
     timelineEntries,
   ]);
-  const runtimeApprovalPolicy = state.runtimeMode === "full-access" ? "never" : "on-request";
-  const runtimeSandboxMode =
-    state.runtimeMode === "full-access" ? "danger-full-access" : "workspace-write";
-  const codexBinaryPath = appSettings.codexBinaryPath.trim();
-  const codexHomePath = appSettings.codexHomePath.trim();
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const composerTrigger = useMemo(
     () => detectComposerTrigger(prompt, composerCursor),
@@ -669,14 +545,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (debouncerState) => ({ isPending: debouncerState.isPending }),
   );
   const effectivePathQuery = pathTriggerQuery.length > 0 ? debouncedPathQuery : "";
-  const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
+  const branchesQuery = useQuery(gitBranchesQueryOptions(gitCwd));
   const keybindingsQuery = useQuery({
-    ...serverConfigQueryOptions(api),
+    ...serverConfigQueryOptions(),
     select: (config) => config.keybindings,
   });
   const workspaceEntriesQuery = useQuery(
     projectSearchEntriesQueryOptions({
-      api,
       cwd: gitCwd,
       query: effectivePathQuery,
       enabled: isPathTrigger,
@@ -755,6 +630,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "terminal.close"),
     [keybindings],
   );
+  const diffPanelShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "diff.toggle"),
+    [keybindings],
+  );
+  const onToggleDiff = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId },
+      replace: true,
+      search: (previous) => {
+        const rest = stripDiffSearchParams(previous);
+        return diffOpen ? rest : { ...rest, diff: "1" };
+      },
+    });
+  }, [diffOpen, navigate, threadId]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -822,6 +712,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const closeTerminal = useCallback(
     (terminalId: string) => {
+      const api = readNativeApi();
       if (!activeThreadId || !api) return;
       const isFinalTerminal = (activeThread?.terminalIds.length ?? 0) <= 1;
       const fallbackExitWrite = () =>
@@ -847,7 +738,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       });
       setTerminalFocusRequestId((value) => value + 1);
     },
-    [activeThread?.terminalIds.length, activeThreadId, api, dispatch],
+    [activeThread?.terminalIds.length, activeThreadId, dispatch],
   );
   const runProjectScript = useCallback(
     async (
@@ -860,6 +751,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         rememberAsLastInvoked?: boolean;
       },
     ) => {
+      const api = readNativeApi();
       if (!api || !activeThreadId || !activeProject || !activeThread) return;
       if (options?.rememberAsLastInvoked !== false) {
         setLastInvokedScriptByProjectId((current) => {
@@ -932,73 +824,38 @@ export default function ChatView({ threadId }: ChatViewProps) {
         });
       }
     },
-    [activeProject, activeThread, activeThreadId, api, dispatch, gitCwd],
+    [activeProject, activeThread, activeThreadId, dispatch, gitCwd],
   );
   const persistProjectScripts = useCallback(
     async (input: {
-      projectId: string;
+      projectId: ProjectId;
       projectCwd: string;
       previousScripts: ProjectScript[];
       nextScripts: ProjectScript[];
       keybinding?: string | null;
-      keybindingCommand: string;
+      keybindingCommand: KeybindingCommand;
     }) => {
-      dispatch({
-        type: "SET_PROJECT_SCRIPTS",
+      const api = readNativeApi();
+      if (!api) return;
+
+      await api.orchestration.dispatchCommand({
+        type: "project.meta.update",
+        commandId: newCommandId(),
         projectId: input.projectId,
         scripts: input.nextScripts,
       });
 
-      if (!isElectron || !api) return;
+      const keybindingRule = decodeProjectScriptKeybindingRule({
+        keybinding: input.keybinding,
+        command: input.keybindingCommand,
+      });
 
-      let scriptsPersisted = false;
-      try {
-        const updated = await api.projects.updateScripts({
-          id: input.projectId,
-          scripts: input.nextScripts,
-        });
-        scriptsPersisted = true;
-
-        if (input.keybinding) {
-          const keybindingUpdate = await api.server.upsertKeybinding({
-            key: input.keybinding,
-            command: input.keybindingCommand,
-          });
-          queryClient.setQueryData(
-            serverQueryKeys.config(),
-            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
-              current
-                ? { ...current, keybindings: keybindingUpdate.keybindings }
-                : {
-                    cwd: input.projectCwd,
-                    keybindings: keybindingUpdate.keybindings,
-                  },
-          );
-        }
-
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: updated.project.id,
-          scripts: updated.project.scripts,
-        });
-      } catch (error) {
-        if (scriptsPersisted) {
-          await api.projects
-            .updateScripts({
-              id: input.projectId,
-              scripts: input.previousScripts,
-            })
-            .catch(() => undefined);
-        }
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: input.projectId,
-          scripts: input.previousScripts,
-        });
-        throw error;
+      if (isElectron && keybindingRule) {
+        await api.server.upsertKeybinding(keybindingRule);
+        await queryClient.invalidateQueries({ queryKey: serverQueryKeys.all });
       }
     },
-    [api, dispatch, queryClient],
+    [queryClient],
   );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput) => {
@@ -1073,19 +930,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (mode === state.runtimeMode) return;
     dispatch({ type: "SET_RUNTIME_MODE", mode });
     scheduleComposerFocus();
+    const api = readNativeApi();
     if (!api) return;
 
-    const sessionIds = state.threads
-      .map((t) => t.session)
-      .filter((s): s is NonNullable<typeof s> => s !== null && s.status !== "closed")
-      .map((s) => s.sessionId);
+    const runningThreadIds = state.threads
+      .filter((thread) => thread.session !== null && thread.session.status !== "closed")
+      .map((thread) => thread.id);
 
-    if (sessionIds.length === 0) return;
+    if (runningThreadIds.length === 0) return;
 
     setIsSwitchingRuntimeMode(true);
     try {
       await Promise.all(
-        sessionIds.map((id) => api.providers.stopSession({ sessionId: id }).catch(() => undefined)),
+        runningThreadIds.map((threadId) =>
+          api.orchestration
+            .dispatchCommand({
+              type: "thread.session.stop",
+              commandId: newCommandId(),
+              threadId,
+              createdAt: new Date().toISOString(),
+            })
+            .catch(() => undefined),
+        ),
       );
     } finally {
       setIsSwitchingRuntimeMode(false);
@@ -1108,7 +974,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [lastInvokedScriptByProjectId]);
 
   // Auto-scroll on new messages
-  const messageCount = activeThread?.messages.length ?? 0;
+  const messageCount = timelineMessages.length;
   const workLogCount = workLogEntries.length;
   const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scrollContainer = messagesScrollRef.current;
@@ -1168,13 +1034,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [composerImages]);
 
   useEffect(() => {
+    if (!activeThread?.id) {
+      setOptimisticUserMessages([]);
+      return;
+    }
+    if (activeThread.messages.length === 0) {
+      return;
+    }
+    const serverIds = new Set(activeThread.messages.map((message) => message.id));
+    setOptimisticUserMessages((existing) => {
+      const next = existing.filter((message) => !serverIds.has(message.id));
+      return next.length === existing.length ? existing : next;
+    });
+  }, [activeThread?.id, activeThread?.messages]);
+
+  useEffect(() => {
     setComposerImages((existing) => {
       revokePreviewUrls(existing);
       return [];
     });
+    setOptimisticUserMessages([]);
     setPrompt("");
     promptRef.current = "";
-    setIsSending(false);
+    setSendPhase("idle");
     setComposerCursor(0);
     setComposerHighlightedItemId(null);
     dragDepthRef.current = 0;
@@ -1311,6 +1193,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "diff.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleDiff();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -1332,11 +1221,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runProjectScript,
     splitTerminal,
     keybindings,
+    onToggleDiff,
     toggleTerminalVisibility,
   ]);
 
   const setThreadError = useCallback(
-    (threadId: string | null, error: string | null) => {
+    (threadId: ThreadId | null, error: string | null) => {
       if (!threadId) return;
       dispatch({
         type: "SET_ERROR",
@@ -1392,7 +1282,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     });
   };
 
-  const onComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const onComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData.files);
     if (files.length === 0) {
       return;
@@ -1405,7 +1295,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     addComposerImages(imageFiles);
   };
 
-  const onComposerDragEnter = (event: DragEvent<HTMLDivElement>) => {
+  const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {
       return;
     }
@@ -1414,7 +1304,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setIsDragOverComposer(true);
   };
 
-  const onComposerDragOver = (event: DragEvent<HTMLDivElement>) => {
+  const onComposerDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {
       return;
     }
@@ -1423,7 +1313,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setIsDragOverComposer(true);
   };
 
-  const onComposerDragLeave = (event: DragEvent<HTMLDivElement>) => {
+  const onComposerDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {
       return;
     }
@@ -1438,7 +1328,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
   };
 
-  const onComposerDrop = (event: DragEvent<HTMLDivElement>) => {
+  const onComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {
       return;
     }
@@ -1450,177 +1340,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     focusComposer();
   };
 
-  const syncCheckpointTurnCounts = useCallback(
-    async (input: {
-      threadId: string;
-      sessionId: string;
-      threadRuntimeId: string | null;
-    }): Promise<void> => {
-      if (!api || turnDiffSummaries.length === 0) {
-        return;
-      }
-
-      const turnIds = turnDiffSummaries.map((summary) => summary.turnId);
-      if (turnIds.length === 0) {
-        return;
-      }
-
-      const syncKey = `${input.threadId}:${input.sessionId}:${input.threadRuntimeId ?? "none"}`;
-      const turnFingerprint = turnIds.join(",");
-      if (checkpointTurnCountSyncFingerprintRef.current.get(syncKey) === turnFingerprint) {
-        return;
-      }
-      checkpointTurnCountSyncFingerprintRef.current.set(syncKey, turnFingerprint);
-
-      try {
-        const result = await api.providers.listCheckpoints({
-          sessionId: input.sessionId,
-        });
-        const turnIdSet = new Set(turnIds);
-        const checkpointTurnCountByTurnId = Object.fromEntries(
-          result.checkpoints
-            .filter((checkpoint) => checkpoint.turnCount > 0 && turnIdSet.has(checkpoint.id))
-            .map((checkpoint) => [checkpoint.id, checkpoint.turnCount] as const),
-        );
-        if (Object.keys(checkpointTurnCountByTurnId).length === 0) {
-          return;
-        }
-        dispatch({
-          type: "SET_THREAD_TURN_CHECKPOINT_COUNTS",
-          threadId: input.threadId,
-          checkpointTurnCountByTurnId,
-        });
-      } catch {
-        checkpointTurnCountSyncFingerprintRef.current.delete(syncKey);
-      }
-    },
-    [api, dispatch, turnDiffSummaries],
-  );
-
-  const ensureSession = useCallback(
-    async (cwdOverride?: string): Promise<EnsuredSessionInfo | null> => {
-      if (!api || !activeThread || !activeProject) return null;
-      if (activeThread.session && activeThread.session.status !== "closed") {
-        const sessionThreadId = activeThread.session.threadId ?? null;
-        const continuityState: SessionContinuityState =
-          activeThread.codexThreadId === null
-            ? "new"
-            : sessionThreadId === activeThread.codexThreadId
-              ? "resumed"
-              : "fallback_new";
-        await syncCheckpointTurnCounts({
-          threadId: activeThread.id,
-          sessionId: activeThread.session.sessionId,
-          threadRuntimeId: sessionThreadId,
-        });
-        return {
-          sessionId: activeThread.session.sessionId,
-          resolvedThreadId: sessionThreadId,
-          continuityState,
-        } satisfies EnsuredSessionInfo;
-      }
-
-      const priorCodexThreadId = activeThread.codexThreadId;
-      setIsConnecting(true);
-      try {
-        const session = await api.providers.startSession({
-          provider: "codex",
-          cwd: cwdOverride ?? activeThread.worktreePath ?? activeProject.cwd,
-          model: selectedModel || undefined,
-          resumeThreadId: priorCodexThreadId ?? undefined,
-          ...(codexBinaryPath.length > 0 ? { codexBinaryPath } : {}),
-          ...(codexHomePath.length > 0 ? { codexHomePath } : {}),
-          approvalPolicy: runtimeApprovalPolicy,
-          sandboxMode: runtimeSandboxMode,
-        });
-        dispatch({
-          type: "UPDATE_SESSION",
-          threadId: activeThread.id,
-          session,
-        });
-        const resolvedThreadId = session.threadId ?? null;
-        const continuityState: SessionContinuityState =
-          priorCodexThreadId === null
-            ? "new"
-            : resolvedThreadId === priorCodexThreadId
-              ? "resumed"
-              : "fallback_new";
-        await syncCheckpointTurnCounts({
-          threadId: activeThread.id,
-          sessionId: session.sessionId,
-          threadRuntimeId: resolvedThreadId,
-        });
-        return {
-          sessionId: session.sessionId,
-          resolvedThreadId,
-          continuityState,
-        };
-      } catch (err) {
-        dispatch({
-          type: "SET_ERROR",
-          threadId: activeThread.id,
-          error: err instanceof Error ? err.message : "Failed to connect.",
-        });
-        return null;
-      } finally {
-        setIsConnecting(false);
-      }
-    },
-    [
-      activeProject,
-      activeThread,
-      api,
-      codexBinaryPath,
-      codexHomePath,
-      dispatch,
-      runtimeApprovalPolicy,
-      runtimeSandboxMode,
-      selectedModel,
-      syncCheckpointTurnCounts,
-    ],
-  );
-
-  useEffect(() => {
-    if (!api || !activeThreadId || activeSessionId) return;
-    if (phase === "running" || isSending || isConnecting || isRevertingCheckpoint) return;
-    const hasThreadIdentity = Boolean(activeThreadRuntimeId);
-    if (!hasThreadIdentity) return;
-    if (turnDiffSummaries.length === 0) return;
-
-    const requestKey = `${activeThreadId}:${activeThreadRuntimeId ?? "none"}`;
-    if (checkpointHydrationSessionRequestRef.current.has(requestKey)) {
-      return;
-    }
-    checkpointHydrationSessionRequestRef.current.add(requestKey);
-    setThreadError(activeThreadId, null);
-    void ensureSession().then(
-      () => {
-        checkpointHydrationSessionRequestRef.current.delete(requestKey);
-      },
-      () => {
-        // Keep the key on failure so this effect does not re-enter in a tight loop.
-      },
-    );
-  }, [
-    activeThreadId,
-    activeThreadRuntimeId,
-    activeSessionId,
-    api,
-    ensureSession,
-    isConnecting,
-    isRevertingCheckpoint,
-    isSending,
-    phase,
-    setThreadError,
-    turnDiffSummaries,
-  ]);
-
   const onRevertToTurnCount = useCallback(
     async (turnCount: number) => {
-      if (!api || !activeThread || isRevertingCheckpoint) {
-        return;
-      }
-      if (phase === "running" || isSending || isConnecting) {
+      const api = readNativeApi();
+      if (!api || !activeThread || isRevertingCheckpoint) return;
+
+      if (phase === "running" || isSendBusy || isConnecting) {
         setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
         return;
       }
@@ -1638,30 +1363,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setIsRevertingCheckpoint(true);
       setThreadError(activeThread.id, null);
       try {
-        const sessionInfo = await ensureSession();
-        if (!sessionInfo) {
-          return;
-        }
-        const result = await api.providers.revertToCheckpoint({
-          sessionId: sessionInfo.sessionId,
+        await api.orchestration.dispatchCommand({
+          type: "thread.checkpoint.revert",
+          commandId: newCommandId(),
+          threadId: activeThread.id,
           turnCount,
-        });
-        dispatch({
-          type: "REVERT_TO_CHECKPOINT",
-          threadId: activeThread.id,
-          sessionId: sessionInfo.sessionId,
-          threadRuntimeId: result.threadId,
-          turnCount: result.turnCount,
-          messageCount: result.messageCount,
-        });
-        dispatch({
-          type: "SET_THREAD_TURN_CHECKPOINT_COUNTS",
-          threadId: activeThread.id,
-          checkpointTurnCountByTurnId: Object.fromEntries(
-            result.checkpoints
-              .filter((entry) => entry.turnCount > 0)
-              .map((entry) => [entry.id, entry.turnCount] as const),
-          ),
+          createdAt: new Date().toISOString(),
         });
       } catch (err) {
         setThreadError(
@@ -1672,113 +1379,133 @@ export default function ChatView({ threadId }: ChatViewProps) {
         setIsRevertingCheckpoint(false);
       }
     },
-    [
-      activeThread,
-      api,
-      dispatch,
-      ensureSession,
-      isConnecting,
-      isRevertingCheckpoint,
-      isSending,
-      phase,
-      setThreadError,
-    ],
+    [activeThread, isConnecting, isRevertingCheckpoint, isSendBusy, phase, setThreadError],
   );
 
-  const onSend = async (e: FormEvent) => {
+  const onSend = async (e: React.SubmitEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if (!api || !activeThread || isSending || isConnecting) return;
+    const api = readNativeApi();
+    if (!api || !activeThread || isSendBusy || isConnecting || sendInFlightRef.current) return;
     const trimmed = prompt.trim();
     if (!trimmed && composerImages.length === 0) return;
     if (!activeProject) return;
-    const composerImagesSnapshot = [...composerImages];
+    const threadIdForSend = activeThread.id;
+    const isFirstMessage = activeThread.messages.length === 0;
+    const baseBranchForWorktree =
+      isFirstMessage && envMode === "worktree" && !activeThread.worktreePath
+        ? activeThread.branch
+        : null;
 
-    // On first message: lock in branch + create worktree if needed.
-    let sessionCwd: string | undefined;
-    if (
-      activeThread.messages.length === 0 &&
-      activeThread.branch &&
-      envMode === "worktree" &&
-      !activeThread.worktreePath
-    ) {
-      try {
-        const newBranch = `codething/${crypto.randomUUID().slice(0, 8)}`;
-        const result = await createWorktreeMutation.mutateAsync({
-          cwd: activeProject.cwd,
-          branch: activeThread.branch,
-          newBranch,
-        });
-        sessionCwd = result.worktree.path;
-        dispatch({
-          type: "SET_THREAD_BRANCH",
-          threadId: activeThread.id,
-          branch: result.worktree.branch,
-          worktreePath: result.worktree.path,
-        });
-        const setupScript = setupProjectScript(activeProject.scripts);
-        if (setupScript) {
-          void runProjectScript(setupScript, {
-            cwd: result.worktree.path,
-            worktreePath: result.worktree.path,
-            rememberAsLastInvoked: false,
-          });
-        }
-      } catch (err) {
-        dispatch({
-          type: "SET_ERROR",
-          threadId: activeThread.id,
-          error: err instanceof Error ? err.message : "Failed to create worktree",
-        });
-        return;
-      }
-    }
-
-    // Auto-title from first message
-    if (activeThread.messages.length === 0) {
-      const titleSeed =
-        trimmed ||
-        (composerImagesSnapshot.length > 0
-          ? `Image: ${composerImagesSnapshot[0]?.name ?? "attachment"}`
-          : "New thread");
-      const title = truncateTitle(titleSeed);
+    // In worktree mode, require an explicit base branch so we don't silently
+    // fall back to local execution when branch selection is missing.
+    const shouldCreateWorktree =
+      isFirstMessage && envMode === "worktree" && !activeThread.worktreePath;
+    if (shouldCreateWorktree && !activeThread.branch) {
       dispatch({
-        type: "SET_THREAD_TITLE",
-        threadId: activeThread.id,
-        title,
+        type: "SET_ERROR",
+        threadId: threadIdForSend,
+        error: "Select a base branch before sending in New worktree mode.",
       });
+      return;
     }
 
-    setThreadError(activeThread.id, null);
-    const messageAttachments: ChatImageAttachment[] = composerImagesSnapshot.map((image) => ({
-      type: "image",
+    sendInFlightRef.current = true;
+    setSendPhase(baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
+
+    const composerImagesSnapshot = [...composerImages];
+    const messageIdForSend = newMessageId();
+    const messageCreatedAt = new Date().toISOString();
+    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
+      type: "image" as const,
       id: image.id,
       name: image.name,
       mimeType: image.mimeType,
       sizeBytes: image.sizeBytes,
       previewUrl: image.previewUrl,
     }));
-    dispatch({
-      type: "PUSH_USER_MESSAGE",
-      threadId: activeThread.id,
-      id: crypto.randomUUID(),
-      text: trimmed,
-      ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
-    });
-    const previousMessages = activeThread.messages;
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: messageIdForSend,
+        role: "user",
+        text: trimmed,
+        ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
+        createdAt: messageCreatedAt,
+        streaming: false,
+      },
+    ]);
+
+    setThreadError(threadIdForSend, null);
     promptRef.current = "";
     setPrompt("");
     setComposerImages([]);
     setComposerCursor(0);
     setComposerHighlightedItemId(null);
 
-    const sessionInfo = await ensureSession(sessionCwd);
-    if (!sessionInfo) return;
-
-    setIsSending(true);
+    let attemptedTurnStart = false;
     try {
+      // On first message: lock in branch + create worktree if needed.
+      if (baseBranchForWorktree) {
+        setSendPhase("preparing-worktree");
+        const newBranch = `codething/${crypto.randomUUID().slice(0, 8)}`;
+        const result = await createWorktreeMutation.mutateAsync({
+          cwd: activeProject.cwd,
+          branch: baseBranchForWorktree,
+          newBranch,
+        });
+        await api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          branch: result.worktree.branch,
+          worktreePath: result.worktree.path,
+        });
+        // Keep local thread state in sync immediately so terminal drawer opens
+        // with the worktree cwd/env instead of briefly using the project root.
+        dispatch({
+          type: "SET_THREAD_BRANCH",
+          threadId: threadIdForSend,
+          branch: result.worktree.branch,
+          worktreePath: result.worktree.path,
+        });
+        const setupScript = setupProjectScript(activeProject.scripts);
+        if (setupScript) {
+          await runProjectScript(setupScript, {
+            cwd: result.worktree.path,
+            worktreePath: result.worktree.path,
+            rememberAsLastInvoked: false,
+          });
+        }
+      }
+
+      // Auto-title from first message
+      if (isFirstMessage) {
+        const titleSeed =
+          trimmed ||
+          (composerImagesSnapshot.length > 0
+            ? `Image: ${composerImagesSnapshot[0]?.name ?? "attachment"}`
+            : "New thread");
+        const title = truncateTitle(titleSeed);
+        await api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          title,
+        });
+      }
+
+      setSendPhase("sending-turn");
       const turnAttachments = await Promise.all(
         composerImagesSnapshot.map(
-          async (image): Promise<ProviderSendTurnAttachmentInput> => ({
+          async (
+            image,
+          ): Promise<{
+            type: "image";
+            name: string;
+            mimeType: string;
+            sizeBytes: number;
+            dataUrl: string;
+          }> => ({
             type: "image",
             name: image.name,
             mimeType: image.mimeType,
@@ -1787,54 +1514,78 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }),
         ),
       );
-      const shouldBootstrap =
-        previousMessages.length > 0 &&
-        (sessionInfo.continuityState === "new" || sessionInfo.continuityState === "fallback_new");
-      const latestPromptForBootstrap = trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT;
-      const input = shouldBootstrap
-        ? buildBootstrapInput(
-            previousMessages,
-            latestPromptForBootstrap,
-            PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-          ).text
-        : trimmed || undefined;
-      await api.providers.sendTurn({
-        sessionId: sessionInfo.sessionId,
-        ...(input ? { input } : {}),
-        ...(turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
+      attemptedTurnStart = true;
+      const approvalPolicy = state.runtimeMode === "full-access" ? "never" : "on-request";
+      const sandboxMode =
+        state.runtimeMode === "full-access" ? "danger-full-access" : "workspace-write";
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: threadIdForSend,
+        message: {
+          messageId: messageIdForSend,
+          role: "user",
+          text: trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+          attachments: turnAttachments,
+        },
         model: selectedModel || undefined,
         effort: selectedEffort || undefined,
+        assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
+        approvalPolicy,
+        sandboxMode,
+        createdAt: messageCreatedAt,
       });
     } catch (err) {
+      if (
+        !attemptedTurnStart &&
+        promptRef.current.length === 0 &&
+        composerImagesRef.current.length === 0
+      ) {
+        setOptimisticUserMessages((existing) =>
+          existing.filter((message) => message.id !== messageIdForSend),
+        );
+        promptRef.current = trimmed;
+        setPrompt(trimmed);
+        setComposerImages(composerImagesSnapshot);
+        setComposerCursor(trimmed.length);
+      }
       setThreadError(
-        activeThread.id,
+        threadIdForSend,
         err instanceof Error ? err.message : "Failed to send message.",
       );
     } finally {
-      setIsSending(false);
+      sendInFlightRef.current = false;
+      setSendPhase("idle");
     }
   };
 
   const onInterrupt = async () => {
-    if (!api || !activeThread?.session) return;
-    await api.providers.interruptTurn({
-      sessionId: activeThread.session.sessionId,
-      turnId: activeThread.session.activeTurnId,
+    const api = readNativeApi();
+    if (!api || !activeThread) return;
+    await api.orchestration.dispatchCommand({
+      type: "thread.turn.interrupt",
+      commandId: newCommandId(),
+      threadId: activeThread.id,
+      createdAt: new Date().toISOString(),
     });
   };
 
   const onRespondToApproval = useCallback(
-    async (requestId: string, decision: ProviderApprovalDecision) => {
-      if (!api || !activeSessionId || !activeThreadId) return;
+    async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
+      const api = readNativeApi();
+      if (!api || !activeThreadId) return;
 
       setRespondingRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
       try {
-        await api.providers.respondToRequest({
-          sessionId: activeSessionId,
+        await api.orchestration.dispatchCommand({
+          type: "thread.approval.respond",
+          commandId: newCommandId(),
+          threadId: activeThreadId,
           requestId,
           decision,
+          createdAt: new Date().toISOString(),
         });
       } catch (err) {
         dispatch({
@@ -1846,20 +1597,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
         setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
       }
     },
-    [activeSessionId, activeThreadId, api, dispatch],
+    [activeThreadId, dispatch],
   );
 
   const onModelSelect = useCallback(
     (model: ModelSlug) => {
+      const api = readNativeApi();
       if (!activeThread) return;
-      dispatch({
-        type: "SET_THREAD_MODEL",
-        threadId: activeThread.id,
-        model: resolveModelSlug(model),
-      });
+      if (api) {
+        void api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId: activeThread.id,
+          model: resolveModelSlug(model),
+        });
+      }
       scheduleComposerFocus();
     },
-    [activeThread, dispatch, scheduleComposerFocus],
+    [activeThread, scheduleComposerFocus],
   );
   const onEffortSelect = useCallback(
     (effort: ReasoningEffort) => {
@@ -1934,7 +1689,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setComposerCursor(nextCursor);
   }, []);
 
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (composerMenuOpen && composerMenuItems.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -1958,7 +1713,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void onSend(e as unknown as FormEvent);
+      void onSend(e);
     }
   };
   const onToggleWorkGroup = useCallback((groupId: string) => {
@@ -1970,18 +1725,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onExpandTimelineImage = useCallback((image: ExpandedImagePreview) => {
     setExpandedImage(image);
   }, []);
-  const onToggleDiff = useCallback(() => {
-    void navigate({
-      to: "/$threadId",
-      params: { threadId },
-      search: (previous) => {
-        const rest = stripDiffSearchParams(previous);
-        return diffOpen ? rest : { ...rest, diff: "1" };
-      },
-    });
-  }, [diffOpen, navigate, threadId]);
   const onOpenTurnDiff = useCallback(
-    (turnId: string, filePath?: string) => {
+    (turnId: TurnId, filePath?: string) => {
       void navigate({
         to: "/$threadId",
         params: { threadId },
@@ -1996,7 +1741,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [navigate, threadId],
   );
   const onRevertUserMessage = useCallback(
-    (messageId: string) => {
+    (messageId: MessageId) => {
       const targetTurnCount = revertTurnCountByUserMessageId.get(messageId);
       if (typeof targetTurnCount !== "number") {
         return;
@@ -2010,6 +1755,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
   if (!activeThread) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
+        {!isElectron && (
+          <header className="border-b border-border px-3 py-2 md:hidden">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="size-7 shrink-0" />
+              <span className="text-sm font-medium text-foreground">Threads</span>
+            </div>
+          </header>
+        )}
         {isElectron && (
           <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
             <span className="text-xs text-muted-foreground/50">No active thread</span>
@@ -2025,10 +1778,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
       {/* Top bar */}
       <header
-        className={`flex items-center justify-between border-b border-border px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
+        className={cn(
+          "border-b border-border px-3 sm:px-5",
+          isElectron ? "drag-region flex h-[52px] items-center" : "py-2 sm:py-3",
+        )}
       >
         <ChatHeader
           activeThreadId={activeThread.id}
@@ -2039,7 +1795,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
           }
           keybindings={keybindings}
-          api={api}
+          diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
           onRunProjectScript={(script) => {
@@ -2062,19 +1818,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
       {/* Messages */}
       <div
         ref={messagesScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 sm:py-4"
         onScroll={onMessagesScroll}
       >
         <MessagesTimeline
-          hasMessages={activeThread.messages.length > 0}
+          hasMessages={timelineMessages.length > 0}
           isWorking={isWorking}
           scrollContainerRef={messagesScrollRef}
           timelineEntries={timelineEntries}
           completionDividerBeforeEntryId={completionDividerBeforeEntryId}
           completionSummary={completionSummary}
-          assistantCompletionByItemId={assistantCompletionByItemId}
           turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
-          turnCheckpointFilesByTurnId={turnCheckpointFilesByTurnId}
           nowIso={nowIso}
           expandedWorkGroups={expandedWorkGroups}
           onToggleWorkGroup={onToggleWorkGroup}
@@ -2083,12 +1837,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onRevertUserMessage={onRevertUserMessage}
           isRevertingCheckpoint={isRevertingCheckpoint}
           onImageExpand={onExpandTimelineImage}
+          markdownCwd={gitCwd ?? undefined}
         />
       </div>
 
       {/* Input bar */}
-      <div className={cn("px-5 pt-2", isGitRepo ? "pb-1" : "pb-4")}>
-        <form onSubmit={onSend} className="mx-auto max-w-3xl">
+      <div className={cn("px-3 pt-1.5 sm:px-5 sm:pt-2", isGitRepo ? "pb-1" : "pb-3 sm:pb-4")}>
+        <form
+          onSubmit={onSend}
+          className="mx-auto w-full min-w-fit max-w-3xl"
+          data-chat-composer-form="true"
+        >
           <div
             className={`group rounded-[20px] border bg-card transition-colors duration-200 focus-within:border-ring ${
               isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border"
@@ -2099,7 +1858,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onDrop={onComposerDrop}
           >
             {/* Textarea area */}
-            <div className="relative px-4 pt-4 pb-2">
+            <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
               {composerMenuOpen && (
                 <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
                   <ComposerCommandMenu
@@ -2181,29 +1940,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     ? "Ask for follow-up changes or attach images"
                     : "Ask anything, @tag files/folders, or use /model"
                 }
-                disabled={isSending || isConnecting}
+                disabled={isConnecting}
               />
             </div>
 
             {/* Bottom toolbar */}
-            <div className="flex items-center justify-between px-3 pb-3">
-              <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 pb-2.5 sm:flex-nowrap sm:gap-0 sm:px-3 sm:pb-3">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
                 {/* Model picker */}
                 <ModelPicker model={selectedModel} onModelChange={onModelSelect} />
 
                 {/* Divider */}
-                <Separator orientation="vertical" className="mx-0.5 h-4" />
+                <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
 
                 {/* Reasoning effort */}
                 <ReasoningEffortPicker effort={selectedEffort} onEffortChange={onEffortSelect} />
 
                 {/* Divider */}
-                <Separator orientation="vertical" className="mx-0.5 h-4" />
+                <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
 
                 {/* Runtime mode toggle */}
                 <Button
                   variant="ghost"
-                  className="text-muted-foreground/70 hover:text-foreground/80"
+                  className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
                   size="sm"
                   type="button"
                   disabled={isSwitchingRuntimeMode}
@@ -2219,16 +1978,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   }
                 >
                   {state.runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                  {state.runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                  <span className="sr-only sm:not-sr-only">
+                    {state.runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                  </span>
                 </Button>
               </div>
 
               {/* Right side: send / stop button */}
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                {isPreparingWorktree ? (
+                  <span className="text-muted-foreground/70 text-xs">Preparing worktree...</span>
+                ) : null}
                 {phase === "running" ? (
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
                     onClick={() => void onInterrupt()}
                     aria-label="Stop generation"
                   >
@@ -2245,15 +2009,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 ) : (
                   <button
                     type="submit"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8"
                     disabled={
-                      isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)
+                      isSendBusy || isConnecting || (!prompt.trim() && composerImages.length === 0)
                     }
                     aria-label={
-                      isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"
+                      isConnecting
+                        ? "Connecting"
+                        : isPreparingWorktree
+                          ? "Preparing worktree"
+                          : isSendBusy
+                            ? "Sending"
+                            : "Send message"
                     }
                   >
-                    {isConnecting || isSending ? (
+                    {isConnecting || isSendBusy ? (
                       <svg
                         width="14"
                         height="14"
@@ -2307,35 +2077,39 @@ export default function ChatView({ threadId }: ChatViewProps) {
         />
       )}
 
-      {activeThread.terminalOpen && api && activeProject && (
-        <ThreadTerminalDrawer
-          key={activeThread.id}
-          api={api}
-          threadId={activeThread.id}
-          cwd={gitCwd ?? activeProject.cwd}
-          runtimeEnv={threadTerminalRuntimeEnv}
-          height={activeThread.terminalHeight}
-          terminalIds={activeThread.terminalIds}
-          activeTerminalId={activeThread.activeTerminalId}
-          terminalGroups={activeThread.terminalGroups}
-          activeTerminalGroupId={activeThread.activeTerminalGroupId}
-          focusRequestId={terminalFocusRequestId}
-          onSplitTerminal={splitTerminal}
-          onNewTerminal={createNewTerminal}
-          splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-          newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-          closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-          onActiveTerminalChange={activateTerminal}
-          onCloseTerminal={closeTerminal}
-          onHeightChange={(height) =>
-            dispatch({
-              type: "SET_THREAD_TERMINAL_HEIGHT",
-              threadId: activeThread.id,
-              height,
-            })
-          }
-        />
-      )}
+      {(() => {
+        if (!activeThread.terminalOpen || !activeProject) {
+          return null;
+        }
+        return (
+          <ThreadTerminalDrawer
+            key={activeThread.id}
+            threadId={activeThread.id}
+            cwd={gitCwd ?? activeProject.cwd}
+            runtimeEnv={threadTerminalRuntimeEnv}
+            height={activeThread.terminalHeight}
+            terminalIds={activeThread.terminalIds}
+            activeTerminalId={activeThread.activeTerminalId}
+            terminalGroups={activeThread.terminalGroups}
+            activeTerminalGroupId={activeThread.activeTerminalGroupId}
+            focusRequestId={terminalFocusRequestId}
+            onSplitTerminal={splitTerminal}
+            onNewTerminal={createNewTerminal}
+            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+            onActiveTerminalChange={activateTerminal}
+            onCloseTerminal={closeTerminal}
+            onHeightChange={(height) =>
+              dispatch({
+                type: "SET_THREAD_TERMINAL_HEIGHT",
+                threadId: activeThread.id,
+                height,
+              })
+            }
+          />
+        );
+      })()}
 
       {expandedImage && (
         <div
@@ -2376,13 +2150,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
 }
 
 interface ChatHeaderProps {
-  activeThreadId: string;
+  activeThreadId: ThreadId;
   activeThreadTitle: string;
   activeProjectName: string | undefined;
   activeProjectScripts: ProjectScript[] | undefined;
   preferredScriptId: string | null;
   keybindings: ResolvedKeybindingsConfig;
-  api: NativeApi | undefined;
+  diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
@@ -2398,7 +2172,7 @@ const ChatHeader = memo(function ChatHeader({
   activeProjectScripts,
   preferredScriptId,
   keybindings,
-  api,
+  diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
   onRunProjectScript,
@@ -2407,14 +2181,22 @@ const ChatHeader = memo(function ChatHeader({
   onToggleDiff,
 }: ChatHeaderProps) {
   return (
-    <>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <h2 className="truncate text-sm font-medium text-foreground" title={activeThreadTitle}>
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
+        <SidebarTrigger className="size-7 shrink-0 md:hidden" />
+        <h2
+          className="min-w-0 shrink truncate text-sm font-medium text-foreground"
+          title={activeThreadTitle}
+        >
           {activeThreadTitle}
         </h2>
-        {activeProjectName && <Badge variant="outline">{activeProjectName}</Badge>}
+        {activeProjectName && (
+          <Badge variant="outline" className="max-w-28 shrink-0 truncate">
+            {activeProjectName}
+          </Badge>
+        )}
       </div>
-      <div className="shrink-0 flex items-center gap-3">
+      <div className="@container/header-actions flex min-w-0 flex-1 items-center justify-end gap-2 @sm/header-actions:gap-3">
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
@@ -2428,20 +2210,30 @@ const ChatHeader = memo(function ChatHeader({
         {activeProjectName && (
           <OpenInPicker keybindings={keybindings} activeThreadId={activeThreadId} />
         )}
-        {activeProjectName && (
-          <GitActionsControl api={api} gitCwd={gitCwd} activeThreadId={activeThreadId} />
-        )}
-        <Toggle
-          pressed={diffOpen}
-          onPressedChange={onToggleDiff}
-          aria-label="Toggle diff panel"
-          variant="outline"
-          size="xs"
-        >
-          <DiffIcon className="size-3" />
-        </Toggle>
+        {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0"
+                pressed={diffOpen}
+                onPressedChange={onToggleDiff}
+                aria-label="Toggle diff panel"
+                variant="outline"
+                size="xs"
+              >
+                <DiffIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {diffToggleShortcutLabel
+              ? `Toggle diff panel (${diffToggleShortcutLabel})`
+              : "Toggle diff panel"}
+          </TooltipPopup>
+        </Tooltip>
       </div>
-    </>
+    </div>
   );
 });
 
@@ -2461,8 +2253,11 @@ const ThreadErrorBanner = memo(function ThreadErrorBanner({ error }: { error: st
 
 interface PendingApprovalsPanelProps {
   pendingApprovals: PendingApproval[];
-  respondingRequestIds: string[];
-  onRespondToApproval: (requestId: string, decision: ProviderApprovalDecision) => Promise<void>;
+  respondingRequestIds: ApprovalRequestId[];
+  onRespondToApproval: (
+    requestId: ApprovalRequestId,
+    decision: ProviderApprovalDecision,
+  ) => Promise<void>;
 }
 
 const PendingApprovalsPanel = memo(function PendingApprovalsPanel({
@@ -2531,24 +2326,45 @@ const PendingApprovalsPanel = memo(function PendingApprovalsPanel({
   );
 });
 
+const MessageCopyButton = memo(function MessageCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [text]);
+
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="outline"
+      onClick={handleCopy}
+      title="Copy message"
+    >
+      {copied ? <CheckIcon className="size-3 text-success" /> : <CopyIcon className="size-3" />}
+    </Button>
+  );
+});
+
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
-  assistantCompletionByItemId: Map<string, string>;
-  turnDiffSummaryByAssistantMessageId: Map<string, TurnDiffSummary>;
-  turnCheckpointFilesByTurnId: Map<string, TurnCheckpointFilesState>;
+  turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   nowIso: string;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
-  onOpenTurnDiff: (turnId: string, filePath?: string) => void;
-  revertTurnCountByUserMessageId: Map<string, number>;
-  onRevertUserMessage: (messageId: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  revertTurnCountByUserMessageId: Map<MessageId, number>;
+  onRevertUserMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (image: ExpandedImagePreview) => void;
+  markdownCwd: string | undefined;
 }
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
@@ -2575,9 +2391,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
-  assistantCompletionByItemId,
   turnDiffSummaryByAssistantMessageId,
-  turnCheckpointFilesByTurnId,
   nowIso,
   expandedWorkGroups,
   onToggleWorkGroup,
@@ -2586,6 +2400,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
   onRevertUserMessage,
   isRevertingCheckpoint,
   onImageExpand,
+  markdownCwd,
 }: MessagesTimelineProps) {
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
@@ -2659,7 +2474,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
 
   return (
     <div
-      className="relative mx-auto max-w-3xl"
+      className="relative mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
       style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
     >
       {virtualRows.map((virtualRow: VirtualItem) => {
@@ -2749,7 +2564,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
                   const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
                   return (
                     <div className="flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+                      <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
                         {userImages.length > 0 && (
                           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
                             {userImages.map(
@@ -2783,17 +2598,21 @@ const MessagesTimeline = memo(function MessagesTimeline({
                           </pre>
                         )}
                         <div className="mt-1.5 flex items-center justify-end gap-2">
-                          {canRevertAgentWork && (
-                            <Button
-                              type="button"
-                              size="xs"
-                              variant="outline"
-                              disabled={isRevertingCheckpoint || isWorking}
-                              onClick={() => onRevertUserMessage(row.message.id)}
-                            >
-                              <Undo2Icon className="size-3" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                            {row.message.text && <MessageCopyButton text={row.message.text} />}
+                            {canRevertAgentWork && (
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                disabled={isRevertingCheckpoint || isWorking}
+                                onClick={() => onRevertUserMessage(row.message.id)}
+                                title="Revert to this message"
+                              >
+                                <Undo2Icon className="size-3" />
+                              </Button>
+                            )}
+                          </div>
                           <p className="text-right text-[10px] text-muted-foreground/30">
                             {formatTimestamp(row.message.createdAt)}
                           </p>
@@ -2819,17 +2638,15 @@ const MessagesTimeline = memo(function MessagesTimeline({
                           <span className="h-px flex-1 bg-border" />
                         </div>
                       )}
-                      <div className="px-1 py-0.5">
-                        <ChatMarkdown text={messageText} />
+                      <div className="min-w-0 px-1 py-0.5">
+                        <ChatMarkdown text={messageText} cwd={markdownCwd} />
                         {(() => {
                           const turnSummary = turnDiffSummaryByAssistantMessageId.get(
                             row.message.id,
                           );
                           if (!turnSummary) return null;
-                          const checkpointFilesState = turnCheckpointFilesByTurnId.get(
-                            turnSummary.turnId,
-                          );
-                          const checkpointFiles = checkpointFilesState?.files ?? [];
+                          const checkpointFiles = turnSummary.files;
+                          if (checkpointFiles.length === 0) return null;
                           const summaryStat = checkpointFiles.reduce(
                             (acc, file) => {
                               if (
@@ -2845,10 +2662,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
                             },
                             { additions: 0, deletions: 0 },
                           );
-                          const changedFileCountLabel =
-                            checkpointFilesState?.status === "ready"
-                              ? String(checkpointFiles.length)
-                              : "...";
+                          const changedFileCountLabel = String(checkpointFiles.length);
                           return (
                             <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
                               <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -2876,66 +2690,42 @@ const MessagesTimeline = memo(function MessagesTimeline({
                                   View diff
                                 </Button>
                               </div>
-                              {!checkpointFilesState ||
-                              checkpointFilesState.status === "pending" ? (
-                                <p className="text-[11px] text-muted-foreground/70">
-                                  Waiting for checkpoint metadata...
-                                </p>
-                              ) : checkpointFilesState?.status === "loading" ? (
-                                <p className="text-[11px] text-muted-foreground/70">
-                                  Loading checkpoint diff...
-                                </p>
-                              ) : checkpointFilesState?.status === "error" ? (
-                                <p
-                                  className="truncate text-[11px] text-muted-foreground/70"
-                                  title={checkpointFilesState.errorMessage}
-                                >
-                                  {checkpointFilesState.errorMessage}
-                                </p>
-                              ) : checkpointFiles.length > 0 ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {checkpointFiles.map((file) => (
-                                    <button
-                                      key={`${turnSummary.turnId}:${file.path}`}
-                                      type="button"
-                                      className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
-                                      onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
-                                    >
-                                      {(() => {
-                                        const stat =
-                                          typeof file.additions === "number" &&
-                                          typeof file.deletions === "number"
-                                            ? {
-                                                additions: file.additions,
-                                                deletions: file.deletions,
-                                              }
-                                            : null;
-                                        if (!stat) {
-                                          return file.path;
-                                        }
-                                        return (
-                                          <>
-                                            <span>{file.path}</span>
-                                            <span className="ml-1 text-muted-foreground/70">(</span>
-                                            <span className="text-success">+{stat.additions}</span>
-                                            <span className="mx-0.5 text-muted-foreground/70">
-                                              /
-                                            </span>
-                                            <span className="text-destructive">
-                                              -{stat.deletions}
-                                            </span>
-                                            <span className="text-muted-foreground/70">)</span>
-                                          </>
-                                        );
-                                      })()}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] text-muted-foreground/70">
-                                  No changed files.
-                                </p>
-                              )}
+                              <div className="flex flex-wrap gap-1.5">
+                                {checkpointFiles.map((file) => (
+                                  <button
+                                    key={`${turnSummary.turnId}:${file.path}`}
+                                    type="button"
+                                    className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
+                                    onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
+                                  >
+                                    {(() => {
+                                      const stat =
+                                        typeof file.additions === "number" &&
+                                        typeof file.deletions === "number"
+                                          ? {
+                                              additions: file.additions,
+                                              deletions: file.deletions,
+                                            }
+                                          : null;
+                                      if (!stat) {
+                                        return file.path;
+                                      }
+                                      return (
+                                        <>
+                                          <span>{file.path}</span>
+                                          <span className="ml-1 text-muted-foreground/70">(</span>
+                                          <span className="text-success">+{stat.additions}</span>
+                                          <span className="mx-0.5 text-muted-foreground/70">/</span>
+                                          <span className="text-destructive">
+                                            -{stat.deletions}
+                                          </span>
+                                          <span className="text-muted-foreground/70">)</span>
+                                        </>
+                                      );
+                                    })()}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           );
                         })()}
@@ -2944,10 +2734,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
                             row.message.createdAt,
                             row.message.streaming
                               ? formatElapsed(row.message.createdAt, nowIso)
-                              : formatElapsed(
-                                  row.message.createdAt,
-                                  assistantCompletionByItemId.get(row.message.id),
-                                ),
+                              : formatElapsed(row.message.createdAt, row.message.completedAt),
                           )}
                         </p>
                       </div>
@@ -3028,7 +2815,7 @@ const OpenInPicker = memo(function OpenInPicker({
   activeThreadId,
 }: {
   keybindings: ResolvedKeybindingsConfig;
-  activeThreadId: string | null;
+  activeThreadId: ThreadId | null;
 }) {
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
@@ -3053,13 +2840,13 @@ const OpenInPicker = memo(function OpenInPicker({
   ] satisfies { label: string; Icon: Icon; value: EditorId }[];
   const primaryOption = options.find(({ value }) => value === lastEditor);
 
-  const api = useNativeApi();
   const { state } = useStore();
   const activeThread = state.threads.find((t) => t.id === activeThreadId);
   const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
 
   const openInEditor = useCallback(
     (editorId: EditorId | null) => {
+      const api = readNativeApi();
       if (!api || !activeProject) return;
       const editor = editorId ?? lastEditor;
       const cwd = activeThread?.worktreePath ?? activeProject.cwd;
@@ -3067,7 +2854,7 @@ const OpenInPicker = memo(function OpenInPicker({
       localStorage.setItem(LAST_EDITOR_KEY, editor);
       setLastEditor(editor);
     },
-    [api, activeProject, activeThread, lastEditor, setLastEditor],
+    [activeProject, activeThread, lastEditor, setLastEditor],
   );
 
   const openFavoriteEditorShortcutLabel = useMemo(
@@ -3077,6 +2864,7 @@ const OpenInPicker = memo(function OpenInPicker({
 
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
+      const api = readNativeApi();
       if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
       if (!api || !activeProject) return;
 
@@ -3086,15 +2874,17 @@ const OpenInPicker = memo(function OpenInPicker({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, activeProject, activeThread, keybindings, lastEditor]);
+  }, [activeProject, activeThread, keybindings, lastEditor]);
 
   return (
     <Group aria-label="Subscription actions">
       <Button size="xs" variant="outline" onClick={() => openInEditor(lastEditor)}>
         {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3.5" />}
-        <span className="ml-0.5">Open</span>
+        <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
+          Open
+        </span>
       </Button>
-      <GroupSeparator />
+      <GroupSeparator className="hidden @sm/header-actions:block" />
       <Menu>
         <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
           <ChevronDownIcon aria-hidden="true" className="size-4" />

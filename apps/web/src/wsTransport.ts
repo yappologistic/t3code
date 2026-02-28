@@ -1,4 +1,5 @@
-import type { WsPush, WsRequest, WsResponse } from "@t3tools/contracts";
+import { WebSocketResponse, WsPush, WsResponse } from "@t3tools/contracts";
+import { Cause, Schema } from "effect";
 
 type PushListener = (data: unknown) => void;
 
@@ -10,6 +11,17 @@ interface PendingRequest {
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
+const decodeWsResponseFromJson = Schema.decodeUnknownExit(Schema.fromJsonString(WsResponse));
+const isWsPushEnvelope = Schema.is(WsPush);
+const isWebSocketResponseEnvelope = Schema.is(WebSocketResponse);
+
+interface WsRequestEnvelope {
+  id: string;
+  body: {
+    _tag: string;
+    [key: string]: unknown;
+  };
+}
 
 export class WsTransport {
   private ws: WebSocket | null = null;
@@ -41,7 +53,8 @@ export class WsTransport {
       throw new Error("Request method is required");
     }
     const id = String(this.nextId++);
-    const message: WsRequest = { id, method, ...(params !== undefined ? { params } : {}) };
+    const body = params != null ? { ...params, _tag: method } : { _tag: method };
+    const message: WsRequestEnvelope = { id, body };
 
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -115,25 +128,24 @@ export class WsTransport {
   }
 
   private handleMessage(raw: unknown) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(String(raw));
-    } catch {
+    const exit = decodeWsResponseFromJson(raw);
+    if (exit._tag === "Failure") {
+      console.warn("Dropped inbound WebSocket envelope", {
+        reason: "decode-failed",
+        raw,
+        issue: Cause.pretty(exit.cause),
+      });
       return;
     }
-
-    if (!parsed || typeof parsed !== "object") return;
-
-    const message = parsed as Record<string, unknown>;
+    const message = exit.value;
 
     // Push event
-    if (message.type === "push") {
-      const push = message as unknown as WsPush;
-      const channelListeners = this.listeners.get(push.channel);
+    if (isWsPushEnvelope(message)) {
+      const channelListeners = this.listeners.get(message.channel);
       if (channelListeners) {
         for (const listener of channelListeners) {
           try {
-            listener(push.data);
+            listener(message.data);
           } catch {
             // Swallow listener errors
           }
@@ -143,23 +155,24 @@ export class WsTransport {
     }
 
     // Response to a request
-    if (typeof message.id === "string") {
-      const response = message as unknown as WsResponse;
-      const pending = this.pending.get(response.id);
-      if (!pending) return;
+    if (!isWebSocketResponseEnvelope(message)) {
+      return;
+    }
 
-      clearTimeout(pending.timeout);
-      this.pending.delete(response.id);
+    const pending = this.pending.get(message.id);
+    if (!pending) return;
 
-      if (response.error) {
-        pending.reject(new Error(response.error.message));
-      } else {
-        pending.resolve(response.result);
-      }
+    clearTimeout(pending.timeout);
+    this.pending.delete(message.id);
+
+    if (message.error) {
+      pending.reject(new Error(message.error.message));
+    } else {
+      pending.resolve(message.result);
     }
   }
 
-  private send(message: WsRequest) {
+  private send(message: WsRequestEnvelope) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
       return;

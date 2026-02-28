@@ -1,26 +1,34 @@
-import { Outlet, createRootRouteWithContext, useParams } from "@tanstack/react-router";
+import { ThreadId } from "@t3tools/contracts";
+import {
+  Outlet,
+  createRootRouteWithContext,
+  type ErrorComponentProps,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
-import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
-import { isElectron } from "../env";
-import { useNativeApi } from "../hooks/useNativeApi";
-import { invalidateGitQueries } from "../lib/gitReactQuery";
-import { DEFAULT_MODEL } from "../model-logic";
-import { useStore } from "../store";
-import { onServerWelcome } from "../wsNativeApi";
 import { APP_DISPLAY_NAME } from "../branding";
+import { Button } from "../components/ui/button";
+import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
+import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
+import { readNativeApi } from "../nativeApi";
+import { useStore } from "../store";
+import { preferredTerminalEditor } from "../terminal-links";
+import { terminalRunningSubprocessFromEvent } from "../terminalActivity";
+import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
+import { providerQueryKeys } from "../lib/providerReactQuery";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
 }>()({
   component: RootRouteView,
+  errorComponent: RootRouteErrorView,
 });
 
 function RootRouteView() {
-  const api = useNativeApi();
-
-  if (!api) {
+  if (!readNativeApi()) {
     return (
       <div className="flex h-screen flex-col bg-background text-foreground">
         <div className="flex flex-1 items-center justify-center">
@@ -36,7 +44,6 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <EventRouter />
-        <AutoProjectBootstrap />
         <DesktopProjectBootstrap />
         <Outlet />
       </AnchoredToastProvider>
@@ -44,155 +51,231 @@ function RootRouteView() {
   );
 }
 
-function EventRouter() {
-  const api = useNativeApi();
-  const { dispatch } = useStore();
-  const queryClient = useQueryClient();
-  const activeAssistantItemRef = useRef<string | null>(null);
-  const activeThreadId = useParams({
-    strict: false,
-    select: (params) => params.threadId,
-  });
+function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
+  const message = errorMessage(error);
+  const details = errorDetails(error);
 
-  useEffect(() => {
-    if (!api) return;
-    return api.providers.onEvent((event) => {
-      if (event.method === "turn/completed") {
-        void invalidateGitQueries(queryClient);
-      }
-      if (event.method === "checkpoint/captured") {
-        const payload = event.payload as { turnCount?: number } | undefined;
-        const turnCount = payload?.turnCount;
-        void queryClient.invalidateQueries({
-          queryKey: ["providers", "checkpointDiff"] as const,
-          predicate: (query) => {
-            if (typeof turnCount !== "number") return true;
-            return query.queryKey[5] === turnCount;
-          },
-        });
-      }
-      if (!activeThreadId) return;
-      dispatch({
-        type: "APPLY_EVENT",
-        event,
-        activeAssistantItemRef,
-        activeThreadId,
-      });
-    });
-  }, [activeThreadId, api, dispatch, queryClient]);
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
+      <div className="pointer-events-none absolute inset-0 opacity-80">
+        <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />
+      </div>
 
-  useEffect(() => {
-    if (!activeThreadId) return;
-    dispatch({
-      type: "MARK_THREAD_VISITED",
-      threadId: activeThreadId,
-      visitedAt: new Date().toISOString(),
-    });
-  }, [activeThreadId, dispatch]);
+      <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+          {APP_DISPLAY_NAME}
+        </p>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+          Something went wrong.
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
 
-  useEffect(() => {
-    if (!api) return;
-    return api.terminal.onEvent((event) => {
-      dispatch({
-        type: "APPLY_TERMINAL_EVENT",
-        event,
-      });
-    });
-  }, [api, dispatch]);
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => reset()}>
+            Try again
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+            Reload app
+          </Button>
+        </div>
 
-  return null;
+        <details className="group mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground">
+            <span className="group-open:hidden">Show error details</span>
+            <span className="hidden group-open:inline">Hide error details</span>
+          </summary>
+          <pre className="max-h-56 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-foreground/85">
+            {details}
+          </pre>
+        </details>
+      </section>
+    </div>
+  );
 }
 
-function AutoProjectBootstrap() {
-  const { state, dispatch } = useStore();
-  const bootstrappedRef = useRef(false);
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  return "An unexpected router error occurred.";
+}
+
+function errorDetails(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error, null, 2);
+  } catch {
+    return "No additional error details are available.";
+  }
+}
+
+function EventRouter() {
+  const { dispatch } = useStore();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pathnameRef = useRef(pathname);
+  const lastConfigIssuesSignatureRef = useRef<string | null>(null);
+  const handledBootstrapThreadIdRef = useRef<string | null>(null);
+  pathnameRef.current = pathname;
 
   useEffect(() => {
-    // Browser mode bootstraps from server welcome.
-    // Electron bootstraps from persisted projects via DesktopProjectBootstrap.
-    if (isElectron) return;
+    const api = readNativeApi();
+    if (!api) return;
+    let disposed = false;
+    let latestSequence = 0;
+    let syncing = false;
+    let pending = false;
 
-    return onServerWelcome((payload) => {
-      if (bootstrappedRef.current) return;
+    const flushSnapshotSync = async (): Promise<void> => {
+      const snapshot = await api.orchestration.getSnapshot();
+      if (disposed) return;
+      latestSequence = Math.max(latestSequence, snapshot.snapshotSequence);
+      dispatch({ type: "SYNC_SERVER_READ_MODEL", readModel: snapshot });
+      if (pending) {
+        pending = false;
+        await flushSnapshotSync();
+      }
+    };
 
-      // Don't create duplicate projects for the same cwd
-      const existing = state.projects.find((project) => project.cwd === payload.cwd);
-      if (existing) {
-        bootstrappedRef.current = true;
-        dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
+    const syncSnapshot = async () => {
+      if (syncing) {
+        pending = true;
+        return;
+      }
+      syncing = true;
+      try {
+        pending = false;
+        await flushSnapshotSync();
+      } catch {
+        // Keep prior state and wait for next domain event to trigger a resync.
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncSnapshot().catch(() => undefined);
+
+    const unsubDomainEvent = api.orchestration.onDomainEvent((event) => {
+      if (event.sequence <= latestSequence) {
+        return;
+      }
+      latestSequence = event.sequence;
+      if (event.type === "thread.turn-diff-completed" || event.type === "thread.reverted") {
+        void queryClient.invalidateQueries({ queryKey: providerQueryKeys.all });
+      }
+      void syncSnapshot();
+    });
+    const unsubTerminalEvent = api.terminal.onEvent((event) => {
+      const hasRunningSubprocess = terminalRunningSubprocessFromEvent(event);
+      if (hasRunningSubprocess === null) {
+        return;
+      }
+      dispatch({
+        type: "SET_THREAD_TERMINAL_ACTIVITY",
+        threadId: ThreadId.makeUnsafe(event.threadId),
+        terminalId: event.terminalId,
+        hasRunningSubprocess,
+      });
+    });
+    const unsubWelcome = onServerWelcome((payload) => {
+      void (async () => {
+        await syncSnapshot();
+        if (disposed) {
+          return;
+        }
+
+        if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
+          return;
+        }
+        dispatch({
+          type: "SET_PROJECT_EXPANDED",
+          projectId: payload.bootstrapProjectId,
+          expanded: true,
+        });
+
+        if (pathnameRef.current !== "/") {
+          return;
+        }
+        if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {
+          return;
+        }
+        await navigate({
+          to: "/$threadId",
+          params: { threadId: payload.bootstrapThreadId },
+          replace: true,
+        });
+        handledBootstrapThreadIdRef.current = payload.bootstrapThreadId;
+      })().catch(() => undefined);
+    });
+    const unsubServerConfigUpdated = onServerConfigUpdated((payload) => {
+      const signature = JSON.stringify(payload.issues);
+      if (lastConfigIssuesSignatureRef.current === signature) {
+        return;
+      }
+      lastConfigIssuesSignatureRef.current = signature;
+
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.config() });
+      const issue = payload.issues.find((entry) => entry.kind.startsWith("keybindings."));
+      if (!issue) {
+        toastManager.add({
+          type: "success",
+          title: "Keybindings updated",
+          description: "Keybindings configuration reloaded successfully.",
+        });
         return;
       }
 
-      bootstrappedRef.current = true;
-
-      // Create project + thread from server cwd
-      const projectId = crypto.randomUUID();
-      dispatch({
-        type: "ADD_PROJECT",
-        project: {
-          id: projectId,
-          name: payload.projectName,
-          cwd: payload.cwd,
-          model: DEFAULT_MODEL,
-          expanded: true,
-          scripts: [],
+      toastManager.add({
+        type: "warning",
+        title: "Invalid keybindings configuration",
+        description: issue.message,
+        actionProps: {
+          children: "Open keybindings.json",
+          onClick: () => {
+            void queryClient
+              .ensureQueryData(serverConfigQueryOptions())
+              .then((config) =>
+                api.shell.openInEditor(config.keybindingsConfigPath, preferredTerminalEditor()),
+              )
+              .catch((error) => {
+                toastManager.add({
+                  type: "error",
+                  title: "Unable to open keybindings file",
+                  description:
+                    error instanceof Error ? error.message : "Unknown error opening file.",
+                });
+              });
+          },
         },
       });
-      dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
     });
-  }, [state.projects, dispatch]);
+    return () => {
+      disposed = true;
+      unsubDomainEvent();
+      unsubTerminalEvent();
+      unsubWelcome();
+      unsubServerConfigUpdated();
+    };
+  }, [dispatch, navigate, queryClient]);
 
   return null;
 }
 
 function DesktopProjectBootstrap() {
-  const api = useNativeApi();
-  const { dispatch } = useStore();
-  const bootstrappedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isElectron || !api || bootstrappedRef.current) return;
-
-    let disposed = false;
-    let retryDelayMs = 500;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const attemptBootstrap = async () => {
-      try {
-        const projects = await api.projects.list();
-        if (disposed) return;
-        dispatch({
-          type: "SYNC_PROJECTS",
-          projects: projects.map((project) => ({
-            id: project.id,
-            name: project.name,
-            cwd: project.cwd,
-            model: DEFAULT_MODEL,
-            expanded: true,
-            scripts: project.scripts,
-          })),
-        });
-        dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
-        bootstrappedRef.current = true;
-      } catch {
-        if (disposed) return;
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          void attemptBootstrap();
-        }, retryDelayMs);
-        retryDelayMs = Math.min(retryDelayMs * 2, 5_000);
-      }
-    };
-
-    void attemptBootstrap();
-
-    return () => {
-      disposed = true;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-      }
-    };
-  }, [api, dispatch]);
-
+  // Desktop hydration runs through EventRouter project + orchestration sync.
   return null;
 }

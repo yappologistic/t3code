@@ -25,10 +25,12 @@
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],
-      "outputs": []
+      "outputs": [],
+      "cache": false
     },
     "test": {
       "dependsOn": ["^build"],
+      "cache": false,
       "outputs": []
     }
   }

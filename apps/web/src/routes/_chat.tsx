@@ -2,7 +2,8 @@ import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { DiffWorkerPoolProvider } from "../components/DiffWorkerPoolProvider";
-import Sidebar from "../components/Sidebar";
+import ThreadSidebar from "../components/Sidebar";
+import { Sidebar, SidebarProvider } from "~/components/ui/sidebar";
 
 function ChatRouteLayout() {
   const navigate = useNavigate();
@@ -24,16 +25,21 @@ function ChatRouteLayout() {
   }, [navigate]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground isolate">
-      <Sidebar />
+    <SidebarProvider defaultOpen>
+      <Sidebar
+        side="left"
+        collapsible="offcanvas"
+        className="border-r border-border bg-card text-foreground"
+      >
+        <ThreadSidebar />
+      </Sidebar>
       <DiffWorkerPoolProvider>
         <Outlet />
       </DiffWorkerPoolProvider>
-    </div>
+    </SidebarProvider>
   );
 }
 
 export const Route = createFileRoute("/_chat")({
   component: ChatRouteLayout,
 });
-

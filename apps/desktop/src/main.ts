@@ -5,16 +5,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  Menu,
-  type MenuItemConstructorOptions,
-  protocol,
-  shell,
-} from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, shell } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
 
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import { fixPath } from "./fixPath";
@@ -26,7 +18,8 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
-const STATE_DIR = path.join(os.homedir(), ".t3", "userdata");
+const STATE_DIR =
+  process.env.T3CODE_STATE_DIR?.trim() || path.join(os.homedir(), ".t3", "userdata");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -126,7 +119,9 @@ function registerDesktopProtocol(): void {
 
   const staticRoot = resolveDesktopStaticDir();
   if (!staticRoot) {
-    throw new Error("Desktop static bundle missing. Build apps/server (with bundled client) first.");
+    throw new Error(
+      "Desktop static bundle missing. Build apps/server (with bundled client) first.",
+    );
   }
 
   const staticRootResolved = path.resolve(staticRoot);
@@ -160,7 +155,8 @@ function registerDesktopProtocol(): void {
 }
 
 function dispatchMenuAction(action: string): void {
-  const existingWindow = BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0];
+  const existingWindow =
+    BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0];
   const targetWindow = existingWindow ?? createWindow();
   if (!existingWindow) {
     mainWindow = targetWindow;

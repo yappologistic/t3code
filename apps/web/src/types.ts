@@ -1,7 +1,16 @@
 import type {
+  OrchestrationLatestTurn,
+  OrchestrationSessionStatus,
+  OrchestrationThreadActivity,
   ProjectScript as ContractProjectScript,
-  ProviderEvent,
-  ProviderSession,
+  ThreadId,
+  ProjectId,
+  TurnId,
+  MessageId,
+  CheckpointRef,
+  ProviderThreadId,
+  ProviderSessionId,
+  ProviderKind,
 } from "@t3tools/contracts";
 
 export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
@@ -29,11 +38,12 @@ export interface ChatImageAttachment {
 export type ChatAttachment = ChatImageAttachment;
 
 export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
+  id: MessageId;
+  role: "user" | "assistant" | "system";
   text: string;
   attachments?: ChatAttachment[];
   createdAt: string;
+  completedAt?: string | undefined;
   streaming: boolean;
 }
 
@@ -45,16 +55,17 @@ export interface TurnDiffFileChange {
 }
 
 export interface TurnDiffSummary {
-  turnId: string;
+  turnId: TurnId;
   completedAt: string;
   status?: string | undefined;
   files: TurnDiffFileChange[];
-  assistantMessageId?: string | undefined;
+  checkpointRef?: CheckpointRef | undefined;
+  assistantMessageId?: MessageId | undefined;
   checkpointTurnCount?: number | undefined;
 }
 
 export interface Project {
-  id: string;
+  id: ProjectId;
   name: string;
   cwd: string;
   model: string;
@@ -63,9 +74,9 @@ export interface Project {
 }
 
 export interface Thread {
-  id: string;
-  codexThreadId: string | null;
-  projectId: string;
+  id: ThreadId;
+  codexThreadId: ProviderThreadId | null;
+  projectId: ProjectId;
   title: string;
   model: string;
   terminalOpen: boolean;
@@ -75,17 +86,26 @@ export interface Thread {
   activeTerminalId: string;
   terminalGroups: ThreadTerminalGroup[];
   activeTerminalGroupId: string;
-  session: ProviderSession | null;
+  session: ThreadSession | null;
   messages: ChatMessage[];
-  events: ProviderEvent[];
   error: string | null;
   createdAt: string;
-  latestTurnId?: string | undefined;
-  latestTurnStartedAt?: string | undefined;
-  latestTurnCompletedAt?: string | undefined;
-  latestTurnDurationMs?: number | undefined;
+  latestTurn: OrchestrationLatestTurn | null;
   lastVisitedAt?: string | undefined;
   branch: string | null;
   worktreePath: string | null;
   turnDiffSummaries: TurnDiffSummary[];
+  activities: OrchestrationThreadActivity[];
+}
+
+export interface ThreadSession {
+  sessionId: ProviderSessionId;
+  provider: ProviderKind;
+  status: SessionPhase | "error" | "closed";
+  threadId: ProviderThreadId | null;
+  activeTurnId?: TurnId | undefined;
+  createdAt: string;
+  updatedAt: string;
+  lastError?: string;
+  orchestrationStatus: OrchestrationSessionStatus;
 }

@@ -5,7 +5,7 @@ import waitOn from "wait-on";
 
 import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
 
-const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5173);
+const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5733);
 const devServerUrl = `http://localhost:${port}`;
 
 await waitOn({
@@ -46,10 +46,7 @@ async function shutdown(exitCode) {
   shuttingDown = true;
 
   try {
-    await Promise.race([
-      monitor.destroy(),
-      new Promise((resolve) => setTimeout(resolve, 1_500)),
-    ]);
+    await Promise.race([monitor.destroy(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
   } catch {
     // Best effort only; fallback process kill below handles stubborn children.
   }

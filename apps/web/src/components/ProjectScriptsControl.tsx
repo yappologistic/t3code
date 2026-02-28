@@ -16,7 +16,15 @@ import {
 } from "lucide-react";
 import React, { type FormEvent, type KeyboardEvent, useMemo, useState } from "react";
 
-import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
+import {
+  keybindingValueForCommand,
+  decodeProjectScriptKeybindingRule,
+} from "~/lib/projectScriptKeybindings";
+import {
+  commandForProjectScript,
+  nextProjectScriptId,
+  primaryProjectScript,
+} from "~/projectScripts";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { isMacPlatform } from "~/lib/utils";
 import { Button } from "./ui/button";
@@ -129,32 +137,6 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
   return parts.join("+");
 }
 
-function keybindingValueForCommand(
-  keybindings: ResolvedKeybindingsConfig,
-  command: string,
-): string | null {
-  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
-    const binding = keybindings[index];
-    if (!binding || binding.command !== command) continue;
-
-    const parts: string[] = [];
-    if (binding.shortcut.modKey) parts.push("mod");
-    if (binding.shortcut.ctrlKey) parts.push("ctrl");
-    if (binding.shortcut.metaKey) parts.push("meta");
-    if (binding.shortcut.altKey) parts.push("alt");
-    if (binding.shortcut.shiftKey) parts.push("shift");
-    const keyToken =
-      binding.shortcut.key === " "
-        ? "space"
-        : binding.shortcut.key === "escape"
-          ? "esc"
-          : binding.shortcut.key;
-    parts.push(keyToken);
-    return parts.join("+");
-  }
-  return null;
-}
-
 export default function ProjectScriptsControl({
   scripts,
   keybindings,
@@ -212,12 +194,22 @@ export default function ProjectScriptsControl({
 
     setValidationError(null);
     try {
+      const scriptIdForValidation =
+        editingScriptId ??
+        nextProjectScriptId(
+          trimmedName,
+          scripts.map((script) => script.id),
+        );
+      const keybindingRule = decodeProjectScriptKeybindingRule({
+        keybinding,
+        command: commandForProjectScript(scriptIdForValidation),
+      });
       const payload = {
         name: trimmedName,
         command: trimmedCommand,
         icon,
         runOnWorktreeCreate,
-        keybinding: keybinding.trim() || null,
+        keybinding: keybindingRule?.key ?? null,
       } satisfies NewProjectScriptInput;
       if (editingScriptId) {
         await onUpdateScript(editingScriptId, payload);
@@ -266,9 +258,11 @@ export default function ProjectScriptsControl({
             title={`Run ${primaryScript.name}`}
           >
             <ScriptIcon icon={primaryScript.icon} />
-            <span className="ml-0.5">{primaryScript.name}</span>
+            <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
+              {primaryScript.name}
+            </span>
           </Button>
-          <GroupSeparator />
+          <GroupSeparator className="hidden @sm/header-actions:block" />
           <Menu highlightItemOnHover={false}>
             <MenuTrigger
               render={<Button size="icon-xs" variant="outline" aria-label="Script actions" />}
@@ -327,9 +321,11 @@ export default function ProjectScriptsControl({
           </Menu>
         </Group>
       ) : (
-        <Button size="xs" variant="outline" onClick={openAddDialog}>
+        <Button size="xs" variant="outline" onClick={openAddDialog} title="Add action">
           <PlusIcon className="size-3.5" />
-          Add action
+          <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
+            Add action
+          </span>
         </Button>
       )}
 

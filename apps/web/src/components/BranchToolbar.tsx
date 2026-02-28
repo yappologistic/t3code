@@ -1,13 +1,14 @@
-import type { GitBranch } from "@t3tools/contracts";
+import type { GitBranch, ThreadId } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { useNativeApi } from "../hooks/useNativeApi";
+import { newCommandId } from "../lib/utils";
 import {
   gitBranchesQueryOptions,
   gitCheckoutMutationOptions,
   gitCreateBranchAndCheckoutMutationOptions,
 } from "../lib/gitReactQuery";
+import { readNativeApi } from "../nativeApi";
 import { useStore } from "../store";
 import { deriveSyncedLocalBranch } from "./BranchToolbar.logic";
 import { Button } from "./ui/button";
@@ -23,7 +24,7 @@ import {
 import { ChevronDownIcon } from "lucide-react";
 
 interface BranchToolbarProps {
-  threadId: string;
+  threadId: ThreadId;
   envMode: "local" | "worktree";
   onEnvModeChange: (mode: "local" | "worktree") => void;
   envLocked: boolean;
@@ -38,7 +39,6 @@ export default function BranchToolbar({
   onComposerFocusRequest,
 }: BranchToolbarProps) {
   const { state, dispatch } = useStore();
-  const api = useNativeApi();
   const queryClient = useQueryClient();
 
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
@@ -53,7 +53,7 @@ export default function BranchToolbar({
 
   // ── Queries ───────────────────────────────────────────────────────────
 
-  const branchesQuery = useQuery(gitBranchesQueryOptions(api, branchCwd));
+  const branchesQuery = useQuery(gitBranchesQueryOptions(branchCwd));
 
   const branches = branchesQuery.data?.branches ?? [];
   const branchNames = branches.map((branch) => branch.name);
@@ -70,12 +70,10 @@ export default function BranchToolbar({
       : branchNames;
   // ── Mutations ─────────────────────────────────────────────────────────
 
-  const checkoutMutation = useMutation(
-    gitCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
-  );
+  const checkoutMutation = useMutation(gitCheckoutMutationOptions({ cwd: branchCwd, queryClient }));
 
   const createBranchMutation = useMutation(
-    gitCreateBranchAndCheckoutMutationOptions({ api, cwd: branchCwd, queryClient }),
+    gitCreateBranchAndCheckoutMutationOptions({ cwd: branchCwd, queryClient }),
   );
 
   // ── Effects ───────────────────────────────────────────────────────────
@@ -91,7 +89,17 @@ export default function BranchToolbar({
       queryBranches,
     });
     if (!activeThreadId || !syncedBranch) return;
+    const api = readNativeApi();
 
+    if (api) {
+      void api.orchestration.dispatchCommand({
+        type: "thread.meta.update",
+        commandId: newCommandId(),
+        threadId: activeThreadId,
+        branch: syncedBranch,
+        worktreePath: null,
+      });
+    }
     dispatch({
       type: "SET_THREAD_BRANCH",
       threadId: activeThreadId,
@@ -114,16 +122,34 @@ export default function BranchToolbar({
 
   const setThreadBranch = (branch: string | null, worktreePath: string | null) => {
     if (!activeThreadId) return;
+    const api = readNativeApi();
     // If the effective cwd is about to change, stop the running session so the
     // next message creates a new one with the correct cwd.
     const sessionId = activeThread?.session?.sessionId;
-    if (sessionId && worktreePath !== activeWorktreePath) {
-      void api?.providers.stopSession({ sessionId }).catch(() => undefined);
+    if (sessionId && worktreePath !== activeWorktreePath && api) {
+      void api.orchestration
+        .dispatchCommand({
+          type: "thread.session.stop",
+          commandId: newCommandId(),
+          threadId: activeThreadId,
+          createdAt: new Date().toISOString(),
+        })
+        .catch(() => undefined);
+    }
+    if (api) {
+      void api.orchestration.dispatchCommand({
+        type: "thread.meta.update",
+        commandId: newCommandId(),
+        threadId: activeThreadId,
+        branch,
+        worktreePath,
+      });
     }
     dispatch({ type: "SET_THREAD_BRANCH", threadId: activeThreadId, branch, worktreePath });
   };
 
   const selectBranch = (branch: GitBranch) => {
+    const api = readNativeApi();
     if (!api || !activeThreadId || !branchCwd) return;
 
     // For new worktree mode, selecting a branch picks the base branch.
@@ -164,6 +190,7 @@ export default function BranchToolbar({
 
   const createBranch = (rawName: string) => {
     const name = rawName.trim();
+    const api = readNativeApi();
     if (!api || !activeThreadId || !branchCwd || !name || createBranchMutation.isPending) return;
     createBranchMutation.mutate(name, {
       onSuccess: () => {

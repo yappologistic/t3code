@@ -1,5 +1,5 @@
-import { type GitStatusResult, type GitStackedAction, type NativeApi } from "@t3tools/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type GitStatusResult, type GitStackedAction, type ThreadId } from "@t3tools/contracts";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from "lucide-react";
 import { GitHubIcon } from "./Icons";
@@ -33,17 +33,18 @@ import { toastManager } from "~/components/ui/toast";
 import {
   gitBranchesQueryOptions,
   gitInitMutationOptions,
+  gitMutationKeys,
   gitPullMutationOptions,
   gitRunStackedActionMutationOptions,
   gitStatusQueryOptions,
   invalidateGitQueries,
 } from "~/lib/gitReactQuery";
 import { preferredTerminalEditor, resolvePathLinkTarget } from "~/terminal-links";
+import { readNativeApi } from "~/nativeApi";
 
 interface GitActionsControlProps {
-  api: NativeApi | undefined;
   gitCwd: string | null;
-  activeThreadId: string | null;
+  activeThreadId: ThreadId | null;
 }
 
 function getMenuActionDisabledReason(
@@ -136,11 +137,7 @@ function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
   return <InfoIcon className={iconClassName} />;
 }
 
-export default function GitActionsControl({
-  api,
-  gitCwd,
-  activeThreadId,
-}: GitActionsControlProps) {
+export default function GitActionsControl({ gitCwd, activeThreadId }: GitActionsControlProps) {
   const threadToastData = useMemo(
     () => (activeThreadId ? { threadId: activeThreadId } : undefined),
     [activeThreadId],
@@ -149,11 +146,9 @@ export default function GitActionsControl({
   const [activeDialogAction, setActiveDialogAction] = useState<GitDialogAction | null>(null);
   const [dialogCommitMessage, setDialogCommitMessage] = useState("");
 
-  const { data: gitStatus = null, error: gitStatusError } = useQuery(
-    gitStatusQueryOptions(api, gitCwd),
-  );
+  const { data: gitStatus = null, error: gitStatusError } = useQuery(gitStatusQueryOptions(gitCwd));
 
-  const { data: branchList = null } = useQuery(gitBranchesQueryOptions(api, gitCwd));
+  const { data: branchList = null } = useQuery(gitBranchesQueryOptions(gitCwd));
   // Default to true while loading so we don't flash init controls.
   const isRepo = branchList?.isRepo ?? true;
   const currentBranch = branchList?.branches.find((branch) => branch.current)?.name ?? null;
@@ -167,14 +162,17 @@ export default function GitActionsControl({
 
   const gitStatusForActions = isGitStatusOutOfSync ? null : gitStatus;
 
-  const initMutation = useMutation(gitInitMutationOptions({ api, cwd: gitCwd, queryClient }));
+  const initMutation = useMutation(gitInitMutationOptions({ cwd: gitCwd, queryClient }));
 
   const runImmediateGitActionMutation = useMutation(
-    gitRunStackedActionMutationOptions({ api, cwd: gitCwd, queryClient }),
+    gitRunStackedActionMutationOptions({ cwd: gitCwd, queryClient }),
   );
-  const pullMutation = useMutation(gitPullMutationOptions({ api, cwd: gitCwd, queryClient }));
+  const pullMutation = useMutation(gitPullMutationOptions({ cwd: gitCwd, queryClient }));
 
-  const isGitActionRunning = runImmediateGitActionMutation.isPending || pullMutation.isPending;
+  const isRunStackedActionRunning =
+    useIsMutating({ mutationKey: gitMutationKeys.runStackedAction(gitCwd) }) > 0;
+  const isPullRunning = useIsMutating({ mutationKey: gitMutationKeys.pull(gitCwd) }) > 0;
+  const isGitActionRunning = isRunStackedActionRunning || isPullRunning;
   const isDefaultBranch = useMemo(() => {
     const branchName = gitStatusForActions?.branch;
     if (!branchName) return false;
@@ -196,6 +194,7 @@ export default function GitActionsControl({
 
   const maybeConfirmPushToDefaultBranch = useCallback(
     async (action: GitStackedAction): Promise<boolean> => {
+      const api = readNativeApi();
       if (!api) return false;
       if (
         !requiresDefaultBranchConfirmation(action, isDefaultBranch) ||
@@ -207,10 +206,11 @@ export default function GitActionsControl({
         `You're about to push to the default branch "${gitStatusForActions.branch}". Continue?`,
       );
     },
-    [api, gitStatusForActions?.branch, isDefaultBranch],
+    [gitStatusForActions?.branch, isDefaultBranch],
   );
 
   const openExistingPr = useCallback(async () => {
+    const api = readNativeApi();
     if (!api) {
       toastManager.add({
         type: "error",
@@ -236,8 +236,7 @@ export default function GitActionsControl({
         data: threadToastData,
       });
     });
-  }, [api, gitStatusForActions?.pr?.state, gitStatusForActions?.pr?.url, threadToastData]);
-
+  }, [gitStatusForActions?.pr?.state, gitStatusForActions?.pr?.url, threadToastData]);
   const runGitActionWithToast = useCallback(
     async ({
       action,
@@ -335,8 +334,10 @@ export default function GitActionsControl({
                   actionProps: {
                     children: "Open PR",
                     onClick: () => {
+                      const api = readNativeApi();
+                      if (!api) return;
                       closeResultToast();
-                      void api?.shell.openExternal(prUrl);
+                      void api.shell.openExternal(prUrl);
                     },
                   },
                 }
@@ -362,8 +363,8 @@ export default function GitActionsControl({
         });
       }
     },
+
     [
-      api,
       gitStatusForActions?.branch,
       gitStatusForActions?.hasWorkingTreeChanges,
       gitStatusForActions?.pr,
@@ -453,6 +454,7 @@ export default function GitActionsControl({
 
   const openChangedFileInEditor = useCallback(
     (filePath: string) => {
+      const api = readNativeApi();
       if (!api || !gitCwd) {
         toastManager.add({
           type: "error",
@@ -471,7 +473,7 @@ export default function GitActionsControl({
         });
       });
     },
-    [api, gitCwd, threadToastData],
+    [gitCwd, threadToastData],
   );
 
   if (!gitCwd) return null;
@@ -503,7 +505,9 @@ export default function GitActionsControl({
                 }
               >
                 <GitQuickActionIcon quickAction={quickAction} />
-                <span className="ml-0.5">{quickAction.label}</span>
+                <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
+                  {quickAction.label}
+                </span>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
                 {quickActionDisabledReason}
@@ -517,10 +521,12 @@ export default function GitActionsControl({
               onClick={runQuickAction}
             >
               <GitQuickActionIcon quickAction={quickAction} />
-              <span className="ml-0.5">{quickAction.label}</span>
+              <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
+                {quickAction.label}
+              </span>
             </Button>
           )}
-          <GroupSeparator />
+          <GroupSeparator className="hidden @sm/header-actions:block" />
           <Menu
             onOpenChange={(open) => {
               if (open) void invalidateGitQueries(queryClient);

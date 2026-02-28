@@ -68,6 +68,9 @@ npx t3
 - `bun run dev` — Starts contracts, server, and web in `turbo watch` mode.
 - `bun run dev:server` — Starts just the WebSocket server (uses Bun TypeScript execution).
 - `bun run dev:web` — Starts just the Vite dev server for the web app.
+- Dev commands default `T3CODE_STATE_DIR` to `~/.t3/dev` to keep dev state isolated from desktop/prod state.
+- Override server CLI-equivalent flags from root dev commands with `--`, for example:
+  `bun run dev -- --state-dir ~/.t3/another-dev-state`
 - `bun run start` — Runs the production server (serves built web app as static files).
 - `bun run build` — Builds contracts, web app, and server through Turbo.
 - `bun run typecheck` — Strict TypeScript checks for all packages.
@@ -88,7 +91,7 @@ npx t3
 
 Set `T3CODE_DEV_INSTANCE` to any value to deterministically shift all dev ports together.
 
-- Default ports: server `3773`, web `5173`
+- Default ports: server `3773`, web `5733`
 - Shifted ports: `base + offset` (offset is hashed from `T3CODE_DEV_INSTANCE`)
 - Example: `T3CODE_DEV_INSTANCE=branch-a bun run dev:desktop`
 
@@ -106,12 +109,12 @@ T3 Code has a global runtime mode switch in the chat toolbar:
 The web app communicates with the server via WebSocket using a simple JSON-RPC-style protocol:
 
 - **Request/Response**: `{ id, method, params }` → `{ id, result }` or `{ id, error }`
-- **Push events**: `{ type: "push", channel, data }` for streaming provider events
+- **Push events**: `{ type: "push", channel, data }` for orchestration read-model updates
 
 Methods mirror the `NativeApi` interface defined in `@t3tools/contracts`:
 
 - `providers.startSession`, `providers.sendTurn`, `providers.interruptTurn`
-- `providers.respondToRequest`, `providers.stopSession`, `providers.listSessions`
+- `providers.respondToRequest`, `providers.stopSession`
 - `shell.openInEditor`, `server.getConfig`
 
 Codex is the only implemented provider. `claudeCode` is reserved in contracts/UI.

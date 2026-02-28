@@ -1,157 +1,167 @@
-import { z } from "zod";
+import { Schema } from "effect";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas";
 
-// ── Existing branch/worktree Git API ─────────────────────────────────
+const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 
-export const gitListBranchesInputSchema = z.object({
-  cwd: z.string().min(1),
+// Domain Types
+
+export const GitStackedAction = Schema.Literals(["commit", "commit_push", "commit_push_pr"]);
+export type GitStackedAction = typeof GitStackedAction.Type;
+export const GitCommitStepStatus = Schema.Literals(["created", "skipped_no_changes"]);
+export const GitPushStepStatus = Schema.Literals([
+  "pushed",
+  "skipped_not_requested",
+  "skipped_up_to_date",
+]);
+export const GitPrStepStatus = Schema.Literals([
+  "created",
+  "opened_existing",
+  "skipped_not_requested",
+]);
+export const GitStatusPrState = Schema.Literals(["open", "closed", "merged"]);
+export type GitStatusPrState = typeof GitStatusPrState.Type;
+
+export const GitBranch = Schema.Struct({
+  name: TrimmedNonEmptyStringSchema,
+  current: Schema.Boolean,
+  isDefault: Schema.Boolean,
+  worktreePath: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
 });
+export type GitBranch = typeof GitBranch.Type;
 
-export const gitCreateWorktreeInputSchema = z.object({
-  cwd: z.string().min(1),
-  branch: z.string().min(1),
-  newBranch: z.string().min(1),
-  path: z.string().min(1).optional(),
+export const GitWorktree = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  branch: TrimmedNonEmptyStringSchema,
 });
+export type GitWorktree = typeof GitWorktree.Type;
 
-export const gitRemoveWorktreeInputSchema = z.object({
-  cwd: z.string().min(1),
-  path: z.string().min(1),
-  force: z.boolean().optional(),
+// RPC Inputs
+
+export const GitStatusInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
 });
+export type GitStatusInput = typeof GitStatusInput.Type;
 
-export const gitCreateBranchInputSchema = z.object({
-  cwd: z.string().min(1),
-  branch: z.string().min(1),
+export const GitPullInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
 });
+export type GitPullInput = typeof GitPullInput.Type;
 
-export const gitCheckoutInputSchema = z.object({
-  cwd: z.string().min(1),
-  branch: z.string().min(1),
+export const GitRunStackedActionInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  action: GitStackedAction,
+  commitMessage: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(10_000))),
 });
+export type GitRunStackedActionInput = typeof GitRunStackedActionInput.Type;
 
-export const gitInitInputSchema = z.object({
-  cwd: z.string().min(1),
+export const GitListBranchesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
 });
+export type GitListBranchesInput = typeof GitListBranchesInput.Type;
 
-export const gitBranchSchema = z.object({
-  name: z.string().min(1),
-  current: z.boolean(),
-  isDefault: z.boolean(),
-  worktreePath: z.string().min(1).nullable(),
+export const GitCreateWorktreeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  branch: TrimmedNonEmptyStringSchema,
+  newBranch: TrimmedNonEmptyStringSchema,
+  path: Schema.NullOr(TrimmedNonEmptyStringSchema),
 });
+export type GitCreateWorktreeInput = typeof GitCreateWorktreeInput.Type;
 
-export const gitWorktreeSchema = z.object({
-  path: z.string().min(1),
-  branch: z.string().min(1),
+export const GitRemoveWorktreeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+  force: Schema.optional(Schema.Boolean),
 });
+export type GitRemoveWorktreeInput = typeof GitRemoveWorktreeInput.Type;
 
-export type GitListBranchesInput = z.infer<typeof gitListBranchesInputSchema>;
-export type GitBranch = z.infer<typeof gitBranchSchema>;
-export type GitCreateWorktreeInput = z.infer<typeof gitCreateWorktreeInputSchema>;
-export type GitWorktree = z.infer<typeof gitWorktreeSchema>;
-export type GitRemoveWorktreeInput = z.infer<typeof gitRemoveWorktreeInputSchema>;
-export type GitCreateBranchInput = z.infer<typeof gitCreateBranchInputSchema>;
-export type GitCheckoutInput = z.infer<typeof gitCheckoutInputSchema>;
-export type GitInitInput = z.infer<typeof gitInitInputSchema>;
-
-export interface GitListBranchesResult {
-  branches: GitBranch[];
-  isRepo: boolean;
-}
-
-export interface GitCreateWorktreeResult {
-  worktree: GitWorktree;
-}
-
-// ── Stacked action Git API ───────────────────────────────────────────
-
-export const gitStatusInputSchema = z.object({
-  cwd: z.string().trim().min(1),
+export const GitCreateBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  branch: TrimmedNonEmptyStringSchema,
 });
+export type GitCreateBranchInput = typeof GitCreateBranchInput.Type;
 
-export const gitPullInputSchema = z.object({
-  cwd: z.string().trim().min(1),
+export const GitCheckoutInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  branch: TrimmedNonEmptyStringSchema,
 });
+export type GitCheckoutInput = typeof GitCheckoutInput.Type;
 
-export const gitStatusPrStateSchema = z.enum(["open", "closed", "merged"]);
-
-export const gitStatusPrSchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string().min(1),
-  url: z.string().url(),
-  baseBranch: z.string().min(1),
-  headBranch: z.string().min(1),
-  state: gitStatusPrStateSchema,
+export const GitInitInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
 });
+export type GitInitInput = typeof GitInitInput.Type;
 
-export const gitStatusResultSchema = z.object({
-  branch: z.string().min(1).nullable(),
-  hasWorkingTreeChanges: z.boolean(),
-  workingTree: z.object({
-    files: z.array(
-      z.object({
-        path: z.string().min(1),
-        insertions: z.number().int().nonnegative(),
-        deletions: z.number().int().nonnegative(),
+// RPC Results
+
+export const GitStatusPr = Schema.Struct({
+  number: PositiveInt,
+  title: TrimmedNonEmptyStringSchema,
+  url: Schema.String,
+  baseBranch: TrimmedNonEmptyStringSchema,
+  headBranch: TrimmedNonEmptyStringSchema,
+  state: GitStatusPrState,
+});
+export type GitStatusPr = typeof GitStatusPr.Type;
+
+export const GitStatusResult = Schema.Struct({
+  branch: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
+  hasWorkingTreeChanges: Schema.Boolean,
+  workingTree: Schema.Struct({
+    files: Schema.Array(
+      Schema.Struct({
+        path: TrimmedNonEmptyStringSchema,
+        insertions: NonNegativeInt,
+        deletions: NonNegativeInt,
       }),
     ),
-    insertions: z.number().int().nonnegative(),
-    deletions: z.number().int().nonnegative(),
+    insertions: NonNegativeInt,
+    deletions: NonNegativeInt,
   }),
-  hasUpstream: z.boolean(),
-  aheadCount: z.number().int().nonnegative(),
-  behindCount: z.number().int().nonnegative(),
-  pr: gitStatusPrSchema.nullable(),
+  hasUpstream: Schema.Boolean,
+  aheadCount: NonNegativeInt,
+  behindCount: NonNegativeInt,
+  pr: Schema.NullOr(GitStatusPr),
 });
+export type GitStatusResult = typeof GitStatusResult.Type;
 
-export const gitStackedActionSchema = z.enum(["commit", "commit_push", "commit_push_pr"]);
-
-const gitCommitStepStatusSchema = z.enum(["created", "skipped_no_changes"]);
-const gitPushStepStatusSchema = z.enum(["pushed", "skipped_not_requested", "skipped_up_to_date"]);
-const gitPrStepStatusSchema = z.enum(["created", "opened_existing", "skipped_not_requested"]);
-
-export const gitRunStackedActionInputSchema = z.object({
-  cwd: z.string().trim().min(1),
-  action: gitStackedActionSchema,
-  commitMessage: z.string().trim().min(1).max(10_000).optional(),
+export const GitListBranchesResult = Schema.Struct({
+  branches: Schema.Array(GitBranch),
+  isRepo: Schema.Boolean,
 });
+export type GitListBranchesResult = typeof GitListBranchesResult.Type;
 
-export const gitRunStackedActionResultSchema = z.object({
-  action: gitStackedActionSchema,
-  commit: z.object({
-    status: gitCommitStepStatusSchema,
-    commitSha: z.string().min(1).optional(),
-    subject: z.string().min(1).optional(),
+export const GitCreateWorktreeResult = Schema.Struct({
+  worktree: GitWorktree,
+});
+export type GitCreateWorktreeResult = typeof GitCreateWorktreeResult.Type;
+
+export const GitRunStackedActionResult = Schema.Struct({
+  action: GitStackedAction,
+  commit: Schema.Struct({
+    status: GitCommitStepStatus,
+    commitSha: Schema.optional(TrimmedNonEmptyStringSchema),
+    subject: Schema.optional(TrimmedNonEmptyStringSchema),
   }),
-  push: z.object({
-    status: gitPushStepStatusSchema,
-    branch: z.string().min(1).optional(),
-    upstreamBranch: z.string().min(1).optional(),
-    setUpstream: z.boolean().optional(),
+  push: Schema.Struct({
+    status: GitPushStepStatus,
+    branch: Schema.optional(TrimmedNonEmptyStringSchema),
+    upstreamBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+    setUpstream: Schema.optional(Schema.Boolean),
   }),
-  pr: z.object({
-    status: gitPrStepStatusSchema,
-    url: z.string().url().optional(),
-    number: z.number().int().positive().optional(),
-    baseBranch: z.string().min(1).optional(),
-    headBranch: z.string().min(1).optional(),
-    title: z.string().min(1).optional(),
+  pr: Schema.Struct({
+    status: GitPrStepStatus,
+    url: Schema.optional(Schema.String),
+    number: Schema.optional(PositiveInt),
+    baseBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+    headBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+    title: Schema.optional(TrimmedNonEmptyStringSchema),
   }),
 });
+export type GitRunStackedActionResult = typeof GitRunStackedActionResult.Type;
 
-export type GitStatusInput = z.input<typeof gitStatusInputSchema>;
-export type GitPullInput = z.input<typeof gitPullInputSchema>;
-export type GitStatusPrState = z.infer<typeof gitStatusPrStateSchema>;
-export type GitStatusPr = z.infer<typeof gitStatusPrSchema>;
-export type GitStatusResult = z.infer<typeof gitStatusResultSchema>;
-export type GitStackedAction = z.infer<typeof gitStackedActionSchema>;
-export type GitRunStackedActionInput = z.input<typeof gitRunStackedActionInputSchema>;
-export type GitRunStackedActionResult = z.infer<typeof gitRunStackedActionResultSchema>;
-
-export const gitPullResultSchema = z.object({
-  status: z.enum(["pulled", "skipped_up_to_date"]),
-  branch: z.string().min(1),
-  upstreamBranch: z.string().min(1).optional(),
+export const GitPullResult = Schema.Struct({
+  status: Schema.Literals(["pulled", "skipped_up_to_date"]),
+  branch: TrimmedNonEmptyStringSchema,
+  upstreamBranch: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
 });
-
-export type GitPullResult = z.infer<typeof gitPullResultSchema>;
+export type GitPullResult = typeof GitPullResult.Type;

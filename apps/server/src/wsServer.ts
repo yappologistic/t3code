@@ -1,38 +1,48 @@
-import { spawn } from "node:child_process";
+/**
+ * Server - HTTP/WebSocket server service interface.
+ *
+ * Owns startup and shutdown lifecycle of the HTTP server, static asset serving,
+ * and WebSocket request routing.
+ *
+ * @module Server
+ */
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 
 import {
-  EDITORS,
+  CommandId,
+  ORCHESTRATION_WS_CHANNELS,
+  ORCHESTRATION_WS_METHODS,
+  ProjectId,
+  ThreadId,
+  TerminalEvent,
   WS_CHANNELS,
   WS_METHODS,
-  type TerminalEvent,
-  type WsPush,
-  type WsRequest,
-  type WsResponse,
-  wsRequestSchema,
+  WebSocketRequest,
+  WsPush,
+  WsResponse,
 } from "@t3tools/contracts";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import { Cause, Effect, Exit, Layer, Ref, Schema, Scope, ServiceMap, Stream, Struct } from "effect";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { createLogger } from "./logger";
-import { ProjectRegistry } from "./projectRegistry";
-import { ProviderManager } from "./providerManager";
-import { GitManager } from "./gitManager";
-import {
-  checkoutGitBranch,
-  createGitBranch,
-  createGitWorktree,
-  initGitRepo,
-  listGitBranches,
-  pullGitBranch,
-  removeGitWorktree,
-} from "./git";
-import { TerminalManager } from "./terminalManager";
-import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
+import { GitManager } from "./git/Services/GitManager.ts";
+import { TerminalManager } from "./terminal/Services/Manager.ts";
+import { Keybindings } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
+import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
+import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
+import { OrchestrationReactor } from "./orchestration/Services/OrchestrationReactor";
+import { ProviderService } from "./provider/Services/ProviderService";
+import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
+import { clamp } from "effect/Number";
+import { Open } from "./open";
+import { ServerConfig } from "./config";
+import { GitCore } from "./git/Services/GitCore.ts";
+import { tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -49,50 +59,147 @@ const MIME_TYPES: Record<string, string> = {
   ".map": "application/json",
 };
 
-export interface ServerOptions {
-  port: number;
-  host?: string | undefined;
-  cwd: string;
-  staticDir?: string | undefined;
-  devUrl?: string | undefined;
-  logWebSocketEvents?: boolean | undefined;
-  projectRegistry?: ProjectRegistry | undefined;
-  gitManager?: GitManager | undefined;
-  terminalManager?: TerminalManager | undefined;
-  authToken?: string | undefined;
+/**
+ * ServerShape - Service API for server lifecycle control.
+ */
+export interface ServerShape {
+  /**
+   * Start HTTP and WebSocket listeners.
+   */
+  readonly start: Effect.Effect<
+    http.Server,
+    ServerLifecycleError,
+    Scope.Scope | ServerRuntimeServices | ServerConfig
+  >;
+
+  /**
+   * Wait for process shutdown signals.
+   */
+  readonly stopSignal: Effect.Effect<void, never>;
 }
 
-function parseBooleanEnv(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) return true;
-  if (["0", "false", "no", "off"].includes(normalized)) return false;
-  return undefined;
+/**
+ * Server - Service tag for HTTP/WebSocket lifecycle management.
+ */
+export class Server extends ServiceMap.Service<Server, ServerShape>()("t3/wsServer/Server") {}
+
+const isServerNotRunningError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const maybeCode = (error as NodeJS.ErrnoException).code;
+  return (
+    maybeCode === "ERR_SERVER_NOT_RUNNING" || error.message.toLowerCase().includes("not running")
+  );
+};
+
+function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
+  socket.end(
+    `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
+      "Connection: close\r\n" +
+      "Content-Type: text/plain\r\n" +
+      `Content-Length: ${Buffer.byteLength(message)}\r\n` +
+      "\r\n" +
+      message,
+  );
 }
 
-export function createServer(options: ServerOptions) {
+function websocketRawToString(raw: unknown): string | null {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (raw instanceof Uint8Array) {
+    return Buffer.from(raw).toString("utf8");
+  }
+  if (raw instanceof ArrayBuffer) {
+    return Buffer.from(new Uint8Array(raw)).toString("utf8");
+  }
+  if (Array.isArray(raw)) {
+    const chunks: string[] = [];
+    for (const chunk of raw) {
+      if (typeof chunk === "string") {
+        chunks.push(chunk);
+        continue;
+      }
+      if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk).toString("utf8"));
+        continue;
+      }
+      if (chunk instanceof ArrayBuffer) {
+        chunks.push(Buffer.from(new Uint8Array(chunk)).toString("utf8"));
+        continue;
+      }
+      return null;
+    }
+    return chunks.join("");
+  }
+  return null;
+}
+
+function stripRequestTag<T extends { _tag: string }>(body: T) {
+  return Struct.omit(body, ["_tag"]);
+}
+
+export type ServerCoreRuntimeServices =
+  | OrchestrationEngineService
+  | ProjectionSnapshotQuery
+  | CheckpointDiffQuery
+  | OrchestrationReactor
+  | ProviderService;
+
+export type ServerRuntimeServices =
+  | ServerCoreRuntimeServices
+  | GitManager
+  | GitCore
+  | TerminalManager
+  | Keybindings
+  | Open;
+
+export class ServerLifecycleError extends Schema.TaggedErrorClass<ServerLifecycleError>()(
+  "ServerLifecycleError",
+  {
+    operation: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+class RouteRequestError extends Schema.TaggedErrorClass<RouteRequestError>()("RouteRequestError", {
+  message: Schema.String,
+}) {}
+
+export const createServer = Effect.fn(function* (): Effect.fn.Return<
+  http.Server,
+  ServerLifecycleError,
+  Scope.Scope | ServerRuntimeServices | ServerConfig
+> {
+  const serverConfig = yield* ServerConfig;
   const {
     port,
-    host,
     cwd,
+    keybindingsConfigPath,
     staticDir,
     devUrl,
-    logWebSocketEvents: explicitLogWsEvents,
-    projectRegistry: providedRegistry,
-    gitManager: providedGitManager,
-    terminalManager: providedTerminalManager,
     authToken,
-  } = options;
-  const providerManager = new ProviderManager();
-  const terminalManager = providedTerminalManager ?? new TerminalManager();
-  const projectRegistry =
-    providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
-  const gitManager = providedGitManager ?? new GitManager();
-  const clients = new Set<WebSocket>();
+    host,
+    logWebSocketEvents,
+    autoBootstrapProjectFromCwd,
+  } = serverConfig;
+
+  const gitManager = yield* GitManager;
+  const terminalManager = yield* TerminalManager;
+  const keybindingsManager = yield* Keybindings;
+  const git = yield* GitCore;
+
+  yield* keybindingsManager.syncDefaultKeybindingsOnStartup.pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("failed to sync keybindings defaults on startup", {
+        path: error.configPath,
+        detail: error.detail,
+        cause: error.cause,
+      }),
+    ),
+  );
+
+  const clients = yield* Ref.make(new Set<WebSocket>());
   const logger = createLogger("ws");
-  const logWebSocketEvents =
-    explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
-  let keybindingsConfig = loadResolvedKeybindingsConfig(logger);
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;
@@ -103,16 +210,11 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  // Forward provider events to all connected WebSocket clients
-  providerManager.on("event", (event) => {
-    const push: WsPush = {
-      type: "push",
-      channel: WS_CHANNELS.providerEvent,
-      data: event,
-    };
-    const message = JSON.stringify(push);
+  const encodePush = Schema.encodeEffect(Schema.fromJsonString(WsPush));
+  const broadcastPush = Effect.fnUntraced(function* (push: WsPush) {
+    const message = yield* encodePush(push);
     let recipients = 0;
-    for (const client of clients) {
+    for (const client of yield* Ref.get(clients)) {
       if (client.readyState === client.OPEN) {
         client.send(message);
         recipients += 1;
@@ -121,29 +223,25 @@ export function createServer(options: ServerOptions) {
     logOutgoingPush(push, recipients);
   });
 
-  const onTerminalEvent = (event: TerminalEvent) => {
-    const push: WsPush = {
+  const onTerminalEvent = Effect.fnUntraced(function* (event: TerminalEvent) {
+    yield* broadcastPush({
       type: "push",
       channel: WS_CHANNELS.terminalEvent,
       data: event,
-    };
-    const message = JSON.stringify(push);
-    let recipients = 0;
-    for (const client of clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(message);
-        recipients += 1;
-      }
-    }
-    logOutgoingPush(push, recipients);
-  };
-  terminalManager.on("event", onTerminalEvent);
+    });
+  });
 
   // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
+    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+
+    if (tryHandleProjectFaviconRequest(url, res)) {
+      return;
+    }
+
     // In dev mode, redirect to Vite dev server
     if (devUrl) {
-      res.writeHead(302, { Location: devUrl });
+      res.writeHead(302, { Location: devUrl.href });
       res.end();
       return;
     }
@@ -155,7 +253,6 @@ export function createServer(options: ServerOptions) {
       return;
     }
 
-    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     let filePath = path.join(staticDir, url.pathname);
 
     // SPA fallback: if no file extension and not found, serve index.html
@@ -198,19 +295,306 @@ export function createServer(options: ServerOptions) {
   // WebSocket server — upgrades from the HTTP server
   const wss = new WebSocketServer({ noServer: true });
 
-  function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
-    socket.write(
-      `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
-        "Connection: close\r\n" +
-        "Content-Type: text/plain\r\n" +
-        `Content-Length: ${Buffer.byteLength(message)}\r\n` +
-        "\r\n" +
-        message,
+  const closeWebSocketServer = Effect.callback<void, ServerLifecycleError>((resume) => {
+    wss.close((error) => {
+      if (error && !isServerNotRunningError(error)) {
+        resume(
+          Effect.fail(
+            new ServerLifecycleError({ operation: "closeWebSocketServer", cause: error }),
+          ),
+        );
+      } else {
+        resume(Effect.void);
+      }
+    });
+  });
+
+  const closeAllClients = Ref.get(clients).pipe(
+    Effect.flatMap(Effect.forEach((client) => Effect.sync(() => client.close()))),
+    Effect.flatMap(() => Ref.set(clients, new Set())),
+  );
+
+  const listenOptions = host ? { host, port } : { port };
+
+  const orchestrationEngine = yield* OrchestrationEngineService;
+  const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
+  const checkpointDiffQuery = yield* CheckpointDiffQuery;
+  const liveProviderService = yield* ProviderService;
+  const orchestrationReactor = yield* OrchestrationReactor;
+  const { openInEditor } = yield* Open;
+
+  const subscriptionsScope = yield* Scope.make("sequential");
+  yield* Effect.addFinalizer(() => Scope.close(subscriptionsScope, Exit.void));
+
+  yield* Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) =>
+    broadcastPush({
+      type: "push",
+      channel: ORCHESTRATION_WS_CHANNELS.domainEvent,
+      data: event,
+    }),
+  ).pipe(Effect.forkIn(subscriptionsScope));
+
+  yield* Stream.runForEach(keybindingsManager.changes, (event) =>
+    broadcastPush({
+      type: "push",
+      channel: WS_CHANNELS.serverConfigUpdated,
+      data: event,
+    }),
+  ).pipe(Effect.forkIn(subscriptionsScope));
+
+  yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
+
+  let welcomeBootstrapProjectId: ProjectId | undefined;
+  let welcomeBootstrapThreadId: ThreadId | undefined;
+
+  if (autoBootstrapProjectFromCwd) {
+    yield* Effect.gen(function* () {
+      const snapshot = yield* projectionReadModelQuery.getSnapshot();
+      const existingProject = snapshot.projects.find(
+        (project) => project.workspaceRoot === cwd && project.deletedAt === null,
+      );
+      let bootstrapProjectId: ProjectId;
+      let bootstrapProjectDefaultModel: string;
+
+      if (!existingProject) {
+        const createdAt = new Date().toISOString();
+        bootstrapProjectId = ProjectId.makeUnsafe(crypto.randomUUID());
+        const bootstrapProjectTitle = path.basename(cwd) || "project";
+        bootstrapProjectDefaultModel = "gpt-5-codex";
+        yield* orchestrationEngine.dispatch({
+          type: "project.create",
+          commandId: CommandId.makeUnsafe(crypto.randomUUID()),
+          projectId: bootstrapProjectId,
+          title: bootstrapProjectTitle,
+          workspaceRoot: cwd,
+          defaultModel: bootstrapProjectDefaultModel,
+          createdAt,
+        });
+      } else {
+        bootstrapProjectId = existingProject.id;
+        bootstrapProjectDefaultModel = existingProject.defaultModel ?? "gpt-5-codex";
+      }
+
+      const existingThread = snapshot.threads.find(
+        (thread) => thread.projectId === bootstrapProjectId && thread.deletedAt === null,
+      );
+      if (!existingThread) {
+        const createdAt = new Date().toISOString();
+        const threadId = ThreadId.makeUnsafe(crypto.randomUUID());
+        yield* orchestrationEngine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.makeUnsafe(crypto.randomUUID()),
+          threadId,
+          projectId: bootstrapProjectId,
+          title: "New thread",
+          model: bootstrapProjectDefaultModel,
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+        welcomeBootstrapProjectId = bootstrapProjectId;
+        welcomeBootstrapThreadId = threadId;
+      } else {
+        welcomeBootstrapProjectId = bootstrapProjectId;
+        welcomeBootstrapThreadId = existingThread.id;
+      }
+    }).pipe(
+      Effect.mapError(
+        (cause) => new ServerLifecycleError({ operation: "autoBootstrapProject", cause }),
+      ),
     );
-    socket.destroy();
   }
 
+  const routeRequest = Effect.fnUntraced(function* (request: WebSocketRequest) {
+    switch (request.body._tag) {
+      case ORCHESTRATION_WS_METHODS.getSnapshot:
+        return yield* projectionReadModelQuery.getSnapshot();
+
+      case ORCHESTRATION_WS_METHODS.dispatchCommand: {
+        const { command } = request.body;
+        return yield* orchestrationEngine.dispatch(command);
+      }
+
+      case ORCHESTRATION_WS_METHODS.getTurnDiff: {
+        const body = stripRequestTag(request.body);
+        return yield* checkpointDiffQuery.getTurnDiff(body);
+      }
+
+      case ORCHESTRATION_WS_METHODS.getFullThreadDiff: {
+        const body = stripRequestTag(request.body);
+        return yield* checkpointDiffQuery.getFullThreadDiff(body);
+      }
+
+      case ORCHESTRATION_WS_METHODS.replayEvents: {
+        const { fromSequenceExclusive } = request.body;
+        return yield* Stream.runCollect(
+          orchestrationEngine.readEvents(
+            clamp(fromSequenceExclusive, {
+              maximum: Number.MAX_SAFE_INTEGER,
+              minimum: 0,
+            }),
+          ),
+        ).pipe(Effect.map((events) => Array.from(events)));
+      }
+
+      case WS_METHODS.projectsSearchEntries: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => searchWorkspaceEntries(body),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to search workspace entries: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.shellOpenInEditor: {
+        const body = stripRequestTag(request.body);
+        return yield* openInEditor(body);
+      }
+
+      case WS_METHODS.gitStatus: {
+        const body = stripRequestTag(request.body);
+        return yield* gitManager.status(body);
+      }
+
+      case WS_METHODS.gitPull: {
+        const body = stripRequestTag(request.body);
+        return yield* git.pullCurrentBranch(body.cwd);
+      }
+
+      case WS_METHODS.gitRunStackedAction: {
+        const body = stripRequestTag(request.body);
+        return yield* gitManager.runStackedAction(body);
+      }
+
+      case WS_METHODS.gitListBranches: {
+        const body = stripRequestTag(request.body);
+        return yield* git.listBranches(body);
+      }
+
+      case WS_METHODS.gitCreateWorktree: {
+        const body = stripRequestTag(request.body);
+        return yield* git.createWorktree(body);
+      }
+
+      case WS_METHODS.gitRemoveWorktree: {
+        const body = stripRequestTag(request.body);
+        return yield* git.removeWorktree(body);
+      }
+
+      case WS_METHODS.gitCreateBranch: {
+        const body = stripRequestTag(request.body);
+        return yield* git.createBranch(body);
+      }
+
+      case WS_METHODS.gitCheckout: {
+        const body = stripRequestTag(request.body);
+        return yield* git.checkoutBranch(body);
+      }
+
+      case WS_METHODS.gitInit: {
+        const body = stripRequestTag(request.body);
+        return yield* git.initRepo(body);
+      }
+
+      case WS_METHODS.terminalOpen: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.open(body);
+      }
+
+      case WS_METHODS.terminalWrite: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.write(body);
+      }
+
+      case WS_METHODS.terminalResize: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.resize(body);
+      }
+
+      case WS_METHODS.terminalClear: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.clear(body);
+      }
+
+      case WS_METHODS.terminalRestart: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.restart(body);
+      }
+
+      case WS_METHODS.terminalClose: {
+        const body = stripRequestTag(request.body);
+        return yield* terminalManager.close(body);
+      }
+
+      case WS_METHODS.serverGetConfig:
+        const keybindingsConfig = yield* keybindingsManager.loadConfigState;
+        return {
+          cwd,
+          keybindingsConfigPath,
+          keybindings: keybindingsConfig.keybindings,
+          issues: keybindingsConfig.issues,
+        };
+
+      case WS_METHODS.serverUpsertKeybinding: {
+        const body = stripRequestTag(request.body);
+        const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
+        return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      default: {
+        const _exhaustiveCheck: never = request.body;
+        return yield* new RouteRequestError({
+          message: `Unknown method: ${String(_exhaustiveCheck)}`,
+        });
+      }
+    }
+  });
+
+  const handleMessage = Effect.fnUntraced(function* (ws: WebSocket, raw: unknown) {
+    const encodeResponse = Schema.encodeEffect(Schema.fromJsonString(WsResponse));
+
+    const messageText = websocketRawToString(raw);
+    if (messageText === null) {
+      const errorResponse = yield* encodeResponse({
+        id: "unknown",
+        error: { message: "Invalid request format: Failed to read message" },
+      });
+      ws.send(errorResponse);
+      return;
+    }
+
+    const request = Schema.decodeExit(Schema.fromJsonString(WebSocketRequest))(messageText);
+    if (request._tag === "Failure") {
+      const errorResponse = yield* encodeResponse({
+        id: "unknown",
+        error: { message: `Invalid request format: ${Cause.pretty(request.cause)}` },
+      });
+      ws.send(errorResponse);
+      return;
+    }
+
+    const result = yield* Effect.exit(routeRequest(request.value));
+    if (result._tag === "Failure") {
+      const errorResponse = yield* encodeResponse({
+        id: request.value.id,
+        error: { message: Cause.pretty(result.cause) },
+      });
+      ws.send(errorResponse);
+      return;
+    }
+
+    const response = yield* encodeResponse({
+      id: request.value.id,
+      result: result.value,
+    });
+    ws.send(response);
+  });
+
   httpServer.on("upgrade", (request, socket, head) => {
+    socket.on("error", () => {}); // Prevent unhandled `EPIPE`/`ECONNRESET` from crashing the process if the client disconnects mid-handshake
+
     if (authToken) {
       let providedToken: string | null = null;
       try {
@@ -233,277 +617,81 @@ export function createServer(options: ServerOptions) {
   });
 
   wss.on("connection", (ws) => {
-    clients.add(ws);
+    void Effect.runPromise(Ref.update(clients, (clients) => clients.add(ws)));
 
-    // Send welcome message with project info
     const segments = cwd.split(/[/\\]/).filter(Boolean);
     const projectName = segments[segments.length - 1] ?? "project";
 
     const welcome: WsPush = {
       type: "push",
       channel: WS_CHANNELS.serverWelcome,
-      data: { cwd, projectName },
+      data: {
+        cwd,
+        projectName,
+        ...(welcomeBootstrapProjectId ? { bootstrapProjectId: welcomeBootstrapProjectId } : {}),
+        ...(welcomeBootstrapThreadId ? { bootstrapThreadId: welcomeBootstrapThreadId } : {}),
+      },
     };
     logOutgoingPush(welcome, 1);
     ws.send(JSON.stringify(welcome));
 
     ws.on("message", (raw) => {
-      void handleMessage(ws, raw);
+      void Effect.runPromise(
+        handleMessage(ws, raw).pipe(
+          Effect.catch((error) => Effect.logError("Error handling message", error)),
+        ),
+      );
     });
 
     ws.on("close", () => {
-      clients.delete(ws);
+      void Effect.runPromise(
+        Ref.update(clients, (clients) => {
+          clients.delete(ws);
+          return clients;
+        }),
+      );
     });
 
     ws.on("error", () => {
-      clients.delete(ws);
+      void Effect.runPromise(
+        Ref.update(clients, (clients) => {
+          clients.delete(ws);
+          return clients;
+        }),
+      );
     });
   });
 
-  async function handleMessage(ws: WebSocket, raw: unknown) {
-    let request: WsRequest;
-    try {
-      const parsed = JSON.parse(String(raw));
-      request = wsRequestSchema.parse(parsed);
-    } catch {
-      const errorResponse: WsResponse = {
-        id: "unknown",
-        error: { message: "Invalid request format" },
-      };
-      ws.send(JSON.stringify(errorResponse));
-      return;
-    }
+  yield* Effect.addFinalizer(() =>
+    Effect.catch(liveProviderService.stopAll(), (cause) =>
+      Effect.logWarning("failed to stop provider service", { cause }),
+    ),
+  );
 
-    try {
-      const result = await routeRequest(request);
-      const response: WsResponse = { id: request.id, result };
-      ws.send(JSON.stringify(response));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown server error";
-      const response: WsResponse = {
-        id: request.id,
-        error: { message },
-      };
-      ws.send(JSON.stringify(response));
-    }
-  }
+  const unsubscribeTerminalEvents = yield* terminalManager.subscribe(
+    (event) => void Effect.runPromise(onTerminalEvent(event)),
+  );
+  yield* Effect.addFinalizer(() => Effect.sync(() => unsubscribeTerminalEvents()));
 
-  async function routeRequest(request: WsRequest): Promise<unknown> {
-    switch (request.method) {
-      case WS_METHODS.providersStartSession:
-        return providerManager.startSession(request.params as never);
+  yield* NodeHttpServer.make(() => httpServer, listenOptions).pipe(
+    Effect.mapError((cause) => new ServerLifecycleError({ operation: "httpServerListen", cause })),
+  );
 
-      case WS_METHODS.providersSendTurn:
-        return providerManager.sendTurn(request.params as never);
+  yield* Effect.addFinalizer(() =>
+    Effect.all([
+      closeAllClients,
+      closeWebSocketServer.pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to close web socket server", { cause: error }),
+        ),
+      ),
+    ]),
+  );
 
-      case WS_METHODS.providersInterruptTurn:
-        return providerManager.interruptTurn(request.params as never);
+  return httpServer;
+});
 
-      case WS_METHODS.providersRespondToRequest:
-        return providerManager.respondToRequest(request.params as never);
-
-      case WS_METHODS.providersStopSession: {
-        providerManager.stopSession(request.params as never);
-        return undefined;
-      }
-
-      case WS_METHODS.providersListSessions:
-        return providerManager.listSessions();
-
-      case WS_METHODS.providersListCheckpoints:
-        return providerManager.listCheckpoints(request.params as never);
-
-      case WS_METHODS.providersGetCheckpointDiff:
-        return providerManager.getCheckpointDiff(request.params as never);
-
-      case WS_METHODS.providersRevertToCheckpoint:
-        return providerManager.revertToCheckpoint(request.params as never);
-
-      case WS_METHODS.projectsList:
-        return projectRegistry.list();
-
-      case WS_METHODS.projectsAdd:
-        return projectRegistry.add(request.params as never);
-
-      case WS_METHODS.projectsRemove:
-        projectRegistry.remove(request.params as never);
-        return undefined;
-
-      case WS_METHODS.projectsSearchEntries:
-        return searchWorkspaceEntries(request.params as never);
-      case WS_METHODS.projectsUpdateScripts:
-        return projectRegistry.updateScripts(request.params as never);
-
-      case WS_METHODS.shellOpenInEditor: {
-        const params = request.params as {
-          cwd: string;
-          editor: string;
-        };
-        if (!params?.cwd) throw new Error("cwd is required");
-        const editorDef = EDITORS.find((e) => e.id === params.editor);
-        if (!editorDef) throw new Error(`Unknown editor: ${params.editor}`);
-
-        let command: string;
-        let args: string[];
-
-        if (editorDef.command) {
-          command = editorDef.command;
-          args = [params.cwd];
-        } else if (editorDef.id === "file-manager") {
-          // Use platform-specific file manager command
-          switch (process.platform) {
-            case "darwin":
-              command = "open";
-              break;
-            case "win32":
-              command = "explorer";
-              break;
-            default:
-              command = "xdg-open";
-              break;
-          }
-          args = [params.cwd];
-        } else {
-          return undefined;
-        }
-
-        const child = spawn(command, args, {
-          detached: true,
-          stdio: "ignore",
-        });
-        child.on("error", () => {
-          /* ignore spawn failures for detached editors */
-        });
-        child.unref();
-        return undefined;
-      }
-
-      case WS_METHODS.gitStatus:
-        return gitManager.status(request.params as never);
-
-      case WS_METHODS.gitPull:
-        return pullGitBranch(request.params as never);
-
-      case WS_METHODS.gitRunStackedAction:
-        return gitManager.runStackedAction(request.params as never);
-      case WS_METHODS.gitListBranches:
-        return listGitBranches(request.params as never);
-
-      case WS_METHODS.gitCreateWorktree:
-        return createGitWorktree(request.params as never);
-
-      case WS_METHODS.gitRemoveWorktree:
-        return removeGitWorktree(request.params as never);
-
-      case WS_METHODS.gitCreateBranch:
-        return createGitBranch(request.params as never);
-
-      case WS_METHODS.gitCheckout:
-        return checkoutGitBranch(request.params as never);
-
-      case WS_METHODS.gitInit:
-        return initGitRepo(request.params as never);
-
-      case WS_METHODS.terminalOpen:
-        return terminalManager.open(request.params as never);
-
-      case WS_METHODS.terminalWrite:
-        await terminalManager.write(request.params as never);
-        return undefined;
-
-      case WS_METHODS.terminalResize:
-        await terminalManager.resize(request.params as never);
-        return undefined;
-
-      case WS_METHODS.terminalClear:
-        await terminalManager.clear(request.params as never);
-        return undefined;
-
-      case WS_METHODS.terminalRestart:
-        return terminalManager.restart(request.params as never);
-
-      case WS_METHODS.terminalClose:
-        await terminalManager.close(request.params as never);
-        return undefined;
-
-      case WS_METHODS.serverGetConfig:
-        return {
-          cwd,
-          keybindings: keybindingsConfig,
-        };
-
-      case WS_METHODS.serverUpsertKeybinding:
-        keybindingsConfig = upsertKeybindingRule(logger, request.params);
-        return {
-          keybindings: keybindingsConfig,
-        };
-
-      default:
-        throw new Error(`Unknown method: ${request.method}`);
-    }
-  }
-
-  function start() {
-    return new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        httpServer.off("error", onError);
-        reject(error);
-      };
-      httpServer.once("error", onError);
-      const onListening = () => {
-        httpServer.off("error", onError);
-        resolve();
-      };
-      if (host) {
-        httpServer.listen(port, host, onListening);
-        return;
-      }
-      httpServer.listen(port, onListening);
-    });
-  }
-
-  async function stop(): Promise<void> {
-    terminalManager.off("event", onTerminalEvent);
-    providerManager.stopAll();
-    providerManager.dispose();
-    terminalManager.dispose();
-
-    for (const client of clients) {
-      client.close();
-    }
-    clients.clear();
-
-    const isServerNotRunningError = (error: unknown): boolean => {
-      if (!(error instanceof Error)) return false;
-      const maybeCode = (error as NodeJS.ErrnoException).code;
-      return (
-        maybeCode === "ERR_SERVER_NOT_RUNNING" ||
-        error.message.toLowerCase().includes("not running")
-      );
-    };
-
-    const closeWebSocketServer = new Promise<void>((resolve, reject) => {
-      wss.close((error) => {
-        if (error && !isServerNotRunningError(error)) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-
-    const closeHttpServer = new Promise<void>((resolve, reject) => {
-      httpServer.close((error) => {
-        if (error && !isServerNotRunningError(error)) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-
-    await Promise.all([closeWebSocketServer, closeHttpServer]);
-  }
-
-  return { start, stop, httpServer };
-}
+export const ServerLive = Layer.succeed(Server, {
+  start: createServer(),
+  stopSignal: Effect.never,
+} satisfies ServerShape);
