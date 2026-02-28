@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Exit, Layer, PubSub, Scope, Stream } from "effect";
+import { Effect, Exit, Layer, PlatformError, PubSub, Scope, Stream } from "effect";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { createServer } from "./wsServer";
 import WebSocket from "ws";
@@ -40,13 +40,14 @@ import type {
 } from "@t3tools/contracts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager";
 import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "./persistence/Layers/Sqlite";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient, SqlError } from "effect/unstable/sql";
 import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService";
 import { Open, type OpenShape } from "./open";
 import { GitManager, type GitManagerShape } from "./git/Services/GitManager.ts";
 import type { GitCoreShape } from "./git/Services/GitCore.ts";
 import { GitCore } from "./git/Services/GitCore.ts";
 import { GitCommandError, GitManagerError } from "./git/Errors.ts";
+import { MigrationError } from "@effect/sql-sqlite-bun/SqliteMigrator";
 
 interface PendingMessages {
   queue: unknown[];
@@ -296,6 +297,36 @@ async function waitForPush(
   return take(maxMessages);
 }
 
+async function requestPath(
+  port: number,
+  requestPath: string,
+): Promise<{ statusCode: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = Http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: requestPath,
+        method: "GET",
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    req.once("error", reject);
+    req.end();
+  });
+}
+
 function compileKeybindings(bindings: KeybindingsConfig): ResolvedKeybindingsConfig {
   const resolved: Array<ResolvedKeybindingsConfig[number]> = [];
   for (const binding of bindings) {
@@ -324,13 +355,17 @@ describe("WebSocket Server", () => {
 
   async function createTestServer(
     options: {
-      persistenceLayer?: Layer.Layer<SqlClient.SqlClient, never>;
+      persistenceLayer?: Layer.Layer<
+        SqlClient.SqlClient,
+        SqlError.SqlError | MigrationError | PlatformError.PlatformError
+      >;
       cwd?: string;
       autoBootstrapProjectFromCwd?: boolean;
       logWebSocketEvents?: boolean;
       devUrl?: string;
       authToken?: string;
       stateDir?: string;
+      staticDir?: string;
       providerLayer?: Layer.Layer<ProviderService, never>;
       open?: OpenShape;
       gitManager?: GitManagerShape;
@@ -354,7 +389,7 @@ describe("WebSocket Server", () => {
       cwd: options.cwd ?? "/test/project",
       keybindingsConfigPath: path.join(stateDir, "keybindings.json"),
       stateDir,
-      staticDir: undefined,
+      staticDir: options.staticDir,
       devUrl: options.devUrl ? new URL(options.devUrl) : undefined,
       noBrowser: true,
       authToken: options.authToken,
@@ -438,6 +473,80 @@ describe("WebSocket Server", () => {
     });
   });
 
+  it("serves persisted attachments from stateDir", async () => {
+    const stateDir = makeTempDir("t3code-state-attachments-");
+    const attachmentPath = path.join(stateDir, "attachments", "thread-a", "message-a", "0.png");
+    fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+    fs.writeFileSync(attachmentPath, Buffer.from("hello-attachment"));
+
+    server = await createTestServer({ cwd: "/test/project", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const response = await fetch(`http://127.0.0.1:${port}/attachments/thread-a/message-a/0.png`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes).toEqual(Buffer.from("hello-attachment"));
+  });
+
+  it("serves persisted attachments for URL-encoded paths", async () => {
+    const stateDir = makeTempDir("t3code-state-attachments-encoded-");
+    const attachmentPath = path.join(
+      stateDir,
+      "attachments",
+      "thread%20folder",
+      "message%20folder",
+      "file%20name.png",
+    );
+    fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+    fs.writeFileSync(attachmentPath, Buffer.from("hello-encoded-attachment"));
+
+    server = await createTestServer({ cwd: "/test/project", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/attachments/thread%20folder/message%20folder/file%20name.png`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes).toEqual(Buffer.from("hello-encoded-attachment"));
+  });
+
+  it("serves static index for root path", async () => {
+    const stateDir = makeTempDir("t3code-state-static-root-");
+    const staticDir = makeTempDir("t3code-static-root-");
+    fs.writeFileSync(path.join(staticDir, "index.html"), "<h1>static-root</h1>", "utf8");
+
+    server = await createTestServer({ cwd: "/test/project", stateDir, staticDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const response = await fetch(`http://127.0.0.1:${port}/`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("static-root");
+  });
+
+  it("rejects static path traversal attempts", async () => {
+    const stateDir = makeTempDir("t3code-state-static-traversal-");
+    const staticDir = makeTempDir("t3code-static-traversal-");
+    fs.writeFileSync(path.join(staticDir, "index.html"), "<h1>safe</h1>", "utf8");
+
+    server = await createTestServer({ cwd: "/test/project", stateDir, staticDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const response = await requestPath(port, "/..%2f..%2fetc/passwd");
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toBe("Invalid static file path");
+  });
+
   it("bootstraps the cwd project on startup when enabled", async () => {
     server = await createTestServer({
       cwd: "/test/bootstrap-workspace",
@@ -509,9 +618,9 @@ describe("WebSocket Server", () => {
 
   it("includes bootstrap ids in welcome when cwd project and thread already exist", async () => {
     const stateDir = makeTempDir("t3code-state-bootstrap-existing-");
-    const persistenceLayer = makeSqlitePersistenceLive(
-      path.join(stateDir, "state.sqlite"),
-    ).pipe(Layer.provide(NodeServices.layer)) as unknown as Layer.Layer<SqlClient.SqlClient, never>;
+    const persistenceLayer = makeSqlitePersistenceLive(path.join(stateDir, "state.sqlite")).pipe(
+      Layer.provide(NodeServices.layer),
+    );
     const cwd = "/test/bootstrap-existing";
 
     server = await createTestServer({

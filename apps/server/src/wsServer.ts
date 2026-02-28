@@ -6,11 +6,10 @@
  *
  * @module Server
  */
-import fs from "node:fs";
 import http from "node:http";
-import path from "node:path";
 import type { Duplex } from "node:stream";
 
+import Mime from "@effect/platform-node/Mime";
 import {
   CommandId,
   ORCHESTRATION_WS_CHANNELS,
@@ -25,7 +24,20 @@ import {
   WsResponse,
 } from "@t3tools/contracts";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
-import { Cause, Effect, Exit, Layer, Ref, Schema, Scope, ServiceMap, Stream, Struct } from "effect";
+import {
+  Cause,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Path,
+  Ref,
+  Schema,
+  Scope,
+  ServiceMap,
+  Stream,
+  Struct,
+} from "effect";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { createLogger } from "./logger";
@@ -42,22 +54,7 @@ import { clamp } from "effect/Number";
 import { Open } from "./open";
 import { ServerConfig } from "./config";
 import { GitCore } from "./git/Services/GitCore.ts";
-import { tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
-
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".map": "application/json",
-};
+import { ATTACHMENTS_ROUTE_PREFIX, tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -69,7 +66,7 @@ export interface ServerShape {
   readonly start: Effect.Effect<
     http.Server,
     ServerLifecycleError,
-    Scope.Scope | ServerRuntimeServices | ServerConfig
+    Scope.Scope | ServerRuntimeServices | ServerConfig | FileSystem.FileSystem | Path.Path
   >;
 
   /**
@@ -168,7 +165,7 @@ class RouteRequestError extends Schema.TaggedErrorClass<RouteRequestError>()("Ro
 export const createServer = Effect.fn(function* (): Effect.fn.Return<
   http.Server,
   ServerLifecycleError,
-  Scope.Scope | ServerRuntimeServices | ServerConfig
+  Scope.Scope | ServerRuntimeServices | ServerConfig | FileSystem.FileSystem | Path.Path
 > {
   const serverConfig = yield* ServerConfig;
   const {
@@ -187,6 +184,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
   const git = yield* GitCore;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
 
   yield* keybindingsManager.syncDefaultKeybindingsOnStartup.pipe(
     Effect.catch((error) =>
@@ -233,62 +232,157 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+    const respond = (
+      statusCode: number,
+      headers: Record<string, string>,
+      body?: string | Uint8Array,
+    ) => {
+      res.writeHead(statusCode, headers);
+      res.end(body);
+    };
 
-    if (tryHandleProjectFaviconRequest(url, res)) {
-      return;
-    }
-
-    // In dev mode, redirect to Vite dev server
-    if (devUrl) {
-      res.writeHead(302, { Location: devUrl.href });
-      res.end();
-      return;
-    }
-
-    // Serve static files from the web app build
-    if (!staticDir) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("No static directory configured and no dev URL set.");
-      return;
-    }
-
-    let filePath = path.join(staticDir, url.pathname);
-
-    // SPA fallback: if no file extension and not found, serve index.html
-    const ext = path.extname(filePath);
-    if (!ext) {
-      filePath = path.join(filePath, "index.html");
-    }
-
-    fs.stat(filePath, (err, stats) => {
-      if (err || !stats?.isFile()) {
-        // SPA fallback
-        const indexPath = path.join(staticDir, "index.html");
-        fs.readFile(indexPath, (readErr, data) => {
-          if (readErr) {
-            res.writeHead(404, { "Content-Type": "text/plain" });
-            res.end("Not Found");
-            return;
-          }
-          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(data);
-        });
-        return;
-      }
-
-      const fileExt = path.extname(filePath);
-      const contentType = MIME_TYPES[fileExt] ?? "application/octet-stream";
-
-      fs.readFile(filePath, (readErr, data) => {
-        if (readErr) {
-          res.writeHead(500, { "Content-Type": "text/plain" });
-          res.end("Internal Server Error");
+    void Effect.runPromise(
+      Effect.gen(function* () {
+        const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+        if (tryHandleProjectFaviconRequest(url, res)) {
           return;
         }
-        res.writeHead(200, { "Content-Type": contentType });
-        res.end(data);
-      });
+
+        if (url.pathname.startsWith(ATTACHMENTS_ROUTE_PREFIX)) {
+          const attachmentsRoot = path.resolve(path.join(serverConfig.stateDir, "attachments"));
+          const rawRelativePath = url.pathname.slice(ATTACHMENTS_ROUTE_PREFIX.length);
+          const normalizedRelativePath = path.normalize(rawRelativePath).replace(/^[/\\]+/, "");
+
+          if (
+            normalizedRelativePath.length === 0 ||
+            normalizedRelativePath.startsWith("..") ||
+            normalizedRelativePath.includes("\0")
+          ) {
+            respond(400, { "Content-Type": "text/plain" }, "Invalid attachment path");
+            return;
+          }
+
+          const filePath = path.resolve(path.join(attachmentsRoot, normalizedRelativePath));
+          if (!filePath.startsWith(`${attachmentsRoot}${path.sep}`)) {
+            respond(400, { "Content-Type": "text/plain" }, "Invalid attachment path");
+            return;
+          }
+
+          const fileInfo = yield* fileSystem
+            .stat(filePath)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (!fileInfo || fileInfo.type !== "File") {
+            respond(404, { "Content-Type": "text/plain" }, "Not Found");
+            return;
+          }
+
+          const contentType = Mime.getType(filePath) ?? "application/octet-stream";
+          res.writeHead(200, {
+            "Content-Type": contentType,
+            "Cache-Control": "public, max-age=31536000, immutable",
+          });
+          const streamExit = yield* Stream.runForEach(fileSystem.stream(filePath), (chunk) =>
+            Effect.sync(() => {
+              if (!res.destroyed) {
+                res.write(chunk);
+              }
+            }),
+          ).pipe(Effect.exit);
+          if (streamExit._tag === "Failure") {
+            if (!res.destroyed) {
+              res.destroy();
+            }
+            return;
+          }
+          if (!res.writableEnded) {
+            res.end();
+          }
+          return;
+        }
+
+        // In dev mode, redirect to Vite dev server
+        if (devUrl) {
+          respond(302, { Location: devUrl.href });
+          return;
+        }
+
+        // Serve static files from the web app build
+        if (!staticDir) {
+          respond(
+            503,
+            { "Content-Type": "text/plain" },
+            "No static directory configured and no dev URL set.",
+          );
+          return;
+        }
+
+        const staticRoot = path.resolve(staticDir);
+        const staticRequestPath = url.pathname === "/" ? "/index.html" : url.pathname;
+        const rawStaticRelativePath = staticRequestPath.replace(/^[/\\]+/, "");
+        const hasRawLeadingParentSegment = rawStaticRelativePath.startsWith("..");
+        const staticRelativePath = path.normalize(rawStaticRelativePath).replace(/^[/\\]+/, "");
+        const hasPathTraversalSegment = staticRelativePath.startsWith("..");
+        if (
+          staticRelativePath.length === 0 ||
+          hasRawLeadingParentSegment ||
+          hasPathTraversalSegment ||
+          staticRelativePath.includes("\0")
+        ) {
+          respond(400, { "Content-Type": "text/plain" }, "Invalid static file path");
+          return;
+        }
+
+        const isWithinStaticRoot = (candidate: string) =>
+          candidate === staticRoot ||
+          candidate.startsWith(
+            staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`,
+          );
+
+        let filePath = path.resolve(staticRoot, staticRelativePath);
+        if (!isWithinStaticRoot(filePath)) {
+          respond(400, { "Content-Type": "text/plain" }, "Invalid static file path");
+          return;
+        }
+
+        const ext = path.extname(filePath);
+        if (!ext) {
+          filePath = path.resolve(filePath, "index.html");
+          if (!isWithinStaticRoot(filePath)) {
+            respond(400, { "Content-Type": "text/plain" }, "Invalid static file path");
+            return;
+          }
+        }
+
+        const fileInfo = yield* fileSystem
+          .stat(filePath)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (!fileInfo || fileInfo.type !== "File") {
+          const indexPath = path.resolve(staticRoot, "index.html");
+          const indexData = yield* fileSystem
+            .readFile(indexPath)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (!indexData) {
+            respond(404, { "Content-Type": "text/plain" }, "Not Found");
+            return;
+          }
+          respond(200, { "Content-Type": "text/html; charset=utf-8" }, indexData);
+          return;
+        }
+
+        const contentType = Mime.getType(filePath) ?? "application/octet-stream";
+        const data = yield* fileSystem
+          .readFile(filePath)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (!data) {
+          respond(500, { "Content-Type": "text/plain" }, "Internal Server Error");
+          return;
+        }
+        respond(200, { "Content-Type": contentType }, data);
+      }),
+    ).catch(() => {
+      if (!res.headersSent) {
+        respond(500, { "Content-Type": "text/plain" }, "Internal Server Error");
+      }
     });
   });
 

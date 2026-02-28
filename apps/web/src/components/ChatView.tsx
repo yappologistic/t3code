@@ -74,6 +74,8 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   BotIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   FileIcon,
   FolderIcon,
@@ -111,6 +113,7 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import { useAppSettings } from "../appSettings";
+import { clamp } from "effect/Number";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -165,9 +168,34 @@ interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"
   file: File;
 }
 
-interface ExpandedImagePreview {
+interface ExpandedImageItem {
   src: string;
   name: string;
+}
+
+interface ExpandedImagePreview {
+  images: ExpandedImageItem[];
+  index: number;
+}
+
+function buildExpandedImagePreview(
+  images: ReadonlyArray<{ id: string; name: string; previewUrl?: string }>,
+  selectedImageId: string,
+): ExpandedImagePreview | null {
+  const previewableImages = images.flatMap((image) =>
+    image.previewUrl ? [{ id: image.id, src: image.previewUrl, name: image.name }] : [],
+  );
+  if (previewableImages.length === 0) {
+    return null;
+  }
+  const selectedIndex = previewableImages.findIndex((image) => image.id === selectedImageId);
+  if (selectedIndex < 0) {
+    return null;
+  }
+  return {
+    images: previewableImages.map((image) => ({ src: image.src, name: image.name })),
+    index: selectedIndex,
+  };
 }
 
 type ComposerCommandItem =
@@ -1070,22 +1098,53 @@ export default function ChatView({ threadId }: ChatViewProps) {
     };
   }, [revokePreviewUrls]);
 
-  /**
-   * Close expanded image on Escape key
-   */
+  const closeExpandedImage = useCallback(() => {
+    setExpandedImage(null);
+  }, []);
+  const navigateExpandedImage = useCallback((direction: -1 | 1) => {
+    setExpandedImage((existing) => {
+      if (!existing || existing.images.length <= 1) {
+        return existing;
+      }
+      const nextIndex =
+        (existing.index + direction + existing.images.length) % existing.images.length;
+      if (nextIndex === existing.index) {
+        return existing;
+      }
+      return { ...existing, index: nextIndex };
+    });
+  }, []);
+
   useEffect(() => {
     if (!expandedImage) {
       return;
     }
 
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setExpandedImage(null);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeExpandedImage();
+        return;
+      }
+      if (expandedImage.images.length <= 1) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        event.stopPropagation();
+        navigateExpandedImage(-1);
+        return;
+      }
+      if (event.key !== "ArrowRight") return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigateExpandedImage(1);
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [expandedImage]);
+  }, [closeExpandedImage, expandedImage, navigateExpandedImage]);
 
   const activeWorktreePath = activeThread?.worktreePath;
 
@@ -1722,9 +1781,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       [groupId]: !existing[groupId],
     }));
   }, []);
-  const onExpandTimelineImage = useCallback((image: ExpandedImagePreview) => {
-    setExpandedImage(image);
+  const onExpandTimelineImage = useCallback((preview: ExpandedImagePreview) => {
+    setExpandedImage(preview);
   }, []);
+  const expandedImageItem = expandedImage ? expandedImage.images[expandedImage.index] : null;
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       void navigate({
@@ -1824,6 +1884,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
         <MessagesTimeline
           hasMessages={timelineMessages.length > 0}
           isWorking={isWorking}
+          activeTurnInProgress={!latestTurnSettled}
+          activeTurnStartedAt={activeLatestTurn?.startedAt ?? null}
           scrollContainerRef={messagesScrollRef}
           timelineEntries={timelineEntries}
           completionDividerBeforeEntryId={completionDividerBeforeEntryId}
@@ -1885,9 +1947,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           src={image.previewUrl}
                           alt={image.name}
                           className="h-full w-full cursor-zoom-in object-cover"
-                          onClick={() =>
-                            setExpandedImage({ src: image.previewUrl, name: image.name })
-                          }
+                          onClick={() => {
+                            const preview = buildExpandedImagePreview(composerImages, image.id);
+                            if (!preview) return;
+                            setExpandedImage(preview);
+                          }}
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
@@ -2111,14 +2175,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
         );
       })()}
 
-      {expandedImage && (
+      {expandedImage && expandedImageItem && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [-webkit-app-region:no-drag]"
           role="dialog"
           aria-modal="true"
           aria-label="Expanded image preview"
-          onClick={() => setExpandedImage(null)}
+          onClick={closeExpandedImage}
         >
+          {expandedImage.images.length > 1 && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+              aria-label="Previous image"
+              onClick={(event) => {
+                event.stopPropagation();
+                navigateExpandedImage(-1);
+              }}
+            >
+              <ChevronLeftIcon className="size-5" />
+            </Button>
+          )}
           <div
             className="relative isolate max-h-[92vh] max-w-[92vw]"
             onClick={(event) => event.stopPropagation()}
@@ -2128,21 +2207,39 @@ export default function ChatView({ threadId }: ChatViewProps) {
               size="icon-xs"
               variant="ghost"
               className="absolute right-2 top-2"
-              onClick={() => setExpandedImage(null)}
+              onClick={closeExpandedImage}
               aria-label="Close image preview"
             >
               <XIcon />
             </Button>
             <img
-              src={expandedImage.src}
-              alt={expandedImage.name}
+              src={expandedImageItem.src}
+              alt={expandedImageItem.name}
               className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
               draggable={false}
             />
             <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
-              {expandedImage.name}
+              {expandedImageItem.name}
+              {expandedImage.images.length > 1
+                ? ` (${expandedImage.index + 1}/${expandedImage.images.length})`
+                : ""}
             </p>
           </div>
+          {expandedImage.images.length > 1 && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+              aria-label="Next image"
+              onClick={(event) => {
+                event.stopPropagation();
+                navigateExpandedImage(1);
+              }}
+            >
+              <ChevronRightIcon className="size-5" />
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -2336,13 +2433,7 @@ const MessageCopyButton = memo(function MessageCopyButton({ text }: { text: stri
   }, [text]);
 
   return (
-    <Button
-      type="button"
-      size="xs"
-      variant="outline"
-      onClick={handleCopy}
-      title="Copy message"
-    >
+    <Button type="button" size="xs" variant="outline" onClick={handleCopy} title="Copy message">
       {copied ? <CheckIcon className="size-3 text-success" /> : <CopyIcon className="size-3" />}
     </Button>
   );
@@ -2351,6 +2442,8 @@ const MessageCopyButton = memo(function MessageCopyButton({ text }: { text: stri
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
+  activeTurnInProgress: boolean;
+  activeTurnStartedAt: string | null;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
@@ -2363,7 +2456,7 @@ interface MessagesTimelineProps {
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
-  onImageExpand: (image: ExpandedImagePreview) => void;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
   markdownCwd: string | undefined;
 }
 
@@ -2374,19 +2467,23 @@ type TimelineRow =
   | {
       kind: "work";
       id: string;
+      createdAt: string;
       groupedEntries: TimelineWorkEntry[];
     }
   | {
       kind: "message";
       id: string;
+      createdAt: string;
       message: TimelineMessage;
       showCompletionDivider: boolean;
     }
-  | { kind: "working"; id: string };
+  | { kind: "working"; id: string; createdAt: string | null };
 
 const MessagesTimeline = memo(function MessagesTimeline({
   hasMessages,
   isWorking,
+  activeTurnInProgress,
+  activeTurnStartedAt,
   scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
@@ -2423,6 +2520,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
         nextRows.push({
           kind: "work",
           id: timelineEntry.id,
+          createdAt: timelineEntry.createdAt,
           groupedEntries,
         });
         index = cursor - 1;
@@ -2432,6 +2530,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
       nextRows.push({
         kind: "message",
         id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
         message: timelineEntry.message,
         showCompletionDivider:
           timelineEntry.message.role === "assistant" &&
@@ -2440,14 +2539,62 @@ const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     if (isWorking) {
-      nextRows.push({ kind: "working", id: "working-indicator-row" });
+      nextRows.push({
+        kind: "working",
+        id: "working-indicator-row",
+        createdAt: activeTurnStartedAt,
+      });
     }
 
     return nextRows;
-  }, [timelineEntries, completionDividerBeforeEntryId, isWorking]);
+  }, [timelineEntries, completionDividerBeforeEntryId, isWorking, activeTurnStartedAt]);
+
+  const firstUnvirtualizedRowIndex = useMemo(() => {
+    if (!activeTurnInProgress) return rows.length;
+
+    const turnStartedAtMs =
+      typeof activeTurnStartedAt === "string" ? Date.parse(activeTurnStartedAt) : Number.NaN;
+    let firstCurrentTurnRowIndex = -1;
+    if (!Number.isNaN(turnStartedAtMs)) {
+      firstCurrentTurnRowIndex = rows.findIndex((row) => {
+        if (row.kind === "working") return true;
+        if (!row.createdAt) return false;
+        const rowCreatedAtMs = Date.parse(row.createdAt);
+        return !Number.isNaN(rowCreatedAtMs) && rowCreatedAtMs >= turnStartedAtMs;
+      });
+    }
+
+    if (firstCurrentTurnRowIndex < 0) {
+      firstCurrentTurnRowIndex = rows.findIndex(
+        (row) => row.kind === "message" && row.message.streaming,
+      );
+    }
+
+    if (firstCurrentTurnRowIndex < 0) {
+      return rows.length;
+    }
+
+    for (let index = firstCurrentTurnRowIndex - 1; index >= 0; index -= 1) {
+      const previousRow = rows[index];
+      if (!previousRow || previousRow.kind !== "message") continue;
+      if (previousRow.message.role === "user") {
+        return index;
+      }
+      if (previousRow.message.role === "assistant" && !previousRow.message.streaming) {
+        break;
+      }
+    }
+
+    return firstCurrentTurnRowIndex;
+  }, [activeTurnInProgress, activeTurnStartedAt, rows]);
+
+  const virtualizedRowCount = clamp(firstUnvirtualizedRowIndex, {
+    minimum: 0,
+    maximum: rows.length,
+  });
 
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: virtualizedRowCount,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: (index: number) => {
       const row = rows[index];
@@ -2461,6 +2608,268 @@ const MessagesTimeline = memo(function MessagesTimeline({
   });
 
   const virtualRows = rowVirtualizer.getVirtualItems();
+  const nonVirtualizedRows = rows.slice(virtualizedRowCount);
+
+  const renderRowContent = (row: TimelineRow) => (
+    <div className="pb-4">
+      {row.kind === "work" &&
+        (() => {
+          const groupId = row.id;
+          const groupedEntries = row.groupedEntries;
+          const isExpanded = expandedWorkGroups[groupId] ?? false;
+          const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+          const visibleEntries =
+            hasOverflow && !isExpanded
+              ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+              : groupedEntries;
+          const hiddenCount = groupedEntries.length - visibleEntries.length;
+          const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
+          const groupLabel = onlyToolEntries
+            ? groupedEntries.length === 1
+              ? "Tool call"
+              : `Tool calls (${groupedEntries.length})`
+            : groupedEntries.length === 1
+              ? "Work event"
+              : `Work log (${groupedEntries.length})`;
+
+          return (
+            <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                  {groupLabel}
+                </p>
+                {hasOverflow && (
+                  <button
+                    type="button"
+                    className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
+                    onClick={() => onToggleWorkGroup(groupId)}
+                  >
+                    {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {visibleEntries.map((workEntry) => (
+                  <div key={`work-row:${workEntry.id}`} className="flex items-start gap-2 py-0.5">
+                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                    <p
+                      className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
+                    >
+                      {workEntry.detail ? (
+                        <>
+                          {workEntry.label}
+                          <span
+                            className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
+                            title={workEntry.detail}
+                          >
+                            {workEntry.detail}
+                          </span>
+                        </>
+                      ) : (
+                        workEntry.label
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+      {row.kind === "message" &&
+        row.message.role === "user" &&
+        (() => {
+          const userImages = row.message.attachments ?? [];
+          const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
+          return (
+            <div className="flex justify-end">
+              <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+                {userImages.length > 0 && (
+                  <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+                    {userImages.map(
+                      (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                        <div
+                          key={image.id}
+                          className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                        >
+                          {image.previewUrl ? (
+                            <img
+                              src={image.previewUrl}
+                              alt={image.name}
+                              className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
+                              onClick={() => {
+                                const preview = buildExpandedImagePreview(userImages, image.id);
+                                if (!preview) return;
+                                onImageExpand(preview);
+                              }}
+                            />
+                          ) : (
+                            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                              {image.name}
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+                {row.message.text && (
+                  <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
+                    {row.message.text}
+                  </pre>
+                )}
+                <div className="mt-1.5 flex items-center justify-end gap-2">
+                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                    {row.message.text && <MessageCopyButton text={row.message.text} />}
+                    {canRevertAgentWork && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={isRevertingCheckpoint || isWorking}
+                        onClick={() => onRevertUserMessage(row.message.id)}
+                        title="Revert to this message"
+                      >
+                        <Undo2Icon className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-right text-[10px] text-muted-foreground/30">
+                    {formatTimestamp(row.message.createdAt)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {row.kind === "message" &&
+        row.message.role === "assistant" &&
+        (() => {
+          const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+          return (
+            <>
+              {row.showCompletionDivider && (
+                <div className="my-3 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+                    {completionSummary ? `Response • ${completionSummary}` : "Response"}
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              )}
+              <div className="min-w-0 px-1 py-0.5">
+                <ChatMarkdown text={messageText} cwd={markdownCwd} />
+                {(() => {
+                  const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
+                  if (!turnSummary) return null;
+                  const checkpointFiles = turnSummary.files;
+                  if (checkpointFiles.length === 0) return null;
+                  const summaryStat = checkpointFiles.reduce(
+                    (acc, file) => {
+                      if (
+                        typeof file.additions !== "number" ||
+                        typeof file.deletions !== "number"
+                      ) {
+                        return acc;
+                      }
+                      return {
+                        additions: acc.additions + file.additions,
+                        deletions: acc.deletions + file.deletions,
+                      };
+                    },
+                    { additions: 0, deletions: 0 },
+                  );
+                  const changedFileCountLabel = String(checkpointFiles.length);
+                  return (
+                    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                          <span>Changed files ({changedFileCountLabel})</span>
+                          {(summaryStat.additions > 0 || summaryStat.deletions > 0) && (
+                            <>
+                              <span className="mx-1">•</span>
+                              <span className="text-success">+{summaryStat.additions}</span>
+                              <span className="mx-0.5 text-muted-foreground/70">/</span>
+                              <span className="text-destructive">-{summaryStat.deletions}</span>
+                            </>
+                          )}
+                        </p>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() =>
+                            onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
+                          }
+                        >
+                          View diff
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {checkpointFiles.map((file) => (
+                          <button
+                            key={`${turnSummary.turnId}:${file.path}`}
+                            type="button"
+                            className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
+                            onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
+                          >
+                            {(() => {
+                              const stat =
+                                typeof file.additions === "number" &&
+                                typeof file.deletions === "number"
+                                  ? {
+                                      additions: file.additions,
+                                      deletions: file.deletions,
+                                    }
+                                  : null;
+                              if (!stat) {
+                                return file.path;
+                              }
+                              return (
+                                <>
+                                  <span>{file.path}</span>
+                                  <span className="ml-1 text-muted-foreground/70">(</span>
+                                  <span className="text-success">+{stat.additions}</span>
+                                  <span className="mx-0.5 text-muted-foreground/70">/</span>
+                                  <span className="text-destructive">-{stat.deletions}</span>
+                                  <span className="text-muted-foreground/70">)</span>
+                                </>
+                              );
+                            })()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
+                  {formatMessageMeta(
+                    row.message.createdAt,
+                    row.message.streaming
+                      ? formatElapsed(row.message.createdAt, nowIso)
+                      : formatElapsed(row.message.createdAt, row.message.completedAt),
+                  )}
+                </p>
+              </div>
+            </>
+          );
+        })()}
+
+      {row.kind === "working" && (
+        <div className="flex items-center gap-2 py-0.5 pl-1.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+          <div className="flex items-center pt-1">
+            <span className="inline-flex items-center gap-[3px]">
+              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
+              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
+              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   if (!hasMessages && !isWorking) {
     return (
@@ -2473,291 +2882,31 @@ const MessagesTimeline = memo(function MessagesTimeline({
   }
 
   return (
-    <div
-      className="relative mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
-      style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-    >
-      {virtualRows.map((virtualRow: VirtualItem) => {
-        const row = rows[virtualRow.index];
-        if (!row) return null;
+    <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden">
+      {virtualizedRowCount > 0 && (
+        <div className="relative" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+          {virtualRows.map((virtualRow: VirtualItem) => {
+            const row = rows[virtualRow.index];
+            if (!row) return null;
 
-        return (
-          <div
-            key={row.id}
-            data-index={virtualRow.index}
-            ref={rowVirtualizer.measureElement}
-            className="absolute left-0 top-0 w-full"
-            style={{ transform: `translateY(${virtualRow.start}px)` }}
-          >
-            <div className="pb-4">
-              {row.kind === "work" &&
-                (() => {
-                  const groupId = row.id;
-                  const groupedEntries = row.groupedEntries;
-                  const isExpanded = expandedWorkGroups[groupId] ?? false;
-                  const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-                  const visibleEntries =
-                    hasOverflow && !isExpanded
-                      ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-                      : groupedEntries;
-                  const hiddenCount = groupedEntries.length - visibleEntries.length;
-                  const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-                  const groupLabel = onlyToolEntries
-                    ? groupedEntries.length === 1
-                      ? "Tool call"
-                      : `Tool calls (${groupedEntries.length})`
-                    : groupedEntries.length === 1
-                      ? "Work event"
-                      : `Work log (${groupedEntries.length})`;
+            return (
+              <div
+                key={`virtual-row:${row.id}`}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                className="absolute left-0 top-0 w-full"
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
+              >
+                {renderRowContent(row)}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                  return (
-                    <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
-                      <div className="mb-1.5 flex items-center justify-between gap-3">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                          {groupLabel}
-                        </p>
-                        {hasOverflow && (
-                          <button
-                            type="button"
-                            className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
-                            onClick={() => onToggleWorkGroup(groupId)}
-                          >
-                            {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-                          </button>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        {visibleEntries.map((workEntry) => (
-                          <div
-                            key={`work-row:${workEntry.id}`}
-                            className="flex items-start gap-2 py-0.5"
-                          >
-                            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-                            <p
-                              className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
-                            >
-                              {workEntry.detail ? (
-                                <>
-                                  {workEntry.label}
-                                  <span
-                                    className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
-                                    title={workEntry.detail}
-                                  >
-                                    {workEntry.detail}
-                                  </span>
-                                </>
-                              ) : (
-                                workEntry.label
-                              )}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {row.kind === "message" &&
-                row.message.role === "user" &&
-                (() => {
-                  const userImages = row.message.attachments ?? [];
-                  const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
-                  return (
-                    <div className="flex justify-end">
-                      <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-                        {userImages.length > 0 && (
-                          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                            {userImages.map(
-                              (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                                <div
-                                  key={image.id}
-                                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                                >
-                                  {image.previewUrl ? (
-                                    <img
-                                      src={image.previewUrl}
-                                      alt={image.name}
-                                      className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
-                                      onClick={() =>
-                                        onImageExpand({ src: image.previewUrl!, name: image.name })
-                                      }
-                                    />
-                                  ) : (
-                                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                                      {image.name}
-                                    </div>
-                                  )}
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        )}
-                        {row.message.text && (
-                          <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
-                            {row.message.text}
-                          </pre>
-                        )}
-                        <div className="mt-1.5 flex items-center justify-end gap-2">
-                          <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
-                            {row.message.text && <MessageCopyButton text={row.message.text} />}
-                            {canRevertAgentWork && (
-                              <Button
-                                type="button"
-                                size="xs"
-                                variant="outline"
-                                disabled={isRevertingCheckpoint || isWorking}
-                                onClick={() => onRevertUserMessage(row.message.id)}
-                                title="Revert to this message"
-                              >
-                                <Undo2Icon className="size-3" />
-                              </Button>
-                            )}
-                          </div>
-                          <p className="text-right text-[10px] text-muted-foreground/30">
-                            {formatTimestamp(row.message.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {row.kind === "message" &&
-                row.message.role === "assistant" &&
-                (() => {
-                  const messageText =
-                    row.message.text || (row.message.streaming ? "" : "(empty response)");
-                  return (
-                    <>
-                      {row.showCompletionDivider && (
-                        <div className="my-3 flex items-center gap-3">
-                          <span className="h-px flex-1 bg-border" />
-                          <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
-                            {completionSummary ? `Response • ${completionSummary}` : "Response"}
-                          </span>
-                          <span className="h-px flex-1 bg-border" />
-                        </div>
-                      )}
-                      <div className="min-w-0 px-1 py-0.5">
-                        <ChatMarkdown text={messageText} cwd={markdownCwd} />
-                        {(() => {
-                          const turnSummary = turnDiffSummaryByAssistantMessageId.get(
-                            row.message.id,
-                          );
-                          if (!turnSummary) return null;
-                          const checkpointFiles = turnSummary.files;
-                          if (checkpointFiles.length === 0) return null;
-                          const summaryStat = checkpointFiles.reduce(
-                            (acc, file) => {
-                              if (
-                                typeof file.additions !== "number" ||
-                                typeof file.deletions !== "number"
-                              ) {
-                                return acc;
-                              }
-                              return {
-                                additions: acc.additions + file.additions,
-                                deletions: acc.deletions + file.deletions,
-                              };
-                            },
-                            { additions: 0, deletions: 0 },
-                          );
-                          const changedFileCountLabel = String(checkpointFiles.length);
-                          return (
-                            <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
-                              <div className="mb-1.5 flex items-center justify-between gap-2">
-                                <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                                  <span>Changed files ({changedFileCountLabel})</span>
-                                  {(summaryStat.additions > 0 || summaryStat.deletions > 0) && (
-                                    <>
-                                      <span className="mx-1">•</span>
-                                      <span className="text-success">+{summaryStat.additions}</span>
-                                      <span className="mx-0.5 text-muted-foreground/70">/</span>
-                                      <span className="text-destructive">
-                                        -{summaryStat.deletions}
-                                      </span>
-                                    </>
-                                  )}
-                                </p>
-                                <Button
-                                  type="button"
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={() =>
-                                    onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                                  }
-                                >
-                                  View diff
-                                </Button>
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {checkpointFiles.map((file) => (
-                                  <button
-                                    key={`${turnSummary.turnId}:${file.path}`}
-                                    type="button"
-                                    className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
-                                    onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
-                                  >
-                                    {(() => {
-                                      const stat =
-                                        typeof file.additions === "number" &&
-                                        typeof file.deletions === "number"
-                                          ? {
-                                              additions: file.additions,
-                                              deletions: file.deletions,
-                                            }
-                                          : null;
-                                      if (!stat) {
-                                        return file.path;
-                                      }
-                                      return (
-                                        <>
-                                          <span>{file.path}</span>
-                                          <span className="ml-1 text-muted-foreground/70">(</span>
-                                          <span className="text-success">+{stat.additions}</span>
-                                          <span className="mx-0.5 text-muted-foreground/70">/</span>
-                                          <span className="text-destructive">
-                                            -{stat.deletions}
-                                          </span>
-                                          <span className="text-muted-foreground/70">)</span>
-                                        </>
-                                      );
-                                    })()}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                          {formatMessageMeta(
-                            row.message.createdAt,
-                            row.message.streaming
-                              ? formatElapsed(row.message.createdAt, nowIso)
-                              : formatElapsed(row.message.createdAt, row.message.completedAt),
-                          )}
-                        </p>
-                      </div>
-                    </>
-                  );
-                })()}
-
-              {row.kind === "working" && (
-                <div className="flex items-center gap-2 py-0.5 pl-1.5">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-                  <div className="flex items-center pt-1">
-                    <span className="inline-flex items-center gap-[3px]">
-                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {nonVirtualizedRows.map((row) => (
+        <div key={`non-virtual-row:${row.id}`}>{renderRowContent(row)}</div>
+      ))}
     </div>
   );
 });
