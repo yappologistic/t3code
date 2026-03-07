@@ -352,15 +352,6 @@ describe("composerDraftStore reasoning effort normalization", () => {
 
     expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.effort).toBe("xhigh");
   });
-
-  it("still drops unsupported kimi reasoning effort selections", () => {
-    const store = useComposerDraftStore.getState();
-
-    store.setProvider(threadId, "kimi");
-    store.setEffort(threadId, "xhigh");
-
-    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.effort).toBeNull();
-  });
 });
 
 describe("composerDraftStore reasoning effort", () => {

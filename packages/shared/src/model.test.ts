@@ -66,11 +66,15 @@ describe("getReasoningEffortOptions", () => {
   it("returns codex reasoning options for codex", () => {
     expect(getReasoningEffortOptions("codex")).toEqual(["xhigh", "high", "medium", "low"]);
   });
+
+  it("returns Copilot reasoning options for copilot", () => {
+    expect(getReasoningEffortOptions("copilot")).toEqual(["low", "medium", "high"]);
+  });
 });
 
 describe("getDefaultReasoningEffort", () => {
   it("returns provider-scoped defaults", () => {
     expect(getDefaultReasoningEffort("codex")).toBe("high");
-    expect(getDefaultReasoningEffort("copilot")).toBeNull();
+    expect(getDefaultReasoningEffort("copilot")).toBe("high");
   });
 });
