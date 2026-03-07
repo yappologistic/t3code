@@ -868,3 +868,49 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 });
+
+describe("ChatView provider health banner", () => {
+  it("hides non-blocking provider warnings when auth status is unknown", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-target" as MessageId,
+        targetText: "hello",
+      }),
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [
+            {
+              provider: "copilot",
+              status: "warning",
+              available: true,
+              authStatus: "unknown",
+              checkedAt: NOW_ISO,
+              message:
+                "Could not verify GitHub Copilot CLI authentication non-interactively.",
+            },
+          ],
+        };
+        nextFixture.snapshot = {
+          ...nextFixture.snapshot,
+          threads: nextFixture.snapshot.threads.map((thread) => ({
+            ...thread,
+            session: thread.session
+              ? {
+                  ...thread.session,
+                  providerName: "copilot",
+                }
+              : thread.session,
+          })),
+        };
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("GitHub Copilot status")).not.toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+});

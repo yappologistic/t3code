@@ -239,6 +239,54 @@ it.effect("returns unauthenticated when copilot auth env uses a classic PAT", ()
   ),
 );
 
+it.effect("mentions gh auth login when copilot auth cannot be verified non-interactively", () =>
+  Effect.gen(function* () {
+    const previousCopilotToken = process.env.COPILOT_GITHUB_TOKEN;
+    const previousGhToken = process.env.GH_TOKEN;
+    const previousGithubToken = process.env.GITHUB_TOKEN;
+    delete process.env.COPILOT_GITHUB_TOKEN;
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    try {
+      const status = yield* checkCopilotProviderStatus;
+      assert.strictEqual(status.provider, "copilot");
+      assert.strictEqual(status.status, "warning");
+      assert.strictEqual(status.available, true);
+      assert.strictEqual(status.authStatus, "unknown");
+      assert.strictEqual(
+        status.message,
+        "Could not verify GitHub Copilot CLI authentication non-interactively. Run `copilot login`, `gh auth login`, or set COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN if session start fails.",
+      );
+    } finally {
+      if (previousCopilotToken === undefined) {
+        delete process.env.COPILOT_GITHUB_TOKEN;
+      } else {
+        process.env.COPILOT_GITHUB_TOKEN = previousCopilotToken;
+      }
+      if (previousGhToken === undefined) {
+        delete process.env.GH_TOKEN;
+      } else {
+        process.env.GH_TOKEN = previousGhToken;
+      }
+      if (previousGithubToken === undefined) {
+        delete process.env.GITHUB_TOKEN;
+      } else {
+        process.env.GITHUB_TOKEN = previousGithubToken;
+      }
+    }
+  }).pipe(
+    Effect.provide(
+      mockSpawnerLayer((commandName, args) => {
+        const joined = args.join(" ");
+        if (commandName === "copilot" && joined === "--version") {
+          return { stdout: "copilot 1.0.0\n", stderr: "", code: 0 };
+        }
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    ),
+  ),
+);
+
 // ── Pure function tests ─────────────────────────────────────────────
 
 it("parseAuthStatusFromOutput: exit code 0 with no auth markers is ready", () => {

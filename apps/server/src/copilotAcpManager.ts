@@ -90,6 +90,20 @@ function toMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+export function readAvailableCopilotModelIds(
+  models: acp.SessionModelState | null | undefined,
+): ReadonlyArray<string> {
+  return models?.availableModels.map((entry) => entry.modelId) ?? [];
+}
+
+export function isCopilotModelAvailable(
+  models: acp.SessionModelState | null | undefined,
+  model: string,
+): boolean {
+  const availableModelIds = readAvailableCopilotModelIds(models);
+  return availableModelIds.length === 0 || availableModelIds.includes(model);
+}
+
 function readResumeSessionId(input: {
   readonly resumeCursor?: unknown;
 }): string | undefined {
@@ -597,7 +611,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   }
 
   private async setSessionModel(context: CopilotSessionContext, model: string) {
-    const availableModelIds = context.models?.availableModels.map((entry) => entry.modelId) ?? [];
+    const availableModelIds = readAvailableCopilotModelIds(context.models);
     if (availableModelIds.length > 0 && !availableModelIds.includes(model)) {
       throw new Error(
         `GitHub Copilot CLI does not expose model '${model}' for this account. Available models: ${availableModelIds.join(", ")}.`,
@@ -640,9 +654,6 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
 
     const copilotBinaryPath = input.providerOptions?.copilot?.binaryPath ?? "copilot";
     const args = ["--acp", "--no-ask-user", ...mapCopilotRuntimeMode(input.runtimeMode)];
-    if (input.model?.trim()) {
-      args.push("--model", input.model.trim());
-    }
 
     const child = spawn(copilotBinaryPath, args, {
       cwd: resolvedCwd,
@@ -722,16 +733,18 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       context.models = sessionResult.models ?? null;
       this.updateSession(context, {
         status: "ready",
-        model: sessionResult.models?.currentModelId ?? input.model ?? session.model,
+        model: sessionResult.models?.currentModelId ?? session.model,
         resumeCursor: { sessionId: context.acpSessionId },
       });
 
+      const requestedModel = input.model?.trim();
       if (
-        input.model?.trim() &&
-        input.model.trim() !== context.session.model &&
-        context.models !== null
+        requestedModel &&
+        requestedModel !== context.session.model &&
+        context.models !== null &&
+        isCopilotModelAvailable(context.models, requestedModel)
       ) {
-        await this.setSessionModel(context, input.model.trim());
+        await this.setSessionModel(context, requestedModel);
       }
 
       this.emitSessionStarted(context);
@@ -768,7 +781,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
 
     const requestedModel = input.model?.trim();
     if (requestedModel && requestedModel !== context.session.model) {
-      await this.setSessionModel(context, requestedModel);
+      if (isCopilotModelAvailable(context.models, requestedModel)) {
+        await this.setSessionModel(context, requestedModel);
+      }
     }
 
     const turnId = TurnId.makeUnsafe(randomUUID());

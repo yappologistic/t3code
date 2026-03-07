@@ -16,6 +16,7 @@ import {
   type ProviderApprovalDecision,
   type ServerProviderStatus,
   type ProviderKind,
+  type ProviderStartOptions,
   type ThreadId,
   type TurnId,
   OrchestrationThreadActivity,
@@ -266,6 +267,41 @@ const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 const WORKTREE_BRANCH_PREFIX = "t3code";
+
+function buildProviderOptionsForDispatch(input: {
+  readonly provider: ProviderKind;
+  readonly settings: {
+    readonly codexBinaryPath: string;
+    readonly codexHomePath: string;
+    readonly copilotBinaryPath: string;
+  };
+}): ProviderStartOptions | undefined {
+  const codexBinaryPath = input.settings.codexBinaryPath.trim();
+  const codexHomePath = input.settings.codexHomePath.trim();
+  const copilotBinaryPath = input.settings.copilotBinaryPath.trim();
+
+  switch (input.provider) {
+    case "codex":
+      return codexBinaryPath || codexHomePath
+        ? {
+            codex: {
+              ...(codexBinaryPath ? { binaryPath: codexBinaryPath } : {}),
+              ...(codexHomePath ? { homePath: codexHomePath } : {}),
+            },
+          }
+        : undefined;
+    case "copilot":
+      return copilotBinaryPath
+        ? {
+            copilot: {
+              binaryPath: copilotBinaryPath,
+            },
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
 
 function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
   const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
@@ -832,6 +868,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
     };
     return Object.keys(codexOptions).length > 0 ? { codex: codexOptions } : undefined;
   }, [selectedCodexFastModeEnabled, selectedEffort, selectedProvider, supportsReasoningEffort]);
+  const providerOptionsForDispatch = useMemo(
+    () =>
+      buildProviderOptionsForDispatch({
+        provider: selectedProvider,
+        settings,
+      }),
+    [selectedProvider, settings],
+  );
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings),
@@ -2628,6 +2672,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ...(selectedModelOptionsForDispatch
           ? { modelOptions: selectedModelOptionsForDispatch }
           : {}),
+        ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
         provider: selectedProvider,
         assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
         runtimeMode,
@@ -2905,6 +2950,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           ...(selectedModelOptionsForDispatch
             ? { modelOptions: selectedModelOptionsForDispatch }
             : {}),
+          ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
           assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
           runtimeMode,
           interactionMode: nextInteractionMode,
@@ -2935,6 +2981,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       runtimeMode,
       selectedModel,
       selectedModelOptionsForDispatch,
+      providerOptionsForDispatch,
       selectedProvider,
       setComposerDraftInteractionMode,
       setThreadError,
@@ -3005,6 +3052,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           ...(selectedModelOptionsForDispatch
             ? { modelOptions: selectedModelOptionsForDispatch }
             : {}),
+          ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
           assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
           runtimeMode,
           interactionMode: "default",
@@ -3054,6 +3102,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runtimeMode,
     selectedModel,
     selectedModelOptionsForDispatch,
+    providerOptionsForDispatch,
     selectedProvider,
     settings.enableAssistantStreaming,
     syncServerReadModel,
@@ -4099,7 +4148,11 @@ const ProviderHealthBanner = memo(function ProviderHealthBanner({
 }: {
   status: ServerProviderStatus | null;
 }) {
-  if (!status || status.status === "ready") {
+  const shouldShowBanner =
+    status !== null &&
+    (status.status === "error" || status.authStatus === "unauthenticated");
+
+  if (!shouldShowBanner || !status) {
     return null;
   }
 

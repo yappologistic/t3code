@@ -389,7 +389,7 @@ export const checkCopilotProviderStatus: Effect.Effect<
     authStatus: "unknown" as const,
     checkedAt,
     message:
-      "Could not verify GitHub Copilot CLI authentication non-interactively. Run `copilot login` or set COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN if session start fails.",
+      "Could not verify GitHub Copilot CLI authentication non-interactively. Run `copilot login`, `gh auth login`, or set COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN if session start fails.",
   };
 });
 
