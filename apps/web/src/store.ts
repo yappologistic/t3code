@@ -9,7 +9,6 @@ import {
 import {
   getModelOptions,
   normalizeModelSlug,
-  resolveModelSlug,
   resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
 import { create } from "zustand";
@@ -106,13 +105,20 @@ function mapProjectsFromReadModel(
     const existing =
       previous.find((entry) => entry.id === project.id) ??
       previous.find((entry) => entry.cwd === project.workspaceRoot);
+    const inferredProvider = inferProviderForThreadModel({
+      model: project.defaultModel ?? existing?.model ?? DEFAULT_MODEL_BY_PROVIDER.codex,
+      sessionProviderName: null,
+    });
     return {
       id: project.id,
       name: project.title,
       cwd: project.workspaceRoot,
       model:
         existing?.model ??
-        resolveModelSlug(project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER.codex),
+        resolveModelSlugForProvider(
+          inferredProvider,
+          project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER[inferredProvider],
+        ),
       expanded:
         existing?.expanded ??
         (persistedExpandedProjectCwds.size > 0
@@ -143,20 +149,25 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex") {
+  if (providerName === "codex" || providerName === "copilot") {
     return providerName;
   }
   return "codex";
 }
 
 const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
+const COPILOT_MODEL_SLUGS = new Set<string>(getModelOptions("copilot").map((option) => option.slug));
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
 }): ProviderKind {
-  if (input.sessionProviderName === "codex") {
+  if (input.sessionProviderName === "codex" || input.sessionProviderName === "copilot") {
     return input.sessionProviderName;
+  }
+  const normalizedCopilot = normalizeModelSlug(input.model, "copilot");
+  if (normalizedCopilot && COPILOT_MODEL_SLUGS.has(normalizedCopilot)) {
+    return "copilot";
   }
   const normalizedCodex = normalizeModelSlug(input.model, "codex");
   if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {

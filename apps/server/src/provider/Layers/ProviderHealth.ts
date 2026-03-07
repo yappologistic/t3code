@@ -20,6 +20,7 @@ import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHe
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
+const COPILOT_PROVIDER = "copilot" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -39,8 +40,9 @@ function isCommandMissingCause(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const lower = error.message.toLowerCase();
   return (
-    lower.includes("command not found: codex") ||
+    lower.includes("command not found:") ||
     lower.includes("spawn codex enoent") ||
+    lower.includes("spawn copilot enoent") ||
     lower.includes("enoent") ||
     lower.includes("notfound")
   );
@@ -171,10 +173,10 @@ const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.
     (acc, chunk) => acc + new TextDecoder().decode(chunk),
   );
 
-const runCodexCommand = (args: ReadonlyArray<string>) =>
+const runCliCommand = (commandName: string, args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const command = ChildProcess.make("codex", [...args], {
+    const command = ChildProcess.make(commandName, [...args], {
       shell: process.platform === "win32",
     });
 
@@ -191,6 +193,9 @@ const runCodexCommand = (args: ReadonlyArray<string>) =>
 
     return { stdout, stderr, code: exitCode } satisfies CommandResult;
   }).pipe(Effect.scoped);
+
+const runCodexCommand = (args: ReadonlyArray<string>) => runCliCommand("codex", args);
+const runCopilotCommand = (args: ReadonlyArray<string>) => runCliCommand("copilot", args);
 
 // ── Health check ────────────────────────────────────────────────────
 
@@ -290,14 +295,113 @@ export const checkCodexProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
+function readCopilotAuthEnvValue(): string | undefined {
+  for (const envKey of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) {
+    const value = process.env[envKey]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+export const checkCopilotProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runCopilotCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "GitHub Copilot CLI (`copilot`) is not installed or not on PATH."
+        : `Failed to execute GitHub Copilot CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        "GitHub Copilot CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `GitHub Copilot CLI is installed but failed to run. ${detail}`
+        : "GitHub Copilot CLI is installed but failed to run.",
+    };
+  }
+
+  const envToken = readCopilotAuthEnvValue();
+  if (envToken?.startsWith("ghp_")) {
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: true,
+      authStatus: "unauthenticated" as const,
+      checkedAt,
+      message:
+        "GitHub Copilot CLI does not support classic personal access tokens (`ghp_`). Use `copilot login` or a supported token in COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN.",
+    };
+  }
+
+  if (envToken) {
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "ready" as const,
+      available: true,
+      authStatus: "authenticated" as const,
+      checkedAt,
+      message: "GitHub Copilot CLI authentication is configured via environment variable.",
+    };
+  }
+
+  return {
+    provider: COPILOT_PROVIDER,
+    status: "warning" as const,
+    available: true,
+    authStatus: "unknown" as const,
+    checkedAt,
+    message:
+      "Could not verify GitHub Copilot CLI authentication non-interactively. Run `copilot login` or set COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN if session start fails.",
+  };
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
     const codexStatus = yield* checkCodexProviderStatus;
+    const copilotStatus = yield* checkCopilotProviderStatus;
     return {
-      getStatuses: Effect.succeed([codexStatus]),
+      getStatuses: Effect.succeed([codexStatus, copilotStatus]),
     } satisfies ProviderHealthShape;
   }),
 );

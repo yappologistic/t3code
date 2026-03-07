@@ -4,7 +4,11 @@ import { Effect, Layer, Sink, Stream } from "effect";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { checkCodexProviderStatus, parseAuthStatusFromOutput } from "./ProviderHealth";
+import {
+  checkCodexProviderStatus,
+  checkCopilotProviderStatus,
+  parseAuthStatusFromOutput,
+} from "./ProviderHealth";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -26,13 +30,16 @@ function mockHandle(result: { stdout: string; stderr: string; code: number }) {
 }
 
 function mockSpawnerLayer(
-  handler: (args: ReadonlyArray<string>) => { stdout: string; stderr: string; code: number },
+  handler: (
+    commandName: string,
+    args: ReadonlyArray<string>,
+  ) => { stdout: string; stderr: string; code: number },
 ) {
   return Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
     ChildProcessSpawner.make((command) => {
-      const cmd = command as unknown as { args: ReadonlyArray<string> };
-      return Effect.succeed(mockHandle(handler(cmd.args)));
+      const cmd = command as unknown as { command: string; args: ReadonlyArray<string> };
+      return Effect.succeed(mockHandle(handler(cmd.command, cmd.args)));
     }),
   );
 }
@@ -64,10 +71,44 @@ it.effect("returns ready when codex is installed and authenticated", () =>
     assert.strictEqual(status.authStatus, "authenticated");
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((commandName, args) => {
         const joined = args.join(" ");
-        if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-        if (joined === "login status") return { stdout: "Logged in\n", stderr: "", code: 0 };
+        if (commandName === "codex" && joined === "--version") {
+          return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+        }
+        if (commandName === "codex" && joined === "login status") {
+          return { stdout: "Logged in\n", stderr: "", code: 0 };
+        }
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    ),
+  ),
+);
+
+it.effect("returns ready when copilot is installed and auth env is present", () =>
+  Effect.gen(function* () {
+    const previousToken = process.env.COPILOT_GITHUB_TOKEN;
+    process.env.COPILOT_GITHUB_TOKEN = "github_pat_123";
+    try {
+      const status = yield* checkCopilotProviderStatus;
+      assert.strictEqual(status.provider, "copilot");
+      assert.strictEqual(status.status, "ready");
+      assert.strictEqual(status.available, true);
+      assert.strictEqual(status.authStatus, "authenticated");
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.COPILOT_GITHUB_TOKEN;
+      } else {
+        process.env.COPILOT_GITHUB_TOKEN = previousToken;
+      }
+    }
+  }).pipe(
+    Effect.provide(
+      mockSpawnerLayer((commandName, args) => {
+        const joined = args.join(" ");
+        if (commandName === "copilot" && joined === "--version") {
+          return { stdout: "copilot 1.0.0\n", stderr: "", code: 0 };
+        }
         throw new Error(`Unexpected args: ${joined}`);
       }),
     ),
@@ -98,10 +139,12 @@ it.effect("returns unauthenticated when auth probe reports login required", () =
     );
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((commandName, args) => {
         const joined = args.join(" ");
-        if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-        if (joined === "login status") {
+        if (commandName === "codex" && joined === "--version") {
+          return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+        }
+        if (commandName === "codex" && joined === "login status") {
           return { stdout: "", stderr: "Not logged in. Run codex login.", code: 1 };
         }
         throw new Error(`Unexpected args: ${joined}`);
@@ -125,11 +168,14 @@ it.effect(
       );
     }).pipe(
       Effect.provide(
-        mockSpawnerLayer((args) => {
+        mockSpawnerLayer((commandName, args) => {
           const joined = args.join(" ");
-          if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-          if (joined === "login status")
+          if (commandName === "codex" && joined === "--version") {
+            return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+          }
+          if (commandName === "codex" && joined === "login status") {
             return { stdout: "Not logged in\n", stderr: "", code: 1 };
+          }
           throw new Error(`Unexpected args: ${joined}`);
         }),
       ),
@@ -149,11 +195,43 @@ it.effect("returns warning when login status command is unsupported", () =>
     );
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((commandName, args) => {
         const joined = args.join(" ");
-        if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-        if (joined === "login status") {
+        if (commandName === "codex" && joined === "--version") {
+          return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+        }
+        if (commandName === "codex" && joined === "login status") {
           return { stdout: "", stderr: "error: unknown command 'login'", code: 2 };
+        }
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    ),
+  ),
+);
+
+it.effect("returns unauthenticated when copilot auth env uses a classic PAT", () =>
+  Effect.gen(function* () {
+    const previousToken = process.env.COPILOT_GITHUB_TOKEN;
+    process.env.COPILOT_GITHUB_TOKEN = "ghp_legacy";
+    try {
+      const status = yield* checkCopilotProviderStatus;
+      assert.strictEqual(status.provider, "copilot");
+      assert.strictEqual(status.status, "error");
+      assert.strictEqual(status.available, true);
+      assert.strictEqual(status.authStatus, "unauthenticated");
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.COPILOT_GITHUB_TOKEN;
+      } else {
+        process.env.COPILOT_GITHUB_TOKEN = previousToken;
+      }
+    }
+  }).pipe(
+    Effect.provide(
+      mockSpawnerLayer((commandName, args) => {
+        const joined = args.join(" ");
+        if (commandName === "copilot" && joined === "--version") {
+          return { stdout: "copilot 1.0.0\n", stderr: "", code: 0 };
         }
         throw new Error(`Unexpected args: ${joined}`);
       }),
