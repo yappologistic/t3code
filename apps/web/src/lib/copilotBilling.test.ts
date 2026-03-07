@@ -13,6 +13,7 @@ describe("copilotBilling", () => {
     expect(getCopilotModelMultiplier("claude-haiku-4.5")).toBe(0.33);
     expect(getCopilotModelMultiplier("claude-opus-4.6-fast")).toBe(30);
     expect(getCopilotModelMultiplier("unknown-model")).toBeNull();
+    expect(getCopilotModelMultiplier("constructor")).toBeNull();
   });
 
   it("computes estimated overage costs per request", () => {

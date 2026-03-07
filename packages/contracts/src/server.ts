@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
 import { KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
 import { EditorId } from "./editor";
-import { CODEX_REASONING_EFFORT_OPTIONS } from "./model";
+import { COPILOT_REASONING_EFFORT_VALUES } from "./model";
 import { ProviderKind } from "./orchestration";
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
@@ -79,7 +79,7 @@ export const ServerCopilotUsage = Schema.Union([
 ]);
 export type ServerCopilotUsage = typeof ServerCopilotUsage.Type;
 
-const ServerCopilotReasoningOption = Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS);
+const ServerCopilotReasoningOption = Schema.Literals(COPILOT_REASONING_EFFORT_VALUES);
 
 export const ServerCopilotReasoningProbeInput = Schema.Struct({
   model: TrimmedNonEmptyString,

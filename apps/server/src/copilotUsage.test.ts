@@ -21,6 +21,15 @@ describe("buildGitHubApiBaseUrl", () => {
       "https://api.example.ghe.com:8443",
     );
   });
+
+  it("preserves path-based enterprise API roots", () => {
+    expect(buildGitHubApiBaseUrl("https://example.ghe.com/github")).toBe(
+      "https://example.ghe.com/github/api/v3",
+    );
+    expect(buildGitHubApiBaseUrl("https://example.ghe.com/github/api/v3")).toBe(
+      "https://example.ghe.com/github/api/v3",
+    );
+  });
 });
 
 describe("fetchCopilotUsageSummary", () => {
@@ -137,5 +146,46 @@ describe("createCopilotUsageReader", () => {
 
     await expect(readUsage()).resolves.toMatchObject({ status: "available", remaining: 200 });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache requires-auth responses", async () => {
+    let nowMs = Date.parse("2026-03-07T12:00:00.000Z");
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          login: "octocat",
+          quota_reset_date_utc: "2026-03-31T00:00:00.000Z",
+          quota_snapshots: {
+            premium_interactions: {
+              entitlement: 300,
+              remaining: 200,
+              overage_count: 0,
+              overage_permitted: true,
+              unlimited: false,
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const resolveGitHubToken = vi
+      .fn<(hostname: string | null) => Promise<string | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("ghu_test_token");
+
+    const readUsage = createCopilotUsageReader({
+      fetchImpl,
+      now: () => new Date(nowMs),
+      readCliConfig: async () => ({ host: "https://github.com", login: "octocat" }),
+      resolveGitHubToken,
+    });
+
+    await expect(readUsage()).resolves.toMatchObject({ status: "requires-auth" });
+
+    nowMs += 1;
+
+    await expect(readUsage()).resolves.toMatchObject({ status: "available", remaining: 200 });
+    expect(resolveGitHubToken).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

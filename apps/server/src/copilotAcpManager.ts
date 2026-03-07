@@ -47,6 +47,7 @@ interface CopilotSessionContext {
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>;
   toolSnapshots: Map<string, ToolSnapshot>;
   currentTurnId: TurnId | undefined;
+  turnInFlight: boolean;
   stopping: boolean;
   lastStderrLine?: string;
 }
@@ -296,8 +297,7 @@ function createPermissionOutcome(
       );
     case "accept":
       return (
-        selectByKind("allow_once") ??
-        selectByKind("allow_always") ?? {
+        selectByKind("allow_once") ?? {
           outcome: { outcome: "cancelled" },
         }
       );
@@ -665,6 +665,11 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       this.sessions.delete(context.session.threadId);
     };
 
+    context.child.once("error", (error) => {
+      context.lastStderrLine = toMessage(error, "Failed to start GitHub Copilot CLI.");
+      onExit(null, null);
+    });
+
     context.child.once("exit", onExit);
     context.connection.closed.catch(() => undefined);
   }
@@ -797,6 +802,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       pendingApprovals: new Map(),
       toolSnapshots: new Map(),
       currentTurnId: undefined,
+      turnInFlight: false,
       stopping: false,
     };
     this.sessions.set(input.threadId, context);
@@ -862,12 +868,18 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       this.emitSessionStarted(context);
       return { ...context.session };
     } catch (error) {
-      const message = toMessage(error, "Failed to start GitHub Copilot session.");
+      const message = context.lastStderrLine ?? toMessage(error, "Failed to start GitHub Copilot session.");
       this.updateSession(context, {
         status: "error",
         lastError: message,
       });
       this.emitRuntimeError(context, message);
+      if (this.sessions.has(input.threadId)) {
+        this.emitSessionExit(context, {
+          reason: message,
+          exitKind: "error",
+        });
+      }
       context.stopping = true;
       this.resolvePendingApprovalsAsCancelled(context);
       killChildTree(context.child);
@@ -892,84 +904,93 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       throw new Error("GitHub Copilot integration currently supports text prompts only.");
     }
 
-    const requestedModel = input.model?.trim();
-    if (requestedModel && requestedModel !== context.session.model) {
-      if (isCopilotModelAvailable(context.models, requestedModel)) {
-        await this.setSessionModel(context, requestedModel);
-      }
+    if (context.turnInFlight || context.session.status === "running" || context.session.activeTurnId) {
+      throw new Error("GitHub Copilot already has a turn in progress for this session.");
     }
 
-    if (input.reasoningEffort) {
-      await this.setSessionReasoningEffort(context, input.reasoningEffort);
-    }
-
-    const turnId = TurnId.makeUnsafe(randomUUID());
-    context.currentTurnId = turnId;
-    this.updateSession(context, {
-      status: "running",
-      activeTurnId: turnId,
-    });
-
-    this.emitRuntimeEvent({
-      ...this.createEventBase(context),
-      turnId,
-      type: "turn.started",
-      payload: context.session.model ? { model: context.session.model } : {},
-    });
+    context.turnInFlight = true;
 
     try {
-      const result = await context.connection.prompt({
-        sessionId: context.acpSessionId,
-        prompt: [
-          {
-            type: "text",
-            text: promptText,
+      const requestedModel = input.model?.trim();
+      if (requestedModel && requestedModel !== context.session.model) {
+        if (isCopilotModelAvailable(context.models, requestedModel)) {
+          await this.setSessionModel(context, requestedModel);
+        }
+      }
+
+      if (input.reasoningEffort) {
+        await this.setSessionReasoningEffort(context, input.reasoningEffort);
+      }
+
+      const turnId = TurnId.makeUnsafe(randomUUID());
+      context.currentTurnId = turnId;
+      this.updateSession(context, {
+        status: "running",
+        activeTurnId: turnId,
+      });
+
+      this.emitRuntimeEvent({
+        ...this.createEventBase(context),
+        turnId,
+        type: "turn.started",
+        payload: context.session.model ? { model: context.session.model } : {},
+      });
+
+      try {
+        const result = await context.connection.prompt({
+          sessionId: context.acpSessionId,
+          prompt: [
+            {
+              type: "text",
+              text: promptText,
+            },
+          ],
+        });
+
+        this.emitRuntimeEvent({
+          ...this.createEventBase(context),
+          turnId,
+          type: "turn.completed",
+          payload: {
+            state: result.stopReason === "cancelled" ? "interrupted" : "completed",
+            stopReason: result.stopReason,
+            ...(result.usage ? { usage: result.usage } : {}),
           },
-        ],
-      });
+        });
 
-      this.emitRuntimeEvent({
-        ...this.createEventBase(context),
-        turnId,
-        type: "turn.completed",
-        payload: {
-          state: result.stopReason === "cancelled" ? "interrupted" : "completed",
-          stopReason: result.stopReason,
-          ...(result.usage ? { usage: result.usage } : {}),
-        },
-      });
+        this.updateSession(context, {
+          status: "ready",
+          activeTurnId: undefined,
+        });
 
-      this.updateSession(context, {
-        status: "ready",
-        activeTurnId: undefined,
-      });
-
-      return {
-        threadId: input.threadId,
-        turnId,
-        resumeCursor: { sessionId: context.acpSessionId },
-      };
-    } catch (error) {
-      const message = toMessage(error, "GitHub Copilot turn failed.");
-      this.emitRuntimeEvent({
-        ...this.createEventBase(context),
-        turnId,
-        type: "turn.completed",
-        payload: {
-          state: "failed",
-          stopReason: null,
-          errorMessage: message,
-        },
-      });
-      this.emitRuntimeError(context, message, turnId);
-      this.updateSession(context, {
-        status: "error",
-        activeTurnId: undefined,
-        lastError: message,
-      });
-      throw new Error(message, { cause: error });
+        return {
+          threadId: input.threadId,
+          turnId,
+          resumeCursor: { sessionId: context.acpSessionId },
+        };
+      } catch (error) {
+        const message = toMessage(error, "GitHub Copilot turn failed.");
+        this.emitRuntimeEvent({
+          ...this.createEventBase(context),
+          turnId,
+          type: "turn.completed",
+          payload: {
+            state: "failed",
+            stopReason: null,
+            errorMessage: message,
+          },
+        });
+        this.emitRuntimeError(context, message, turnId);
+        this.updateSession(context, {
+          status: "error",
+          activeTurnId: undefined,
+          lastError: message,
+        });
+        throw new Error(message, { cause: error });
+      }
     } finally {
       context.currentTurnId = undefined;
+      context.turnInFlight = false;
     }
   }
 

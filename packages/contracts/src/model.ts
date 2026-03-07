@@ -4,8 +4,8 @@ import { ProviderKind } from "./orchestration";
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
 export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORT_OPTIONS)[number];
 
-export const COPILOT_REASONING_EFFORT_VALUES = CODEX_REASONING_EFFORT_OPTIONS;
 export const COPILOT_REASONING_EFFORT_OPTIONS = ["low", "medium", "high"] as const;
+export const COPILOT_REASONING_EFFORT_VALUES = COPILOT_REASONING_EFFORT_OPTIONS;
 export type CopilotReasoningEffort = (typeof COPILOT_REASONING_EFFORT_VALUES)[number];
 
 export const CodexModelOptions = Schema.Struct({

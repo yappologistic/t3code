@@ -87,6 +87,20 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
   });
 
+  it("rejects unsupported Copilot reasoning-effort model options", () => {
+    expect(() =>
+      decodeProviderSendTurnInput({
+        threadId: "thread-1",
+        model: "gpt-5.4",
+        modelOptions: {
+          copilot: {
+            reasoningEffort: "xhigh",
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
   it("accepts copilot reasoning-effort model options", () => {
     const parsed = decodeProviderSendTurnInput({
       threadId: "thread-1",

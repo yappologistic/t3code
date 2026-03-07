@@ -27,6 +27,20 @@ afterEach(() => {
 });
 
 describe("serverCopilotUsageQueryOptions", () => {
+  it("returns an unavailable payload when the native bridge is unavailable", async () => {
+    vi.spyOn(nativeApi, "ensureNativeApi").mockImplementation(() => {
+      throw new Error("Bridge unavailable");
+    });
+
+    const queryClient = new QueryClient();
+    const result = await queryClient.fetchQuery(serverCopilotUsageQueryOptions());
+
+    expect(result).toMatchObject({
+      status: "unavailable",
+      message: "GitHub Copilot quota request failed: Bridge unavailable",
+    });
+  });
+
   it("returns an unavailable payload when the rpc rejects", async () => {
     const getCopilotUsage = vi.fn().mockRejectedValue(new Error("Transport disposed"));
     mockNativeApi({ getCopilotUsage });
@@ -70,7 +84,7 @@ describe("serverCopilotReasoningProbeQueryOptions", () => {
       status: "supported",
       fetchedAt: "2026-01-01T00:00:00.000Z",
       model: "gpt-5",
-      options: ["medium", "high", "xhigh"],
+      options: ["low", "medium", "high"],
       currentValue: "high",
     });
     mockNativeApi({ probeCopilotReasoning });
@@ -83,7 +97,7 @@ describe("serverCopilotReasoningProbeQueryOptions", () => {
     expect(probeCopilotReasoning).toHaveBeenCalledWith({ model: "gpt-5" });
     expect(result).toMatchObject({
       status: "supported",
-      options: ["medium", "high", "xhigh"],
+      options: ["low", "medium", "high"],
     });
   });
 });

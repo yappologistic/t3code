@@ -334,7 +334,7 @@ describe("deriveConfiguredModelOptions", () => {
 });
 
 describe("deriveConfiguredReasoningEffortStateFromActivityGroups", () => {
-  it("reads Copilot reasoning selectors from session configuration payloads", () => {
+  it("filters unsupported Copilot reasoning values from session configuration payloads", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "session-configured-copilot-reasoning",
@@ -366,8 +366,8 @@ describe("deriveConfiguredReasoningEffortStateFromActivityGroups", () => {
     ];
 
     expect(deriveConfiguredReasoningEffortStateFromActivityGroups([activities], "copilot")).toEqual({
-      options: ["low", "medium", "high", "xhigh"],
-      currentValue: "xhigh",
+      options: ["low", "medium", "high"],
+      currentValue: null,
     });
   });
 
@@ -411,6 +411,66 @@ describe("deriveConfiguredReasoningEffortStateFromActivityGroups", () => {
       options: ["low", "medium", "high"],
       currentValue: "high",
     });
+  });
+
+  it("clears stale reasoning state when the latest session configuration omits the selector", () => {
+    const olderActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-old-selector",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "copilot",
+          config: {
+            configOptions: [
+              {
+                type: "select",
+                id: "reasoning_effort",
+                name: "Reasoning Effort",
+                category: "thought_level",
+                currentValue: "medium",
+                options: [
+                  { value: "low", name: "low" },
+                  { value: "medium", name: "medium" },
+                  { value: "high", name: "high" },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ];
+    const newerActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-no-selector",
+        createdAt: "2026-02-23T00:00:05.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "copilot",
+          config: {
+            configOptions: [
+              {
+                type: "toggle",
+                id: "unrelated",
+                name: "Unrelated",
+                currentValue: true,
+              },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(
+      deriveConfiguredReasoningEffortStateFromActivityGroups(
+        [olderActivities, newerActivities],
+        "copilot",
+      ),
+    ).toBeNull();
   });
 });
 describe("deriveActivePlanState", () => {

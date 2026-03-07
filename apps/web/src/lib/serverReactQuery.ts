@@ -17,9 +17,8 @@ function buildUnavailableCopilotUsage(message: string): ServerCopilotUsage {
 }
 
 async function readCopilotUsageSafely(): Promise<ServerCopilotUsage> {
-  const api = ensureNativeApi();
-
   try {
+    const api = ensureNativeApi();
     const timeoutPromise = new Promise<ServerCopilotUsage>((resolve) => {
       const timer = setTimeout(() => {
         resolve(

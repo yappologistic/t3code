@@ -72,10 +72,22 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
         options?.makeManager?.() ??
         new CopilotAcpManager();
 
-      const handleEvent = (event: ProviderRuntimeEvent) => {
-        void Effect.runPromise(Queue.offer(eventQueue, event).pipe(Effect.asVoid));
-      };
-      manager.on("event", handleEvent);
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const handleEvent = (event: ProviderRuntimeEvent) => {
+            void Effect.runPromise(Queue.offer(eventQueue, event).pipe(Effect.asVoid));
+          };
+          manager.on("event", handleEvent);
+          return handleEvent;
+        }),
+        (handleEvent) =>
+          Effect.gen(function* () {
+            yield* Effect.sync(() => {
+              manager.off("event", handleEvent);
+            });
+            yield* Queue.shutdown(eventQueue);
+          }),
+      );
 
       const streamEvents = Stream.fromQueue(eventQueue);
 

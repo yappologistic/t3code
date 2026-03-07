@@ -943,7 +943,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     if (selectedProvider === "copilot") {
-      const copilotReasoningEffort = supportsReasoningEffort ? selectedEffort : undefined;
+      const copilotReasoningEffort =
+        supportsReasoningEffort && selectedEffort !== "xhigh" ? selectedEffort : undefined;
       const copilotOptions = copilotReasoningEffort
         ? { reasoningEffort: copilotReasoningEffort }
         : undefined;

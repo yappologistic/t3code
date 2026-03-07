@@ -87,6 +87,14 @@ export function buildGitHubApiBaseUrl(host: string | null | undefined): string {
     return DEFAULT_GITHUB_API_BASE_URL;
   }
 
+  const normalizedPath = normalizedHost.pathname.replace(/\/+$/, "");
+  if (normalizedPath.length > 0) {
+    const apiPath = normalizedPath.endsWith("/api/v3")
+      ? normalizedPath
+      : `${normalizedPath}/api/v3`;
+    return `${normalizedHost.protocol}//${normalizedHost.hostname}${normalizedHost.port ? `:${normalizedHost.port}` : ""}${apiPath}`;
+  }
+
   const apiHost = normalizedHost.hostname.startsWith("api.")
     ? normalizedHost.hostname
     : `api.${normalizedHost.hostname}`;
@@ -307,10 +315,13 @@ export function createCopilotUsageReader(deps: CopilotUsageDependencies = {}) {
 
     inFlight = fetchCopilotUsageSummary(deps)
       .then((value) => {
-        cached = {
-          expiresAtMs: (deps.now?.() ?? new Date()).getTime() + COPILOT_USAGE_CACHE_TTL_MS,
-          value,
-        };
+        cached =
+          value.status === "available"
+            ? {
+                expiresAtMs: (deps.now?.() ?? new Date()).getTime() + COPILOT_USAGE_CACHE_TTL_MS,
+                value,
+              }
+            : null;
         return value;
       })
       .finally(() => {

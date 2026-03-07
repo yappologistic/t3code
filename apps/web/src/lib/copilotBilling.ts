@@ -29,7 +29,11 @@ function formatMultiplierValue(multiplier: number): string {
 }
 
 export function getCopilotModelMultiplier(model: string): number | null {
-  return COPILOT_MODEL_MULTIPLIER_BY_SLUG[model as keyof typeof COPILOT_MODEL_MULTIPLIER_BY_SLUG] ?? null;
+  if (!Object.prototype.hasOwnProperty.call(COPILOT_MODEL_MULTIPLIER_BY_SLUG, model)) {
+    return null;
+  }
+
+  return COPILOT_MODEL_MULTIPLIER_BY_SLUG[model as keyof typeof COPILOT_MODEL_MULTIPLIER_BY_SLUG];
 }
 
 export function getCopilotEstimatedOverageUsd(model: string): number | null {

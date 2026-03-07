@@ -196,7 +196,8 @@ function normalizeReasoningEffortForProvider(
   }
 
   const providerOptions = REASONING_EFFORT_OPTIONS_BY_PROVIDER[provider];
-  if (provider !== "copilot" && !providerOptions.includes(effort)) {
+  const providerOptionSet = new Set<CodexReasoningEffort>(providerOptions);
+  if (!providerOptionSet.has(effort)) {
     return null;
   }
 
@@ -278,7 +279,9 @@ function normalizeDraftThreadEnvMode(
   return fallbackWorktreePath ? "worktree" : "local";
 }
 
-function normalizePersistedComposerDraftState(value: unknown): PersistedComposerDraftStoreState {
+export function normalizePersistedComposerDraftState(
+  value: unknown,
+): PersistedComposerDraftStoreState {
   if (!value || typeof value !== "object") {
     return EMPTY_PERSISTED_DRAFT_STORE_STATE;
   }
@@ -396,12 +399,12 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
-    const effortCandidate =
-      typeof draftCandidate.effort === "string" ? draftCandidate.effort : null;
-    const effort =
-      effortCandidate && REASONING_EFFORT_VALUES.has(effortCandidate as CodexReasoningEffort)
-        ? (effortCandidate as CodexReasoningEffort)
-        : null;
+    const effort = normalizeReasoningEffortForProvider(
+      typeof draftCandidate.effort === "string"
+        ? (draftCandidate.effort as CodexReasoningEffort)
+        : null,
+      provider ?? "codex",
+    );
     const codexFastMode =
       draftCandidate.codexFastMode === true ||
       (typeof draftCandidate.serviceTier === "string" && draftCandidate.serviceTier === "fast");
@@ -808,10 +811,6 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           const nextEffort =
             normalizedProvider === null
               ? null
-              : normalizedProvider === "copilot" &&
-                  base.effort !== null &&
-                  !REASONING_EFFORT_OPTIONS_BY_PROVIDER.copilot.includes(base.effort)
-                ? null
                 : normalizeReasoningEffortForProvider(base.effort, normalizedProvider);
           if (base.provider === normalizedProvider) {
             return state;

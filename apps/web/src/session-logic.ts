@@ -1,5 +1,6 @@
 import {
   CODEX_REASONING_EFFORT_OPTIONS,
+  REASONING_EFFORT_OPTIONS_BY_PROVIDER,
   ApprovalRequestId,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
@@ -423,6 +424,9 @@ export function deriveConfiguredReasoningEffortStateFromActivityGroups(
   activityGroups: ReadonlyArray<ReadonlyArray<OrchestrationThreadActivity>>,
   provider: ProviderKind,
 ): ConfiguredReasoningEffortState | null {
+  const allowedReasoningEffortValues = new Set<CodexReasoningEffort>(
+    REASONING_EFFORT_OPTIONS_BY_PROVIDER[provider],
+  );
   const ordered = activityGroups
     .flatMap((activities) => activities)
     .toSorted(compareActivitiesByOrder)
@@ -448,7 +452,7 @@ export function deriveConfiguredReasoningEffortStateFromActivityGroups(
         : null;
     const configOptions = Array.isArray(config?.configOptions) ? config.configOptions : null;
     if (!configOptions) {
-      continue;
+      return null;
     }
 
     const selector = configOptions.find((entry) => {
@@ -462,7 +466,7 @@ export function deriveConfiguredReasoningEffortStateFromActivityGroups(
       );
     });
     if (!selector || typeof selector !== "object") {
-      continue;
+      return null;
     }
 
     const selectorRecord = selector as Record<string, unknown>;
@@ -470,7 +474,11 @@ export function deriveConfiguredReasoningEffortStateFromActivityGroups(
     const seen = new Set<CodexReasoningEffort>();
     for (const entry of flattenConfigSelectorOptions(selectorRecord.options)) {
       const value = entry.value;
-      if (!isReasoningEffortValue(value) || seen.has(value)) {
+      if (
+        !isReasoningEffortValue(value) ||
+        !allowedReasoningEffortValues.has(value) ||
+        seen.has(value)
+      ) {
         continue;
       }
       seen.add(value);
@@ -479,9 +487,11 @@ export function deriveConfiguredReasoningEffortStateFromActivityGroups(
 
     return {
       options,
-      currentValue: isReasoningEffortValue(selectorRecord.currentValue)
-        ? selectorRecord.currentValue
-        : null,
+      currentValue:
+        isReasoningEffortValue(selectorRecord.currentValue) &&
+        allowedReasoningEffortValues.has(selectorRecord.currentValue)
+          ? selectorRecord.currentValue
+          : null,
     };
   }
 

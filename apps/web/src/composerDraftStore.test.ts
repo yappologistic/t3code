@@ -1,7 +1,11 @@
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type ComposerImageAttachment, useComposerDraftStore } from "./composerDraftStore";
+import {
+  normalizePersistedComposerDraftState,
+  type ComposerImageAttachment,
+  useComposerDraftStore,
+} from "./composerDraftStore";
 
 function makeImage(input: {
   id: string;
@@ -337,6 +341,9 @@ describe("composerDraftStore reasoning effort normalization", () => {
   const threadId = ThreadId.makeUnsafe("thread-reasoning");
 
   beforeEach(() => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.clear();
+    }
     useComposerDraftStore.setState({
       draftsByThreadId: {},
       draftThreadsByThreadId: {},
@@ -344,13 +351,33 @@ describe("composerDraftStore reasoning effort normalization", () => {
     });
   });
 
-  it("preserves copilot xhigh selections in the draft store", () => {
+  it("drops unsupported Copilot reasoning values from the draft store", () => {
     const store = useComposerDraftStore.getState();
 
     store.setProvider(threadId, "copilot");
     store.setEffort(threadId, "xhigh");
 
-    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.effort).toBe("xhigh");
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.effort).toBeNull();
+  });
+
+  it("drops unsupported Copilot reasoning values while rehydrating persisted drafts", () => {
+    const normalized = normalizePersistedComposerDraftState(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: "",
+            attachments: [],
+            provider: "copilot",
+            effort: "xhigh",
+          },
+        },
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectId: {},
+      },
+    );
+
+    expect(normalized.draftsByThreadId[threadId]?.provider).toBe("copilot");
+    expect(normalized.draftsByThreadId[threadId]?.effort).toBeUndefined();
   });
 });
 
