@@ -64,6 +64,45 @@ const ReadFromSequenceRequestSchema = Schema.Struct({
 const DEFAULT_READ_FROM_SEQUENCE_LIMIT = 1_000;
 const READ_PAGE_SIZE = 500;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeLegacyProviderFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeLegacyProviderFields);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  let changed = false;
+  const sanitizedEntries = Object.entries(value).map(([key, entryValue]) => {
+    const sanitizedValue = sanitizeLegacyProviderFields(entryValue);
+
+    if (key === "provider" && typeof sanitizedValue === "string" && sanitizedValue !== "codex") {
+      changed = true;
+      return [key, "codex"] as const;
+    }
+
+    if (sanitizedValue !== entryValue) {
+      changed = true;
+    }
+
+    return [key, sanitizedValue] as const;
+  });
+
+  return changed ? Object.fromEntries(sanitizedEntries) : value;
+}
+
+function sanitizePersistedEventRow(
+  row: typeof OrchestrationEventPersistedRowSchema.Type,
+): typeof OrchestrationEventPersistedRowSchema.Type {
+  const sanitizedPayload = sanitizeLegacyProviderFields(row.payload);
+  return sanitizedPayload === row.payload ? row : { ...row, payload: sanitizedPayload };
+}
+
 function inferActorKind(
   event: Omit<OrchestrationEvent, "sequence">,
 ): Schema.Schema.Type<typeof OrchestrationActorKind> {
@@ -199,7 +238,7 @@ const makeEventStore = Effect.gen(function* () {
         ),
       ),
       Effect.flatMap((row) =>
-        decodeEvent(row).pipe(
+        decodeEvent(sanitizePersistedEventRow(row)).pipe(
           Effect.mapError(toPersistenceDecodeError("OrchestrationEventStore.append:rowToEvent")),
         ),
       ),
@@ -230,7 +269,7 @@ const makeEventStore = Effect.gen(function* () {
           ),
           Effect.flatMap((rows) =>
             Effect.forEach(rows, (row) =>
-              decodeEvent(row).pipe(
+              decodeEvent(sanitizePersistedEventRow(row)).pipe(
                 Effect.mapError(
                   toPersistenceDecodeError("OrchestrationEventStore.readFromSequence:rowToEvent"),
                 ),

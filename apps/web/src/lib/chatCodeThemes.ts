@@ -4,8 +4,8 @@ import { type AppliedCustomThemeId } from "./customThemes";
 import { ALL_DIFF_THEME_NAMES, resolveDiffThemeName, type DiffThemeName } from "./diffRendering";
 
 export const T3_CHAT_CODE_THEME_NAME = "t3-chat-code-dark" as const;
-export const T3_CHAT_CODE_THEME_BACKGROUND = "#18111f" as const;
-export const T3_CHAT_CODE_THEME_FOREGROUND = "#d6c9dd" as const;
+export const T3_CHAT_CODE_THEME_BACKGROUND = "#1a1821" as const;
+export const T3_CHAT_CODE_THEME_FOREGROUND = "#a5a1b0" as const;
 
 export type ChatCodeThemeName = DiffThemeName | typeof T3_CHAT_CODE_THEME_NAME;
 
@@ -28,7 +28,7 @@ const T3_CHAT_CODE_THEME = {
     {
       scope: ["comment", "punctuation.definition.comment"],
       settings: {
-        foreground: "#7d7087",
+        foreground: "#5c6370",
         fontStyle: "italic",
       },
     },
@@ -36,7 +36,6 @@ const T3_CHAT_CODE_THEME = {
       scope: [
         "keyword",
         "storage",
-        "storage.type",
         "keyword.control",
         "keyword.operator.word",
         "keyword.control.directive",
@@ -45,18 +44,22 @@ const T3_CHAT_CODE_THEME = {
         "punctuation.definition.directive",
       ],
       settings: {
-        foreground: "#f27bac",
+        foreground: "#e06c75",
       },
     },
     {
       scope: [
-        "entity.name.function",
-        "support.function",
-        "variable.function",
-        "meta.function-call",
+        "storage.type",
+        "support.type",
+        "support.type.primitive",
+        "entity.name.type",
+        "entity.name.class",
+        "entity.name.struct",
+        "entity.name.enum",
+        "entity.name.namespace",
       ],
       settings: {
-        foreground: "#b9acd9",
+        foreground: "#c678dd",
       },
     },
     {
@@ -65,12 +68,25 @@ const T3_CHAT_CODE_THEME = {
         "string.quoted",
         "string.quoted.other.lt-gt.include",
         "entity.name.filename",
-        "support.type.primitive",
-        "entity.name.type",
-        "support.type",
       ],
       settings: {
-        foreground: "#7fc6bc",
+        foreground: "#98c379",
+      },
+    },
+    {
+      scope: [
+        "entity.name.function",
+        "support.function",
+        "variable.function",
+        "meta.function-call",
+        "variable",
+        "variable.language",
+        "variable.other.readwrite",
+        "variable.other.object",
+        "support.variable",
+      ],
+      settings: {
+        foreground: "#61afef",
       },
     },
     {
@@ -81,7 +97,7 @@ const T3_CHAT_CODE_THEME = {
         "constant.other",
       ],
       settings: {
-        foreground: "#d8a3cb",
+        foreground: "#c678dd",
       },
     },
     {
@@ -93,7 +109,7 @@ const T3_CHAT_CODE_THEME = {
         "meta.separator",
       ],
       settings: {
-        foreground: "#cbbfd2",
+        foreground: "#5c6370",
       },
     },
   ],

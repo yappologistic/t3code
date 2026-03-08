@@ -1,4 +1,4 @@
-import { CommandId, EventId, ProjectId } from "@t3tools/contracts";
+import { CommandId, EventId, MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -113,6 +113,70 @@ layer("OrchestrationEventStore", (it) => {
             "OrchestrationEventStore.readFromSequence:decodeRows",
           ),
         );
+      }
+    }),
+  );
+
+  it.effect("normalizes legacy persisted provider values during replay", () =>
+    Effect.gen(function* () {
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const now = new Date().toISOString();
+      const threadId = ThreadId.makeUnsafe("thread-legacy-provider");
+      const existingRows = yield* sql<{ readonly sequence: number }>`
+        SELECT sequence
+        FROM orchestration_events
+        ORDER BY sequence DESC
+        LIMIT 1
+      `;
+      const sequenceExclusive = existingRows[0]?.sequence ?? 0;
+
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id,
+          aggregate_kind,
+          stream_id,
+          stream_version,
+          event_type,
+          occurred_at,
+          command_id,
+          causation_event_id,
+          correlation_id,
+          actor_kind,
+          payload_json,
+          metadata_json
+        )
+        VALUES (
+          ${EventId.makeUnsafe("evt-store-legacy-provider")},
+          ${"thread"},
+          ${threadId},
+          ${0},
+          ${"thread.turn-start-requested"},
+          ${now},
+          ${CommandId.makeUnsafe("cmd-store-legacy-provider")},
+          ${null},
+          ${null},
+          ${"client"},
+          ${JSON.stringify({
+            threadId,
+            messageId: MessageId.makeUnsafe("msg-store-legacy-provider"),
+            provider: "copilot",
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: now,
+          })},
+          ${"{}"}
+        )
+      `;
+
+      const replayed = yield* Stream.runCollect(
+        eventStore.readFromSequence(sequenceExclusive, 10),
+      ).pipe(Effect.map((chunk) => Array.from(chunk)));
+
+      assert.equal(replayed.length, 1);
+      assert.equal(replayed[0]?.type, "thread.turn-start-requested");
+      if (replayed[0]?.type === "thread.turn-start-requested") {
+        assert.equal(replayed[0].payload.provider, "codex");
       }
     }),
   );

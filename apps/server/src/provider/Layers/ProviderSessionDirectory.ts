@@ -63,18 +63,28 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
         Option.match(runtime, {
           onNone: () => Effect.succeed(Option.none<ProviderRuntimeBinding>()),
           onSome: (value) =>
-            decodeProviderKind(value.providerName, "ProviderSessionDirectory.getBinding").pipe(
-              Effect.map((provider) =>
-                Option.some({
-                  threadId: value.threadId,
-                  provider,
-                  adapterKey: value.adapterKey,
-                  runtimeMode: value.runtimeMode,
-                  status: value.status,
-                  resumeCursor: value.resumeCursor,
-                  runtimePayload: value.runtimePayload,
-                }),
+            Effect.catch(
+              decodeProviderKind(value.providerName, "ProviderSessionDirectory.getBinding").pipe(
+                Effect.map((provider) =>
+                  Option.some({
+                    threadId: value.threadId,
+                    provider,
+                    adapterKey: value.adapterKey,
+                    runtimeMode: value.runtimeMode,
+                    status: value.status,
+                    resumeCursor: value.resumeCursor,
+                    runtimePayload: value.runtimePayload,
+                  }),
+                ),
               ),
+              (error: unknown) =>
+                Effect.sync(() => {
+                  console.warn(
+                    "[provider-session-directory] ignoring unknown persisted provider binding",
+                    error,
+                  );
+                  return Option.none<ProviderRuntimeBinding>();
+                }),
             ),
         }),
       ),

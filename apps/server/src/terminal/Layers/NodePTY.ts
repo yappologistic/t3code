@@ -1,9 +1,49 @@
 import { createRequire } from "node:module";
 
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { PtyAdapter, PtyAdapterShape, PtyExitEvent, PtyProcess } from "../Services/PTY";
+import {
+  PtyAdapter,
+  PtyAdapterShape,
+  PtyExitEvent,
+  PtyProcess,
+  PtySpawnError,
+} from "../Services/PTY";
 
 let didEnsureSpawnHelperExecutable = false;
+const NODE_PTY_UNAVAILABLE_MESSAGE =
+  "Terminal support is unavailable because the native node-pty module could not be loaded.";
+
+type NodePtyExitEvent = {
+  exitCode: number;
+  signal?: number | string;
+};
+
+type NodePtyDisposable = {
+  dispose(): void;
+};
+
+type NodePtyHandle = {
+  pid: number;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(signal?: string): void;
+  onData(callback: (data: string) => void): NodePtyDisposable;
+  onExit(callback: (event: NodePtyExitEvent) => void): NodePtyDisposable;
+};
+
+type NodePtyModuleLike = {
+  spawn(
+    shell: string,
+    args: string[],
+    options: {
+      cwd: string;
+      cols: number;
+      rows: number;
+      env: NodeJS.ProcessEnv;
+      name: string;
+    },
+  ): NodePtyHandle;
+};
 
 const resolveNodePtySpawnHelperPath = Effect.gen(function* () {
   const requireForNodePty = createRequire(import.meta.url);
@@ -46,7 +86,7 @@ export const ensureNodePtySpawnHelperExecutable = Effect.fn(function* (explicitP
 });
 
 class NodePtyProcess implements PtyProcess {
-  constructor(private readonly process: import("node-pty").IPty) {}
+  constructor(private readonly process: NodePtyHandle) {}
 
   get pid(): number {
     return this.process.pid;
@@ -72,10 +112,10 @@ class NodePtyProcess implements PtyProcess {
   }
 
   onExit(callback: (event: PtyExitEvent) => void): () => void {
-    const disposable = this.process.onExit((event) => {
+    const disposable = this.process.onExit((event: NodePtyExitEvent) => {
       callback({
         exitCode: event.exitCode,
-        signal: event.signal ?? null,
+        signal: typeof event.signal === "number" ? event.signal : null,
       });
     });
     return () => {
@@ -87,10 +127,18 @@ class NodePtyProcess implements PtyProcess {
 export const NodePtyAdapterLive = Layer.effect(
   PtyAdapter,
   Effect.gen(function* () {
+    const requireForNodePty = createRequire(import.meta.url);
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
 
-    const nodePty = yield* Effect.promise(() => import("node-pty"));
+    const nodePty = yield* Effect.promise(async (): Promise<NodePtyModuleLike | null> => {
+      try {
+        return requireForNodePty("node-pty") as NodePtyModuleLike;
+      } catch (error) {
+        console.warn("[terminal] node-pty unavailable; terminal sessions disabled", error);
+        return null;
+      }
+    });
 
     const ensureNodePtySpawnHelperExecutableCached = yield* Effect.cached(
       ensureNodePtySpawnHelperExecutable().pipe(
@@ -102,6 +150,15 @@ export const NodePtyAdapterLive = Layer.effect(
 
     return {
       spawn: Effect.fn(function* (input) {
+        if (!nodePty) {
+          return yield* Effect.fail(
+            new PtySpawnError({
+              adapter: "node-pty",
+              message: NODE_PTY_UNAVAILABLE_MESSAGE,
+            }),
+          );
+        }
+
         yield* ensureNodePtySpawnHelperExecutableCached;
         const ptyProcess = nodePty.spawn(input.shell, input.args ?? [], {
           cwd: input.cwd,

@@ -28,6 +28,6 @@ describe("ALL_CHAT_CODE_THEME_NAMES", () => {
 
 describe("T3 Chat code theme", () => {
   it("uses the expected darker surface background", () => {
-    expect(T3_CHAT_CODE_THEME_BACKGROUND).toBe("#18111f");
+    expect(T3_CHAT_CODE_THEME_BACKGROUND).toBe("#1a1821");
   });
 });

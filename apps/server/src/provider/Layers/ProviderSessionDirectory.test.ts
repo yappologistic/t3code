@@ -204,4 +204,25 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
 
       fs.rmSync(tempDir, { recursive: true, force: true });
     }));
+
+  it("ignores unknown persisted providers instead of failing reads", () =>
+    Effect.gen(function* () {
+      const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = ThreadId.makeUnsafe("thread-legacy-provider");
+
+      yield* runtimeRepository.upsert({
+        threadId,
+        providerName: "copilot",
+        adapterKey: "copilot",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: new Date().toISOString(),
+        resumeCursor: null,
+        runtimePayload: null,
+      });
+
+      const binding = yield* directory.getBinding(threadId);
+      assert.equal(Option.isNone(binding), true);
+    }));
 });
