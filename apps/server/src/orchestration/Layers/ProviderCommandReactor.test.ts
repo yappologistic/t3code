@@ -80,7 +80,10 @@ describe("ProviderCommandReactor", () => {
     createdStateDirs.clear();
   });
 
-  async function createHarness(input?: { readonly stateDir?: string }) {
+  async function createHarness(input?: {
+    readonly stateDir?: string;
+    readonly capabilitiesByProvider?: Partial<Record<ProviderSession["provider"], "in-session" | "restart-session" | "unsupported">>;
+  }) {
     const now = new Date().toISOString();
     const stateDir = input?.stateDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "t3code-reactor-"));
     createdStateDirs.add(stateDir);
@@ -93,7 +96,7 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" &&
         input !== null &&
         "provider" in input &&
-        input.provider === "codex"
+        (input.provider === "codex" || input.provider === "copilot" || input.provider === "kimi")
           ? input.provider
           : "codex";
       const resumeCursor =
@@ -185,7 +188,7 @@ describe("ProviderCommandReactor", () => {
       listSessions: () => Effect.succeed(runtimeSessions),
       getCapabilities: (provider) =>
         Effect.succeed({
-          sessionModelSwitch: provider === "codex" ? "in-session" : "in-session",
+          sessionModelSwitch: input?.capabilitiesByProvider?.[provider] ?? "in-session",
         }),
       rollbackConversation: () => unsupported(),
       streamEvents: Stream.fromPubSub(runtimeEventPubSub),
@@ -614,6 +617,125 @@ describe("ProviderCommandReactor", () => {
     expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
       threadId: "thread-1",
     });
+  });
+
+  it("restarts Kimi sessions for model changes without forwarding per-turn model switches", async () => {
+    const harness = await createHarness({
+      capabilitiesByProvider: {
+        kimi: "restart-session",
+      },
+    });
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-kimi-1"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-kimi-1"),
+          role: "user",
+          text: "first kimi turn",
+          attachments: [],
+        },
+        provider: "kimi",
+        model: "kimi-for-coding",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "kimi",
+      model: "kimi-for-coding",
+    });
+    expect(harness.sendTurn.mock.calls[0]?.[0]).not.toHaveProperty("model");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-kimi-2"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-kimi-2"),
+          role: "user",
+          text: "second kimi turn",
+          attachments: [],
+        },
+        provider: "kimi",
+        model: "kimi-k2-thinking",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 2);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+      provider: "kimi",
+      model: "kimi-k2-thinking",
+    });
+    expect(harness.sendTurn.mock.calls[1]?.[0]).not.toHaveProperty("model");
+  });
+
+  it("records provider turn-start failures instead of silently dropping them", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    harness.sendTurn.mockImplementationOnce(
+      () =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "session/prompt",
+            detail: "Kimi request timed out",
+          }),
+        ) as never,
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-failure"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-failure"),
+          role: "user",
+          text: "this will fail",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    const thread = await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const entry = readModel.threads.find((candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"));
+      return (
+        entry?.session?.status === "error" &&
+        entry.activities.some(
+          (activity) =>
+            activity.kind === "provider.turn.start.failed" &&
+            activity.payload !== null &&
+            typeof activity.payload === "object" &&
+            (activity.payload as Record<string, unknown>).detail === "Kimi request timed out",
+        )
+      );
+    }).then(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const entry = readModel.threads.find((candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"));
+      if (!entry) {
+        throw new Error("Expected thread to exist");
+      }
+      return entry;
+    });
+
+    expect(thread.session?.lastError).toBe("Kimi request timed out");
   });
 
   it("reacts to thread.approval.respond by forwarding provider approval response", async () => {

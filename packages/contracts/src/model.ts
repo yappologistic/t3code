@@ -57,6 +57,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5-mini", name: "GPT-5 Mini" },
     { slug: "gpt-4.1", name: "GPT-4.1" },
   ],
+  kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -66,6 +67,7 @@ export type ModelSlug = BuiltInModelSlug | (string & {});
 export const DEFAULT_MODEL_BY_PROVIDER = {
   codex: "gpt-5.4",
   copilot: "claude-sonnet-4.5",
+  kimi: "kimi-for-coding",
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -77,14 +79,17 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
     "gpt-5.3-spark": "gpt-5.3-codex-spark",
   },
   copilot: {},
+  kimi: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   codex: CODEX_REASONING_EFFORT_OPTIONS,
   copilot: COPILOT_REASONING_EFFORT_OPTIONS,
+  kimi: [],
 } as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   copilot: "high",
+  kimi: null,
 } as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;

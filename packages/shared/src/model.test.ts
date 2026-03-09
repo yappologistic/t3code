@@ -54,6 +54,18 @@ describe("resolveModelSlug", () => {
     expect(getDefaultModel()).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
     expect(getModelOptions()).toEqual(MODEL_OPTIONS_BY_PROVIDER.codex);
   });
+
+  it("returns provider-specific defaults and catalogs for copilot", () => {
+    expect(getDefaultModel("copilot")).toBe(DEFAULT_MODEL_BY_PROVIDER.copilot);
+    expect(getModelOptions("copilot")).toEqual(MODEL_OPTIONS_BY_PROVIDER.copilot);
+    expect(resolveModelSlug("claude-sonnet-4.5", "copilot")).toBe("claude-sonnet-4.5");
+  });
+
+  it("returns provider-specific defaults and catalogs for kimi", () => {
+    expect(getDefaultModel("kimi")).toBe(DEFAULT_MODEL_BY_PROVIDER.kimi);
+    expect(getModelOptions("kimi")).toEqual(MODEL_OPTIONS_BY_PROVIDER.kimi);
+    expect(resolveModelSlug("kimi-for-coding", "kimi")).toBe("kimi-for-coding");
+  });
 });
 
 describe("getReasoningEffortOptions", () => {
@@ -65,5 +77,7 @@ describe("getReasoningEffortOptions", () => {
 describe("getDefaultReasoningEffort", () => {
   it("returns provider-scoped defaults", () => {
     expect(getDefaultReasoningEffort("codex")).toBe("high");
+    expect(getDefaultReasoningEffort("kimi")).toBeNull();
+    expect(getDefaultReasoningEffort("copilot")).toBe("high");
   });
 });

@@ -34,6 +34,44 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.codex?.homePath).toBe("/tmp/.codex");
   });
 
+  it("accepts copilot-compatible payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "copilot",
+      cwd: "/tmp/workspace",
+      model: "claude-sonnet-4.5",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        copilot: {
+          binaryPath: "/usr/local/bin/copilot",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("copilot");
+    expect(parsed.model).toBe("claude-sonnet-4.5");
+    expect(parsed.providerOptions?.copilot?.binaryPath).toBe("/usr/local/bin/copilot");
+  });
+
+  it("accepts kimi-compatible payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "kimi",
+      cwd: "/tmp/workspace",
+      model: "kimi-for-coding",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        kimi: {
+          binaryPath: "/usr/local/bin/kimi",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("kimi");
+    expect(parsed.model).toBe("kimi-for-coding");
+    expect(parsed.providerOptions?.kimi?.binaryPath).toBe("/usr/local/bin/kimi");
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({

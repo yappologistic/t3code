@@ -288,6 +288,24 @@ function runtimeEventToActivities(
       ];
     }
 
+    case "session.configured": {
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "session.configured",
+          summary: "Session configured",
+          payload: {
+            provider: event.provider,
+            config: event.payload.config,
+          },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "turn.plan.updated": {
       return [
         {

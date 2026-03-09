@@ -19,6 +19,7 @@ export const PROVIDER_OPTIONS: Array<{
 }> = [
   { value: "codex", label: "Codex", available: true },
   { value: "copilot", label: "GitHub Copilot", available: true },
+  { value: "kimi", label: "Kimi Code", available: true },
   { value: "claudeCode", label: "Claude Code", available: false },
   { value: "cursor", label: "Cursor", available: false },
 ];
@@ -44,6 +45,11 @@ export interface PendingUserInput {
   requestId: ApprovalRequestId;
   createdAt: string;
   questions: ReadonlyArray<UserInputQuestion>;
+}
+
+export interface ConfiguredModelOption {
+  slug: string;
+  name: string;
 }
 
 export interface ActivePlanState {
@@ -298,6 +304,87 @@ export function derivePendingUserInputs(
   return [...openByRequestId.values()].toSorted((left, right) =>
     left.createdAt.localeCompare(right.createdAt),
   );
+}
+
+export function deriveConfiguredModelOptions(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  provider: ProviderKind,
+): ConfiguredModelOption[] {
+  return deriveConfiguredModelOptionsFromActivityGroups([activities], provider);
+}
+
+export function deriveConfiguredModelOptionsFromActivityGroups(
+  activityGroups: ReadonlyArray<ReadonlyArray<OrchestrationThreadActivity>>,
+  provider: ProviderKind,
+): ConfiguredModelOption[] {
+  const ordered = activityGroups
+    .flatMap((activities) => activities)
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
+
+  for (const activity of ordered) {
+    if (activity.kind !== "session.configured") {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const payloadProvider = typeof payload?.provider === "string" ? payload.provider : null;
+    if (payloadProvider !== null && payloadProvider !== provider) {
+      continue;
+    }
+
+    const config =
+      payload?.config && typeof payload.config === "object"
+        ? (payload.config as Record<string, unknown>)
+        : null;
+    if (!config) {
+      continue;
+    }
+
+    const options: ConfiguredModelOption[] = [];
+    const seen = new Set<string>();
+    const availableModels = Array.isArray(config.availableModels) ? config.availableModels : [];
+
+    for (const entry of availableModels) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const candidate = entry as Record<string, unknown>;
+      if (typeof candidate.modelId !== "string" || candidate.modelId.trim().length === 0) {
+        continue;
+      }
+      const slug = candidate.modelId.trim();
+      if (seen.has(slug)) {
+        continue;
+      }
+      seen.add(slug);
+      options.push({
+        slug,
+        name:
+          typeof candidate.name === "string" && candidate.name.trim().length > 0
+            ? candidate.name.trim()
+            : slug,
+      });
+    }
+
+    const currentModelId =
+      typeof config.currentModelId === "string" && config.currentModelId.trim().length > 0
+        ? config.currentModelId.trim()
+        : null;
+    if (currentModelId && !seen.has(currentModelId)) {
+      options.unshift({
+        slug: currentModelId,
+        name: currentModelId,
+      });
+    }
+
+    return options;
+  }
+
+  return [];
 }
 
 export function deriveActivePlanState(

@@ -20,6 +20,24 @@ export const CursorIcon: Icon = (props) => (
   </svg>
 );
 
+export const KimiIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 64 64" fill="none">
+    <path
+      d="M33.94 6c-9.73 0-17.8 7.84-18.07 17.57-.31 10.83 8.36 19.75 19.13 19.75 2.58 0 5.04-.52 7.28-1.44-3.29 9.23-12.09 15.87-22.43 15.87C9.99 57.75 2 49.76 2 39.91c0-9.28 7.09-16.93 16.12-17.83A17.98 17.98 0 0 1 33.94 6Z"
+      fill="currentColor"
+      opacity="0.9"
+    />
+    <path
+      d="M48.5 8 50.46 14.04 56.5 16 50.46 17.96 48.5 24 46.54 17.96 40.5 16 46.54 14.04 48.5 8Z"
+      fill="currentColor"
+    />
+    <path
+      d="M28.89 22.5h6.47v8.84l8.19-8.84h8.21L41.27 33.59 53 49H44.6l-7.87-10.5-1.37 1.44V49h-6.47V22.5Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 export const VisualStudioCode: Icon = (props) => {
   const id = useId();
   const maskId = `${id}-vscode-a`;

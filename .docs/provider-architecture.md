@@ -11,4 +11,4 @@ Methods mirror the `NativeApi` interface defined in `@t3tools/contracts`:
 - `providers.respondToRequest`, `providers.stopSession`
 - `shell.openInEditor`, `server.getConfig`
 
-Codex is the only implemented provider. `claudeCode` is reserved in contracts/UI.
+Codex, GitHub Copilot, and Kimi Code are the currently implemented providers. `claudeCode` and `cursor` remain reserved in the picker/UI for future support.

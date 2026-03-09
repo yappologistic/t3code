@@ -1143,6 +1143,51 @@ describe("ProviderRuntimeIngestion", () => {
     ).toBe(true);
   });
 
+  it("stores session.configured payloads as thread activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "session.configured",
+      eventId: asEventId("evt-session-configured"),
+      provider: "kimi",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: {
+        config: {
+          currentModelId: "kimi-for-coding",
+          availableModels: [
+            { modelId: "kimi-for-coding", name: "Kimi for Coding" },
+            { modelId: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+          ],
+        },
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.activities.some(
+          (activity: ProviderRuntimeTestActivity) => activity.kind === "session.configured",
+        ),
+    );
+    const configured = thread.activities.find(
+      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-session-configured",
+    );
+    const payload =
+      configured?.payload && typeof configured.payload === "object"
+        ? (configured.payload as Record<string, unknown>)
+        : null;
+
+    expect(configured?.summary).toBe("Session configured");
+    expect(payload).toMatchObject({
+      provider: "kimi",
+      config: {
+        currentModelId: "kimi-for-coding",
+      },
+    });
+  });
+
   it("consumes P1 runtime events into thread metadata, diff checkpoints, and activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

@@ -6,6 +6,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { CopilotAdapter, type CopilotAdapterShape } from "../Services/CopilotAdapter.ts";
 import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import { KimiAdapter, type KimiAdapterShape } from "../Services/KimiAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderAdapterRegistryLive } from "./ProviderAdapterRegistry.ts";
 import { ProviderUnsupportedError } from "../Errors.ts";
@@ -45,6 +46,23 @@ const fakeCopilotAdapter: CopilotAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+const fakeKimiAdapter: KimiAdapterShape = {
+  provider: "kimi",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  streamEvents: Stream.empty,
+};
+
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
@@ -52,6 +70,7 @@ const layer = it.layer(
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, fakeCodexAdapter),
         Layer.succeed(CopilotAdapter, fakeCopilotAdapter),
+        Layer.succeed(KimiAdapter, fakeKimiAdapter),
       ),
     ),
     NodeServices.layer,
@@ -64,11 +83,13 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const registry = yield* ProviderAdapterRegistry;
       const codex = yield* registry.getByProvider("codex");
       const copilot = yield* registry.getByProvider("copilot");
+      const kimi = yield* registry.getByProvider("kimi");
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(copilot, fakeCopilotAdapter);
+      assert.equal(kimi, fakeKimiAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "copilot"]);
+      assert.deepEqual(providers, ["codex", "copilot", "kimi"]);
     }),
   );
 

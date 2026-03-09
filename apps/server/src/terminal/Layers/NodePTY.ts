@@ -124,6 +124,19 @@ class NodePtyProcess implements PtyProcess {
   }
 }
 
+function createUnavailablePtyAdapter(cause: unknown): PtyAdapterShape {
+  return {
+    spawn: () =>
+      Effect.fail(
+        new PtySpawnError({
+          adapter: "node-pty",
+          message: "Terminal support is unavailable because node-pty failed to load.",
+          cause,
+        }),
+      ),
+  } satisfies PtyAdapterShape;
+}
+
 export const NodePtyAdapterLive = Layer.effect(
   PtyAdapter,
   Effect.gen(function* () {
@@ -131,14 +144,21 @@ export const NodePtyAdapterLive = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
 
-    const nodePty = yield* Effect.promise(async (): Promise<NodePtyModuleLike | null> => {
-      try {
-        return requireForNodePty("node-pty") as NodePtyModuleLike;
-      } catch (error) {
-        console.warn("[terminal] node-pty unavailable; terminal sessions disabled", error);
-        return null;
-      }
-    });
+    const nodePty = yield* Effect.try({
+      try: () => requireForNodePty("node-pty") as NodePtyModuleLike,
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          console.warn("[terminal] Falling back because node-pty failed to load.", cause);
+          return null;
+        }),
+      ),
+    );
+
+    if (nodePty === null) {
+      return createUnavailablePtyAdapter(new Error("node-pty module failed to load"));
+    }
 
     const ensureNodePtySpawnHelperExecutableCached = yield* Effect.cached(
       ensureNodePtySpawnHelperExecutable().pipe(
@@ -158,12 +178,22 @@ export const NodePtyAdapterLive = Layer.effect(
         }
 
         yield* ensureNodePtySpawnHelperExecutableCached;
-        const ptyProcess = nodePty.spawn(input.shell, input.args ?? [], {
-          cwd: input.cwd,
-          cols: input.cols,
-          rows: input.rows,
-          env: input.env,
-          name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+        const ptyProcess = yield* Effect.try({
+          try: () =>
+            nodePty.spawn(input.shell, input.args ?? [], {
+              cwd: input.cwd,
+              cols: input.cols,
+              rows: input.rows,
+              env: input.env,
+              name:
+                globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+            }),
+          catch: (cause) =>
+            new PtySpawnError({
+              adapter: "node-pty",
+              message: "Failed to spawn PTY process",
+              cause,
+            }),
         });
         return new NodePtyProcess(ptyProcess);
       }),

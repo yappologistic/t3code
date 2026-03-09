@@ -75,6 +75,9 @@ const WORKTREE_BRANCH_PREFIX = "t3code";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
 
 function toErrorMessage(error: unknown): string {
+  if (Schema.is(ProviderAdapterRequestError)(error) && error.detail.trim().length > 0) {
+    return error.detail;
+  }
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
@@ -193,6 +196,29 @@ const make = Effect.gen(function* () {
       createdAt: input.createdAt,
     });
 
+  const setProviderFailureSession = (input: {
+    readonly threadId: ThreadId;
+    readonly provider: ProviderKind | null;
+    readonly runtimeMode: RuntimeMode;
+    readonly lastError: string;
+    readonly createdAt: string;
+    readonly tokenUsage?: OrchestrationSession["tokenUsage"];
+  }) =>
+    setThreadSession({
+      threadId: input.threadId,
+      session: {
+        threadId: input.threadId,
+        status: "error",
+        providerName: input.provider,
+        runtimeMode: input.runtimeMode,
+        activeTurnId: null,
+        lastError: input.lastError,
+        ...(input.tokenUsage !== undefined ? { tokenUsage: input.tokenUsage } : {}),
+        updatedAt: input.createdAt,
+      },
+      createdAt: input.createdAt,
+    });
+
   const resolveThread = Effect.fnUntraced(function* (threadId: ThreadId) {
     const readModel = yield* orchestrationEngine.getReadModel();
     return readModel.threads.find((entry) => entry.id === threadId);
@@ -217,7 +243,9 @@ const make = Effect.gen(function* () {
 
     const desiredRuntimeMode = thread.runtimeMode;
     const currentProvider: ProviderKind | undefined =
-      thread.session?.providerName === "codex" || thread.session?.providerName === "copilot"
+      thread.session?.providerName === "codex" ||
+      thread.session?.providerName === "copilot" ||
+      thread.session?.providerName === "kimi"
         ? thread.session.providerName
         : undefined;
     const preferredProvider: ProviderKind | undefined = options?.provider ?? currentProvider;
@@ -361,12 +389,14 @@ const make = Effect.gen(function* () {
         : (yield* providerService.getCapabilities(activeSession.provider)).sessionModelSwitch;
     const modelForTurn =
       sessionModelSwitch === "unsupported" ? activeSession?.model : input.model;
+    const effectiveModelForTurn =
+      sessionModelSwitch === "restart-session" ? undefined : modelForTurn;
 
     yield* providerService.sendTurn({
       threadId: input.threadId,
       ...(normalizedInput ? { input: normalizedInput } : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
-      ...(modelForTurn !== undefined ? { model: modelForTurn } : {}),
+      ...(effectiveModelForTurn !== undefined ? { model: effectiveModelForTurn } : {}),
       ...(input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
       ...(input.modelOptions !== undefined ? { modelOptions: input.modelOptions } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
@@ -446,11 +476,25 @@ const make = Effect.gen(function* () {
   ) {
     const key = turnStartKeyForEvent(event);
     if (yield* hasHandledTurnStartRecently(key)) {
+      yield* Effect.logInfo("provider command reactor skipped duplicate turn-start", {
+        threadId: event.payload.threadId,
+        commandId: event.commandId,
+      });
       return;
     }
 
+    yield* Effect.logInfo("provider command reactor processing turn-start", {
+      threadId: event.payload.threadId,
+      provider: event.payload.provider ?? null,
+      model: event.payload.model ?? null,
+      commandId: event.commandId,
+    });
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
+      yield* Effect.logWarning("provider command reactor missing thread for turn-start", {
+        threadId: event.payload.threadId,
+        commandId: event.commandId,
+      });
       return;
     }
 
@@ -487,7 +531,47 @@ const make = Effect.gen(function* () {
       ...(event.payload.providerOptions !== undefined ? { providerOptions: event.payload.providerOptions } : {}),
       interactionMode: event.payload.interactionMode,
       createdAt: event.payload.createdAt,
-    });
+    }).pipe(
+      Effect.tap(() =>
+        Effect.logInfo("provider command reactor completed turn-start send", {
+          threadId: event.payload.threadId,
+          provider: event.payload.provider ?? null,
+          model: event.payload.model ?? null,
+        }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.gen(function* () {
+          const error = Cause.squash(cause);
+          const detail = toErrorMessage(error);
+          const sessionProvider =
+            thread.session?.providerName === "codex" ||
+            thread.session?.providerName === "copilot" ||
+            thread.session?.providerName === "kimi"
+              ? thread.session.providerName
+              : null;
+          const provider = event.payload.provider ?? sessionProvider;
+
+          yield* appendProviderFailureActivity({
+            threadId: event.payload.threadId,
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            detail,
+            turnId: thread.latestTurn?.turnId ?? null,
+            createdAt: event.payload.createdAt,
+          });
+          yield* setProviderFailureSession({
+            threadId: event.payload.threadId,
+            provider,
+            runtimeMode: thread.runtimeMode,
+            lastError: detail,
+            createdAt: event.payload.createdAt,
+            ...(thread.session?.tokenUsage !== undefined
+              ? { tokenUsage: thread.session.tokenUsage }
+              : {}),
+          });
+        }),
+      ),
+    );
   });
 
   const processTurnInterruptRequested = Effect.fnUntraced(function* (

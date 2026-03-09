@@ -496,17 +496,16 @@ export default function Sidebar() {
         setAddingProject(false);
       };
 
-      const existing = projects.find((project) => project.cwd === cwd);
-      if (existing) {
-        focusMostRecentThreadForProject(existing.id);
-        finishAddingProject();
-        return;
-      }
-
-      const projectId = newProjectId();
-      const createdAt = new Date().toISOString();
-      const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
       try {
+        const existing = projects.find((project) => project.cwd === cwd);
+        if (existing) {
+          focusMostRecentThreadForProject(existing.id);
+          return;
+        }
+
+        const projectId = newProjectId();
+        const createdAt = new Date().toISOString();
+        const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
         await api.orchestration.dispatchCommand({
           type: "project.create",
           commandId: newCommandId(),
@@ -518,13 +517,12 @@ export default function Sidebar() {
         });
         await handleNewThread(projectId).catch(() => undefined);
       } catch (error) {
-        setIsAddingProject(false);
         setAddProjectError(
           error instanceof Error ? error.message : "An error occurred while adding the project.",
         );
-        return;
+      } finally {
+        finishAddingProject();
       }
-      finishAddingProject();
     },
     [focusMostRecentThreadForProject, handleNewThread, isAddingProject, projects],
   );

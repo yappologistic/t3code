@@ -28,7 +28,6 @@ import {
   getDefaultReasoningEffort,
   getReasoningEffortOptions,
   normalizeModelSlug,
-  resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
 import {
   memo,
@@ -70,6 +69,7 @@ import {
   replaceTextRange,
 } from "../composer-logic";
 import {
+  deriveConfiguredModelOptionsFromActivityGroups,
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
@@ -173,6 +173,7 @@ import {
   CursorIcon,
   Gemini,
   GitHubIcon,
+  KimiIcon,
   Icon,
   OpenAI,
   OpenCodeIcon,
@@ -273,6 +274,74 @@ const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 const WORKTREE_BRANCH_PREFIX = "t3code";
+
+function buildProviderOptionsForDispatch(input: {
+  readonly provider: ProviderKind;
+  readonly settings: {
+    readonly codexBinaryPath: string;
+    readonly codexHomePath: string;
+    readonly copilotBinaryPath: string;
+    readonly kimiBinaryPath: string;
+    readonly kimiApiKey: string;
+  };
+}) {
+  const codexBinaryPath = input.settings.codexBinaryPath.trim();
+  const codexHomePath = input.settings.codexHomePath.trim();
+  const copilotBinaryPath = input.settings.copilotBinaryPath.trim();
+  const kimiBinaryPath = input.settings.kimiBinaryPath.trim();
+  const kimiApiKey = input.settings.kimiApiKey.trim();
+
+  switch (input.provider) {
+    case "codex":
+      return codexBinaryPath || codexHomePath
+        ? {
+            codex: {
+              ...(codexBinaryPath ? { binaryPath: codexBinaryPath } : {}),
+              ...(codexHomePath ? { homePath: codexHomePath } : {}),
+            },
+          }
+        : undefined;
+    case "copilot":
+      return copilotBinaryPath
+        ? {
+            copilot: {
+              binaryPath: copilotBinaryPath,
+            },
+          }
+        : undefined;
+    case "kimi":
+      return kimiBinaryPath || kimiApiKey
+        ? {
+            kimi: {
+              ...(kimiBinaryPath ? { binaryPath: kimiBinaryPath } : {}),
+              ...(kimiApiKey ? { apiKey: kimiApiKey } : {}),
+            },
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function getCustomModelsForProvider(
+  provider: ProviderKind,
+  settings: {
+    readonly customCodexModels: readonly string[];
+    readonly customCopilotModels: readonly string[];
+    readonly customKimiModels: readonly string[];
+  },
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return settings.customCodexModels;
+    case "copilot":
+      return settings.customCopilotModels;
+    case "kimi":
+      return settings.customKimiModels;
+    default:
+      return settings.customCodexModels;
+  }
+}
 
 function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
   const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
@@ -604,7 +673,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const setStoreThreadError = useStore((store) => store.setError);
   const setStoreThreadBranch = useStore((store) => store.setThreadBranch);
-  const { settings } = useAppSettings();
+  const { settings, updateSettings } = useAppSettings();
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -650,7 +719,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [localDraftErrorsByThreadId, setLocalDraftErrorsByThreadId] = useState<
     Record<ThreadId, string | null>
   >({});
-  const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
+  const [sendPhaseByThreadId, setSendPhaseByThreadId] = useState<Record<string, SendPhase>>({});
   const [sendStartedAt, setSendStartedAt] = useState<string | null>(null);
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
@@ -667,6 +736,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  const [isKimiApiKeyDialogOpen, setIsKimiApiKeyDialogOpen] = useState(false);
+  const [kimiApiKeyDraft, setKimiApiKeyDraft] = useState("");
+  const [kimiApiKeyError, setKimiApiKeyError] = useState<string | null>(null);
   const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
     Record<string, string[]>
   >({});
@@ -692,6 +764,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const pendingInteractionAnchorFrameRef = useRef<number | null>(null);
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
+  const pendingKimiContinuationRef = useRef<
+    "submit-form" | "implement-plan-in-new-thread" | null
+  >(null);
   const composerFormHeightRef = useRef(0);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerSelectLockRef = useRef(false);
@@ -700,7 +775,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewHandoffTimeoutByMessageIdRef = useRef<Record<string, number>>({});
-  const sendInFlightRef = useRef(false);
+  const sendInFlightByThreadIdRef = useRef<Record<string, boolean>>({});
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
   const setMessagesScrollContainerRef = useCallback((element: HTMLDivElement | null) => {
@@ -717,6 +792,40 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const storeNewTerminal = useTerminalStateStore((s) => s.newTerminal);
   const storeSetActiveTerminal = useTerminalStateStore((s) => s.setActiveTerminal);
   const storeCloseTerminal = useTerminalStateStore((s) => s.closeTerminal);
+  const setThreadSendPhase = useCallback((targetThreadId: ThreadId, phase: SendPhase) => {
+    setSendPhaseByThreadId((existing) => {
+      const current = existing[targetThreadId] ?? "idle";
+      if (current === phase) {
+        return existing;
+      }
+      if (phase === "idle") {
+        if (!(targetThreadId in existing)) {
+          return existing;
+        }
+        const next = { ...existing };
+        delete next[targetThreadId];
+        return next;
+      }
+      return {
+        ...existing,
+        [targetThreadId]: phase,
+      };
+    });
+  }, []);
+  const setThreadSendInFlight = useCallback((targetThreadId: ThreadId, inFlight: boolean) => {
+    if (inFlight) {
+      sendInFlightByThreadIdRef.current[targetThreadId] = true;
+      return;
+    }
+    delete sendInFlightByThreadIdRef.current[targetThreadId];
+  }, []);
+  const isThreadSendInFlight = useCallback((targetThreadId: ThreadId | null | undefined) => {
+    if (!targetThreadId) {
+      return false;
+    }
+    return sendInFlightByThreadIdRef.current[targetThreadId] === true;
+  }, []);
+  const sendPhase = sendPhaseByThreadId[threadId] ?? "idle";
 
   const setPrompt = useCallback(
     (nextPrompt: string) => {
@@ -807,12 +916,36 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
-  const baseThreadModel = resolveModelSlugForProvider(
-    selectedProvider,
-    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+  const configuredModelOptionsByProvider = useMemo(
+    () => ({
+      codex: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "codex",
+      ),
+      copilot: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "copilot",
+      ),
+      kimi: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "kimi",
+      ),
+    }),
+    [threads],
   );
-  const customModelsForSelectedProvider =
-    selectedProvider === "copilot" ? settings.customCopilotModels : settings.customCodexModels;
+  const modelOptionsByProvider = useMemo(
+    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
+    [configuredModelOptionsByProvider, settings],
+  );
+  const customModelsForSelectedProvider = useMemo(
+    () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
+    [modelOptionsByProvider, selectedProvider],
+  );
+  const baseThreadModel = resolveAppModelSelection(
+    selectedProvider,
+    customModelsForSelectedProvider,
+    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+  ) as ModelSlug;
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
@@ -884,38 +1017,37 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     return undefined;
   }, [selectedCodexFastModeEnabled, selectedEffort, selectedProvider, supportsReasoningEffort]);
-  const providerOptionsForDispatch = useMemo(() => {
-    if (selectedProvider === "copilot") {
-      return settings.copilotBinaryPath
-        ? {
-            copilot: {
-              binaryPath: settings.copilotBinaryPath,
-            },
-          }
-        : undefined;
-    }
-
-    if (!settings.codexBinaryPath && !settings.codexHomePath) {
-      return undefined;
-    }
-
-    return {
-      codex: {
-        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-      },
-    };
-  }, [
-    selectedProvider,
-    settings.codexBinaryPath,
-    settings.codexHomePath,
-    settings.copilotBinaryPath,
-  ]);
-  const selectedModelForPicker = selectedModel;
-  const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings),
-    [settings],
+  const providerOptionsForDispatch = useMemo(
+    () =>
+      buildProviderOptionsForDispatch({
+        provider: selectedProvider,
+        settings,
+      }),
+    [selectedProvider, settings],
   );
+  const openKimiApiKeyDialog = useCallback(
+    (continuation: "submit-form" | "implement-plan-in-new-thread") => {
+      pendingKimiContinuationRef.current = continuation;
+      setKimiApiKeyDraft(settings.kimiApiKey);
+      setKimiApiKeyError(null);
+      setIsKimiApiKeyDialogOpen(true);
+    },
+    [settings.kimiApiKey],
+  );
+  const ensureKimiApiKeyConfigured = useCallback(
+    (continuation: "submit-form" | "implement-plan-in-new-thread") => {
+      if (selectedProvider !== "kimi") {
+        return true;
+      }
+      if (settings.kimiApiKey.trim().length > 0) {
+        return true;
+      }
+      openKimiApiKeyDialog(continuation);
+      return false;
+    },
+    [openKimiApiKeyDialog, selectedProvider, settings.kimiApiKey],
+  );
+  const selectedModelForPicker = selectedModel;
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     const currentOptions = modelOptionsByProvider[selectedProvider];
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
@@ -2083,7 +2215,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       return [];
     });
-    setSendPhase("idle");
     setSendStartedAt(null);
     setComposerHighlightedItemId(null);
     setComposerCursor(promptRef.current.length);
@@ -2224,15 +2355,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
     };
   }, [phase]);
 
-  const beginSendPhase = useCallback((nextPhase: Exclude<SendPhase, "idle">) => {
+  const beginSendPhase = useCallback((targetThreadId: ThreadId, nextPhase: Exclude<SendPhase, "idle">) => {
     setSendStartedAt((current) => current ?? new Date().toISOString());
-    setSendPhase(nextPhase);
-  }, []);
+    setThreadSendPhase(targetThreadId, nextPhase);
+  }, [setThreadSendPhase]);
 
-  const resetSendPhase = useCallback(() => {
-    setSendPhase("idle");
+  const resetSendPhase = useCallback((targetThreadId: ThreadId) => {
+    setThreadSendPhase(targetThreadId, "idle");
     setSendStartedAt(null);
-  }, []);
+  }, [setThreadSendPhase]);
 
   useEffect(() => {
     if (sendPhase === "idle") {
@@ -2244,7 +2375,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       activePendingUserInput !== null ||
       activeThread?.error
     ) {
-      resetSendPhase();
+      resetSendPhase(threadId);
     }
   }, [
     activePendingApproval,
@@ -2253,6 +2384,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     phase,
     resetSendPhase,
     sendPhase,
+    threadId,
   ]);
 
   useEffect(() => {
@@ -2509,7 +2641,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readNativeApi();
-    if (!api || !activeThread || isSendBusy || isConnecting || sendInFlightRef.current) return;
+    if (
+      !api ||
+      !activeThread ||
+      isSendBusy ||
+      isConnecting ||
+      isThreadSendInFlight(activeThread.id)
+    ) {
+      return;
+    }
     if (activePendingProgress) {
       onAdvanceActivePendingUserInput();
       return;
@@ -2543,6 +2683,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
     if (!trimmed && composerImages.length === 0) return;
+    if (!ensureKimiApiKeyConfigured("submit-form")) {
+      return;
+    }
     if (!activeProject) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
@@ -2563,8 +2706,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
 
-    sendInFlightRef.current = true;
-    beginSendPhase(baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
+    setThreadSendInFlight(threadIdForSend, true);
+    beginSendPhase(threadIdForSend, baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
 
     const composerImagesSnapshot = [...composerImages];
     const messageIdForSend = newMessageId();
@@ -2615,7 +2758,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     await (async () => {
       // On first message: lock in branch + create worktree if needed.
       if (baseBranchForWorktree) {
-        beginSendPhase("preparing-worktree");
+        beginSendPhase(threadIdForSend, "preparing-worktree");
         const newBranch = buildTemporaryWorktreeBranchName();
         const result = await createWorktreeMutation.mutateAsync({
           cwd: activeProject.cwd,
@@ -2720,7 +2863,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         });
       }
 
-      beginSendPhase("sending-turn");
+      beginSendPhase(threadIdForSend, "sending-turn");
       const turnAttachments = await turnAttachmentsPromise;
       await api.orchestration.dispatchCommand({
         type: "thread.turn.start",
@@ -2784,9 +2927,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         err instanceof Error ? err.message : "Failed to send message.",
       );
     });
-    sendInFlightRef.current = false;
+    setThreadSendInFlight(threadIdForSend, false);
     if (!turnStartSucceeded) {
-      resetSendPhase();
+      resetSendPhase(threadIdForSend);
     }
   };
 
@@ -2959,13 +3102,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
         !isServerThread ||
         isSendBusy ||
         isConnecting ||
-        sendInFlightRef.current
+        isThreadSendInFlight(activeThread.id)
       ) {
         return;
       }
-
       const trimmed = text.trim();
       if (!trimmed) {
+        return;
+      }
+      if (!ensureKimiApiKeyConfigured("submit-form")) {
         return;
       }
 
@@ -2973,8 +3118,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const messageIdForSend = newMessageId();
       const messageCreatedAt = new Date().toISOString();
 
-      sendInFlightRef.current = true;
-      beginSendPhase("sending-turn");
+      setThreadSendInFlight(threadIdForSend, true);
+      beginSendPhase(threadIdForSend, "sending-turn");
       setThreadError(threadIdForSend, null);
       setOptimisticUserMessages((existing) => [
         ...existing,
@@ -3025,7 +3170,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           interactionMode: nextInteractionMode,
           createdAt: messageCreatedAt,
         });
-        sendInFlightRef.current = false;
+        setThreadSendInFlight(threadIdForSend, false);
+        resetSendPhase(threadIdForSend);
       } catch (err) {
         setOptimisticUserMessages((existing) =>
           existing.filter((message) => message.id !== messageIdForSend),
@@ -3034,16 +3180,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
           threadIdForSend,
           err instanceof Error ? err.message : "Failed to send plan follow-up.",
         );
-        sendInFlightRef.current = false;
-        resetSendPhase();
+        setThreadSendInFlight(threadIdForSend, false);
+        resetSendPhase(threadIdForSend);
       }
     },
     [
       activeThread,
       beginSendPhase,
+      ensureKimiApiKeyConfigured,
       forceStickToBottom,
       isConnecting,
       isSendBusy,
+      isThreadSendInFlight,
       isServerThread,
       persistThreadSettingsForNextTurn,
       resetSendPhase,
@@ -3053,6 +3201,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerOptionsForDispatch,
       selectedProvider,
       setComposerDraftInteractionMode,
+      setThreadSendInFlight,
       setThreadError,
       settings.enableAssistantStreaming,
     ],
@@ -3068,8 +3217,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       !isServerThread ||
       isSendBusy ||
       isConnecting ||
-      sendInFlightRef.current
+      isThreadSendInFlight(activeThread.id)
     ) {
+      return;
+    }
+    if (!ensureKimiApiKeyConfigured("implement-plan-in-new-thread")) {
       return;
     }
 
@@ -3084,11 +3236,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       (activeProject.model as ModelSlug) ||
       DEFAULT_MODEL_BY_PROVIDER.codex;
 
-    sendInFlightRef.current = true;
-    beginSendPhase("sending-turn");
+    setThreadSendInFlight(activeThread.id, true);
+    beginSendPhase(activeThread.id, "sending-turn");
     const finish = () => {
-      sendInFlightRef.current = false;
-      resetSendPhase();
+      setThreadSendInFlight(activeThread.id, false);
+      resetSendPhase(activeThread.id);
     };
 
     await api.orchestration
@@ -3165,8 +3317,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     activeProposedPlan,
     activeThread,
     beginSendPhase,
+    ensureKimiApiKeyConfigured,
     isConnecting,
     isSendBusy,
+    isThreadSendInFlight,
     isServerThread,
     navigate,
     resetSendPhase,
@@ -3175,9 +3329,34 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedModelOptionsForDispatch,
     providerOptionsForDispatch,
     selectedProvider,
+    setThreadSendInFlight,
     settings.enableAssistantStreaming,
     syncServerReadModel,
   ]);
+  const saveKimiApiKey = useCallback(() => {
+    const trimmed = kimiApiKeyDraft.trim();
+    if (!trimmed) {
+      setKimiApiKeyError("Enter a Kimi API key.");
+      return;
+    }
+
+    const continuation = pendingKimiContinuationRef.current;
+    pendingKimiContinuationRef.current = null;
+    updateSettings({ kimiApiKey: trimmed });
+    setKimiApiKeyError(null);
+    setIsKimiApiKeyDialogOpen(false);
+
+    window.setTimeout(() => {
+      if (continuation === "submit-form") {
+        composerFormRef.current?.requestSubmit();
+        return;
+      }
+      if (continuation === "implement-plan-in-new-thread") {
+        void onImplementPlanInNewThread();
+      }
+    }, 0);
+  }, [kimiApiKeyDraft, onImplementPlanInNewThread, updateSettings]);
+  const kimiApiKeyDialogInputId = useId();
 
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
@@ -3191,7 +3370,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         activeThread.id,
         resolveAppModelSelection(
           provider,
-          provider === "copilot" ? settings.customCopilotModels : settings.customCodexModels,
+          getCustomModelsForProvider(provider, settings),
           model,
         ),
       );
@@ -3205,6 +3384,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setComposerDraftProvider,
       settings.customCodexModels,
       settings.customCopilotModels,
+      settings.customKimiModels,
     ],
   );
   const onEffortSelect = useCallback(
@@ -4102,6 +4282,67 @@ export default function ChatView({ threadId }: ChatViewProps) {
           )}
         </div>
       )}
+
+      <Dialog
+        open={isKimiApiKeyDialogOpen}
+        onOpenChange={(open) => {
+          setIsKimiApiKeyDialogOpen(open);
+          if (!open) {
+            pendingKimiContinuationRef.current = null;
+            setKimiApiKeyDraft(settings.kimiApiKey);
+            setKimiApiKeyError(null);
+          }
+        }}
+      >
+        <DialogPopup className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enter your Kimi API key</DialogTitle>
+            <DialogDescription>
+              T3 Code needs a Kimi Code API key to start Kimi CLI sessions for chat. You can generate one from the Kimi Code Console.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-3">
+            <label htmlFor={kimiApiKeyDialogInputId} className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Kimi API key</span>
+              <Input
+                id={kimiApiKeyDialogInputId}
+                type="password"
+                value={kimiApiKeyDraft}
+                onChange={(event) => {
+                  setKimiApiKeyDraft(event.target.value);
+                  if (kimiApiKeyError) {
+                    setKimiApiKeyError(null);
+                  }
+                }}
+                placeholder="sk-kimi-..."
+                autoComplete="new-password"
+                spellCheck={false}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              The key is stored locally on this device and is only used when starting new Kimi Code sessions.
+            </p>
+            {kimiApiKeyError ? <p className="text-xs text-destructive">{kimiApiKeyError}</p> : null}
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                pendingKimiContinuationRef.current = null;
+                setIsKimiApiKeyDialogOpen(false);
+                setKimiApiKeyDraft(settings.kimiApiKey);
+                setKimiApiKeyError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" onClick={saveKimiApiKey}>
+              Save key
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }
@@ -5454,19 +5695,52 @@ const COMING_SOON_PROVIDER_OPTIONS = [
   { id: "gemini", label: "Gemini", icon: Gemini },
 ] as const;
 
-function getCustomModelOptionsByProvider(settings: {
+function mergeModelOptions(
+  base: ReadonlyArray<{ slug: string; name: string }>,
+  extra: ReadonlyArray<{ slug: string; name: string }>,
+): Array<{ slug: string; name: string }> {
+  const merged: Array<{ slug: string; name: string }> = [];
+  const seen = new Set<string>();
+
+  for (const option of [...base, ...extra]) {
+    if (seen.has(option.slug)) {
+      continue;
+    }
+    seen.add(option.slug);
+    merged.push(option);
+  }
+
+  return merged;
+}
+
+function getCustomModelOptionsByProvider(
+  settings: {
   customCodexModels: readonly string[];
   customCopilotModels: readonly string[];
-}): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  customKimiModels: readonly string[];
+  },
+  configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
+): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   return {
-    codex: getAppModelOptions("codex", settings.customCodexModels),
-    copilot: getAppModelOptions("copilot", settings.customCopilotModels),
+    codex: mergeModelOptions(
+      getAppModelOptions("codex", settings.customCodexModels),
+      configuredModelsByProvider.codex,
+    ),
+    copilot: mergeModelOptions(
+      getAppModelOptions("copilot", settings.customCopilotModels),
+      configuredModelsByProvider.copilot,
+    ),
+    kimi: mergeModelOptions(
+      getAppModelOptions("kimi", settings.customKimiModels),
+      configuredModelsByProvider.kimi,
+    ),
   };
 }
 
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   copilot: GitHubIcon,
+  kimi: KimiIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

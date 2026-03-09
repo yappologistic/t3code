@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveConfiguredModelOptions,
+  deriveConfiguredModelOptionsFromActivityGroups,
   PROVIDER_OPTIONS,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -218,6 +220,114 @@ describe("derivePendingUserInputs", () => {
           },
         ],
       },
+    ]);
+  });
+});
+
+describe("deriveConfiguredModelOptions", () => {
+  it("returns the latest configured model catalog for the requested provider", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-copilot",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "copilot",
+          config: {
+            currentModelId: "claude-sonnet-4.5",
+            availableModels: [{ modelId: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" }],
+          },
+        },
+      }),
+      makeActivity({
+        id: "session-configured-kimi-old",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-for-coding",
+            availableModels: [{ modelId: "kimi-for-coding", name: "Kimi for Coding" }],
+          },
+        },
+      }),
+      makeActivity({
+        id: "session-configured-kimi-new",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-k2-thinking",
+            availableModels: [
+              { modelId: "kimi-for-coding", name: "Kimi for Coding" },
+              { modelId: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(deriveConfiguredModelOptions(activities, "kimi")).toEqual([
+      { slug: "kimi-for-coding", name: "Kimi for Coding" },
+      { slug: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+    ]);
+    expect(deriveConfiguredModelOptions(activities, "copilot")).toEqual([
+      { slug: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
+    ]);
+  });
+
+  it("reuses the newest configured catalog across different threads", () => {
+    const olderThreadActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-kimi-old",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-for-coding",
+            availableModels: [{ modelId: "kimi-for-coding", name: "Kimi for Coding" }],
+          },
+        },
+      }),
+    ];
+    const newerThreadActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-kimi-new",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-k2-thinking",
+            availableModels: [
+              { modelId: "kimi-for-coding", name: "Kimi for Coding" },
+              { modelId: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(
+      deriveConfiguredModelOptionsFromActivityGroups(
+        [olderThreadActivities, newerThreadActivities],
+        "kimi",
+      ),
+    ).toEqual([
+      { slug: "kimi-for-coding", name: "Kimi for Coding" },
+      { slug: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
     ]);
   });
 });
@@ -645,6 +755,8 @@ describe("PROVIDER_OPTIONS", () => {
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
+      { value: "copilot", label: "GitHub Copilot", available: true },
+      { value: "kimi", label: "Kimi Code", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);

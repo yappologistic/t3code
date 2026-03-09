@@ -4,7 +4,11 @@ import { Effect, Layer, Sink, Stream } from "effect";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { checkCodexProviderStatus, parseAuthStatusFromOutput } from "./ProviderHealth";
+import {
+  checkCodexProviderStatus,
+  checkKimiProviderStatus,
+  parseAuthStatusFromOutput,
+} from "./ProviderHealth";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -26,13 +30,19 @@ function mockHandle(result: { stdout: string; stderr: string; code: number }) {
 }
 
 function mockSpawnerLayer(
-  handler: (args: ReadonlyArray<string>) => { stdout: string; stderr: string; code: number },
+  handler: (
+    commandName: string,
+    args: ReadonlyArray<string>,
+  ) => { stdout: string; stderr: string; code: number },
 ) {
   return Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
     ChildProcessSpawner.make((command) => {
-      const cmd = command as unknown as { args: ReadonlyArray<string> };
-      return Effect.succeed(mockHandle(handler(cmd.args)));
+      const cmd = command as unknown as {
+        command?: string;
+        args?: ReadonlyArray<string>;
+      };
+      return Effect.succeed(mockHandle(handler(cmd.command ?? "", cmd.args ?? [])));
     }),
   );
 }
@@ -64,10 +74,34 @@ it.effect("returns ready when codex is installed and authenticated", () =>
     assert.strictEqual(status.authStatus, "authenticated");
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((_commandName, args) => {
         const joined = args.join(" ");
         if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
         if (joined === "login status") return { stdout: "Logged in\n", stderr: "", code: 0 };
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    ),
+  ),
+);
+
+it.effect("returns warning when kimi is installed but auth must be checked interactively", () =>
+  Effect.gen(function* () {
+    const status = yield* checkKimiProviderStatus;
+    assert.strictEqual(status.provider, "kimi");
+    assert.strictEqual(status.status, "warning");
+    assert.strictEqual(status.available, true);
+    assert.strictEqual(status.authStatus, "unknown");
+    assert.strictEqual(
+      status.message,
+      "Could not verify Kimi Code CLI authentication non-interactively. Run `kimi login` or add a Kimi API key in Settings if session start fails.",
+    );
+  }).pipe(
+    Effect.provide(
+      mockSpawnerLayer((commandName, args) => {
+        const joined = args.join(" ");
+        if (commandName === "kimi" && joined === "--version") {
+          return { stdout: "kimi 1.0.0\n", stderr: "", code: 0 };
+        }
         throw new Error(`Unexpected args: ${joined}`);
       }),
     ),
@@ -98,13 +132,24 @@ it.effect("returns unavailable when codex is below the minimum supported version
     );
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((_commandName, args) => {
         const joined = args.join(" ");
         if (joined === "--version") return { stdout: "codex 0.36.0\n", stderr: "", code: 0 };
         throw new Error(`Unexpected args: ${joined}`);
       }),
     ),
   ),
+);
+
+it.effect("returns unavailable when kimi is missing", () =>
+  Effect.gen(function* () {
+    const status = yield* checkKimiProviderStatus;
+    assert.strictEqual(status.provider, "kimi");
+    assert.strictEqual(status.status, "error");
+    assert.strictEqual(status.available, false);
+    assert.strictEqual(status.authStatus, "unknown");
+    assert.strictEqual(status.message, "Kimi Code CLI (`kimi`) is not installed or not on PATH.");
+  }).pipe(Effect.provide(failingSpawnerLayer("spawn kimi ENOENT"))),
 );
 
 it.effect("returns unauthenticated when auth probe reports login required", () =>
@@ -120,7 +165,7 @@ it.effect("returns unauthenticated when auth probe reports login required", () =
     );
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((_commandName, args) => {
         const joined = args.join(" ");
         if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
         if (joined === "login status") {
@@ -147,7 +192,7 @@ it.effect(
       );
     }).pipe(
       Effect.provide(
-        mockSpawnerLayer((args) => {
+        mockSpawnerLayer((_commandName, args) => {
           const joined = args.join(" ");
           if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
           if (joined === "login status")
@@ -171,7 +216,7 @@ it.effect("returns warning when login status command is unsupported", () =>
     );
   }).pipe(
     Effect.provide(
-      mockSpawnerLayer((args) => {
+      mockSpawnerLayer((_commandName, args) => {
         const joined = args.join(" ");
         if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
         if (joined === "login status") {
