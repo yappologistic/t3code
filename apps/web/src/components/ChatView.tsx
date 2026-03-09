@@ -95,9 +95,7 @@ import {
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
 import {
-  findProviderStatus,
   resolveProviderStatusForChat,
-  shouldBlockUnavailableKimiSend,
 } from "../providerStatus";
 import { useStore } from "../store";
 import {
@@ -2696,25 +2694,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
     if (!activeProject) return;
-    if (selectedProvider === "kimi") {
-      const refreshedConfig = await serverConfigQuery.refetch();
-      const latestKimiStatus = findProviderStatus(
-        refreshedConfig.data?.providers ?? providerStatuses,
-        "kimi",
-      );
-      if (
-        shouldBlockUnavailableKimiSend({
-          status: latestKimiStatus,
-          binaryPath: settings.kimiBinaryPath,
-        })
-      ) {
-        setThreadError(
-          activeThread.id,
-          latestKimiStatus?.message ?? "Kimi Code CLI (`kimi`) is not installed or not on PATH.",
-        );
-        return;
-      }
-    }
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
     const baseBranchForWorktree =

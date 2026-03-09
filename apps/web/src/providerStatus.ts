@@ -21,15 +21,3 @@ export function resolveProviderStatusForChat(input: {
     : input.selectedProvider;
   return findProviderStatus(input.providerStatuses, provider);
 }
-
-export function shouldBlockUnavailableKimiSend(input: {
-  readonly status: ServerProviderStatus | null;
-  readonly binaryPath: string;
-}): boolean {
-  return (
-    input.binaryPath.trim().length === 0 &&
-    input.status?.provider === "kimi" &&
-    input.status.status === "error" &&
-    input.status.available === false
-  );
-}

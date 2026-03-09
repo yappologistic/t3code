@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { type ServerProviderStatus } from "@t3tools/contracts";
 
-import {
-  findProviderStatus,
-  resolveProviderStatusForChat,
-  shouldBlockUnavailableKimiSend,
-} from "./providerStatus";
+import { findProviderStatus, resolveProviderStatusForChat } from "./providerStatus";
 
 const PROVIDER_STATUSES: ServerProviderStatus[] = [
   {
@@ -59,40 +55,5 @@ describe("resolveProviderStatusForChat", () => {
         sessionProvider: "copilot",
       }),
     ).toEqual(PROVIDER_STATUSES[1]);
-  });
-});
-
-describe("shouldBlockUnavailableKimiSend", () => {
-  it("blocks sends when Kimi is unavailable and no custom binary path is set", () => {
-    expect(
-      shouldBlockUnavailableKimiSend({
-        status: PROVIDER_STATUSES[2] ?? null,
-        binaryPath: "",
-      }),
-    ).toBe(true);
-  });
-
-  it("allows sends when a custom binary path is configured", () => {
-    expect(
-      shouldBlockUnavailableKimiSend({
-        status: PROVIDER_STATUSES[2] ?? null,
-        binaryPath: "/opt/kimi/bin/kimi",
-      }),
-    ).toBe(false);
-  });
-
-  it("does not block warnings or healthy providers", () => {
-    expect(
-      shouldBlockUnavailableKimiSend({
-        status: PROVIDER_STATUSES[1] ?? null,
-        binaryPath: "",
-      }),
-    ).toBe(false);
-    expect(
-      shouldBlockUnavailableKimiSend({
-        status: PROVIDER_STATUSES[0] ?? null,
-        binaryPath: "",
-      }),
-    ).toBe(false);
   });
 });
