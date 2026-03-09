@@ -4,9 +4,7 @@ import {
   getAppModelOptions,
   getSlashModelOptions,
   normalizeCustomModelSlugs,
-  resolveAppServiceTier,
   resolveAppModelSelection,
-  shouldShowFastTierIcon,
   supportsCustomModels,
 } from "./appSettings";
 
@@ -73,7 +71,17 @@ describe("getAppModelOptions", () => {
     expect(options.some((option) => option.slug === "kimi-for-coding")).toBe(true);
     expect(options.at(-1)).toEqual({
       slug: "custom/kimi-model",
-      name: "custom/kimi-model",
+      name: "Kimi Model",
+      isCustom: true,
+    });
+  });
+
+  it("formats friendly labels for kimi custom models with qualifiers", () => {
+    const options = getAppModelOptions("kimi", ["moonshot/v1,k2,preview"]);
+
+    expect(options.at(-1)).toEqual({
+      slug: "moonshot/v1,k2,preview",
+      name: "V1 · K2 · Preview",
       isCustom: true,
     });
   });

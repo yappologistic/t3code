@@ -334,11 +334,7 @@ function buildProviderOptionsForDispatch(input: {
 
 function getCustomModelsForProvider(
   provider: ProviderKind,
-  settings: {
-    readonly customCodexModels: readonly string[];
-    readonly customCopilotModels: readonly string[];
-    readonly customKimiModels: readonly string[];
-  },
+  settings: ProviderCustomModelSettings,
 ): readonly string[] {
   switch (provider) {
     case "codex":
@@ -351,6 +347,12 @@ function getCustomModelsForProvider(
       return settings.customCodexModels;
   }
 }
+
+type ProviderCustomModelSettings = {
+  readonly customCodexModels: readonly string[];
+  readonly customCopilotModels: readonly string[];
+  readonly customKimiModels: readonly string[];
+};
 
 function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
   const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
@@ -969,10 +971,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "copilot" && copilotReasoningProbeQuery.data?.status === "supported"
       ? copilotReasoningProbeQuery.data.options
       : null;
-  const reasoningOptions =
-    selectedProvider === "copilot"
-      ? (probedCopilotReasoningOptions ?? [])
-      : getReasoningEffortOptions(selectedProvider);
+  const copilotProbedEffort =
+    selectedProvider === "copilot" && copilotReasoningProbeQuery.data?.status === "supported"
+      ? (copilotReasoningProbeQuery.data.currentValue ?? null)
+      : null;
+  const reasoningOptions = useMemo(
+    () =>
+      selectedProvider === "copilot"
+        ? (probedCopilotReasoningOptions ?? [])
+        : getReasoningEffortOptions(selectedProvider),
+    [probedCopilotReasoningOptions, selectedProvider],
+  );
   const supportsReasoningEffort = reasoningOptions.length > 0;
   const selectedEffort = useMemo(() => {
     if (reasoningOptions.length === 0) {
@@ -980,11 +989,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     const defaultEffort = getDefaultReasoningEffort(selectedProvider);
-    const probedEffort =
-      selectedProvider === "copilot" && copilotReasoningProbeQuery.data?.status === "supported"
-        ? (copilotReasoningProbeQuery.data.currentValue ?? null)
-        : null;
-    const preferredEfforts = [composerDraft.effort ?? null, probedEffort, defaultEffort];
+    const preferredEfforts = [composerDraft.effort ?? null, copilotProbedEffort, defaultEffort];
 
     for (const effort of preferredEfforts) {
       if (effort && reasoningOptions.includes(effort)) {
@@ -993,7 +998,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     return reasoningOptions[0] ?? null;
-  }, [composerDraft.effort, copilotReasoningProbeQuery.data, reasoningOptions, selectedProvider]);
+  }, [composerDraft.effort, copilotProbedEffort, reasoningOptions, selectedProvider]);
   const selectedCodexFastModeEnabled =
     selectedProvider === "codex" ? composerDraft.codexFastMode : false;
   const selectedModelOptionsForDispatch = useMemo(() => {
@@ -3409,6 +3414,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }, 0);
   }, [kimiApiKeyDraft, onImplementPlanInNewThread, updateSettings]);
   const kimiApiKeyDialogInputId = useId();
+  const providerCustomModelSettings = useMemo<ProviderCustomModelSettings>(
+    () => ({
+      customCodexModels: settings.customCodexModels,
+      customCopilotModels: settings.customCopilotModels,
+      customKimiModels: settings.customKimiModels,
+    }),
+    [settings.customCodexModels, settings.customCopilotModels, settings.customKimiModels],
+  );
 
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
@@ -3422,7 +3435,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         activeThread.id,
         resolveAppModelSelection(
           provider,
-          getCustomModelsForProvider(provider, settings),
+          getCustomModelsForProvider(provider, providerCustomModelSettings),
           model,
         ),
       );
@@ -3431,12 +3444,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [
       activeThread,
       lockedProvider,
+      providerCustomModelSettings,
       scheduleComposerFocus,
       setComposerDraftModel,
       setComposerDraftProvider,
-      settings.customCodexModels,
-      settings.customCopilotModels,
-      settings.customKimiModels,
     ],
   );
   const onEffortSelect = useCallback(

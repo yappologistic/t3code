@@ -1,7 +1,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { Option, Schema } from "effect";
 import { type ProviderKind, type ProviderServiceTier } from "@t3tools/contracts";
-import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  getDefaultModel,
+  getModelDisplayName,
+  getModelOptions,
+  normalizeModelSlug,
+} from "@t3tools/shared/model";
 
 import { CUSTOM_THEME_IDS } from "./lib/customThemes";
 
@@ -182,7 +187,7 @@ export function getAppModelOptions(
     seen.add(slug);
     options.push({
       slug,
-      name: slug,
+      name: getModelDisplayName(slug, provider),
       isCustom: true,
     });
   }
@@ -191,7 +196,7 @@ export function getAppModelOptions(
   if (normalizedSelectedModel && !seen.has(normalizedSelectedModel)) {
     options.push({
       slug: normalizedSelectedModel,
-      name: normalizedSelectedModel,
+      name: getModelDisplayName(normalizedSelectedModel, provider),
       isCustom: true,
     });
   }
