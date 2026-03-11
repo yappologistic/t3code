@@ -21,6 +21,13 @@ export function findProviderMcpStatus(
   return providerMcpStatuses.find((status) => status.provider === provider) ?? null;
 }
 
+export function providerSupportsMcp(
+  providerMcpStatuses: ReadonlyArray<ServerProviderMcpStatus>,
+  provider: ProviderKind,
+): boolean {
+  return findProviderMcpStatus(providerMcpStatuses, provider)?.supported ?? false;
+}
+
 function formatAuthStatus(authStatus: ServerMcpServerAuthStatus): string | null {
   switch (authStatus) {
     case "bearer_token":
@@ -74,7 +81,7 @@ export function buildComposerMcpServerItems(input: {
   readonly query: string;
 }): ReadonlyArray<ComposerMcpServerItemData> {
   const providerStatus = findProviderMcpStatus(input.providerMcpStatuses, input.provider);
-  if (!providerStatus) {
+  if (!providerStatus || !providerStatus.supported) {
     return [];
   }
 

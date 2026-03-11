@@ -71,6 +71,7 @@ export type ServerMcpServerStatus = typeof ServerMcpServerStatus.Type;
 
 export const ServerProviderMcpStatus = Schema.Struct({
   provider: ProviderKind,
+  supported: Schema.Boolean,
   servers: Schema.Array(ServerMcpServerStatus),
 });
 export type ServerProviderMcpStatus = typeof ServerProviderMcpStatus.Type;

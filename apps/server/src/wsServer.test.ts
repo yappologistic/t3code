@@ -845,6 +845,41 @@ describe("WebSocket Server", () => {
     expectAvailableEditors((response.result as { availableEditors: unknown }).availableEditors);
   });
 
+  it("reports MCP support by provider in server.getConfig", async () => {
+    const stateDir = makeTempDir("t3code-state-get-config-mcp-support-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+
+    server = await createTestServer({ cwd: "/my/workspace", stateDir });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect((response.result as { mcpServers: unknown }).mcpServers).toEqual(
+      expect.arrayContaining([
+        {
+          provider: "codex",
+          supported: true,
+          servers: expect.any(Array),
+        },
+        {
+          provider: "copilot",
+          supported: false,
+          servers: [],
+        },
+        {
+          provider: "kimi",
+          supported: false,
+          servers: [],
+        },
+      ]),
+    );
+  });
+
   it("bootstraps default keybindings file when missing", async () => {
     const stateDir = makeTempDir("t3code-state-bootstrap-keybindings-");
     const keybindingsPath = path.join(stateDir, "keybindings.json");

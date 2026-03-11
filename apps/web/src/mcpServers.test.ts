@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildComposerMcpServerItems, formatMcpServerDescription } from "./mcpServers";
+import {
+  buildComposerMcpServerItems,
+  formatMcpServerDescription,
+  providerSupportsMcp,
+} from "./mcpServers";
 
 describe("formatMcpServerDescription", () => {
   it("formats enabled server details", () => {
@@ -40,6 +44,7 @@ describe("buildComposerMcpServerItems", () => {
       providerMcpStatuses: [
         {
           provider: "codex",
+          supported: true,
           servers: [
             {
               name: "context7",
@@ -74,5 +79,50 @@ describe("buildComposerMcpServerItems", () => {
         description: "Enabled · OAuth · 3 tools",
       },
     ]);
+  });
+
+  it("reports MCP support per provider", () => {
+    const providerMcpStatuses = [
+      {
+        provider: "codex" as const,
+        supported: true,
+        servers: [],
+      },
+      {
+        provider: "copilot" as const,
+        supported: false,
+        servers: [],
+      },
+    ];
+
+    expect(providerSupportsMcp(providerMcpStatuses, "codex")).toBe(true);
+    expect(providerSupportsMcp(providerMcpStatuses, "copilot")).toBe(false);
+    expect(providerSupportsMcp(providerMcpStatuses, "kimi")).toBe(false);
+  });
+
+  it("returns no items when the provider does not support MCP browsing", () => {
+    const items = buildComposerMcpServerItems({
+      provider: "copilot",
+      query: "",
+      providerMcpStatuses: [
+        {
+          provider: "copilot",
+          supported: false,
+          servers: [
+            {
+              name: "context7",
+              enabled: true,
+              state: "enabled",
+              authStatus: "o_auth",
+              toolCount: 3,
+              resourceCount: 0,
+              resourceTemplateCount: 0,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(items).toEqual([]);
   });
 });

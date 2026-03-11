@@ -58,7 +58,7 @@ import {
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
 import { formatCopilotRequestCost } from "~/lib/copilotBilling";
-import { buildComposerMcpServerItems } from "../mcpServers";
+import { buildComposerMcpServerItems, providerSupportsMcp } from "../mcpServers";
 
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
@@ -655,6 +655,7 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   resolvedTheme: "light" | "dark";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
+  mcpSupported: boolean;
   activeItemId: string | null;
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
@@ -687,7 +688,9 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
               : props.triggerKind === "path"
                 ? "No matching files or folders."
                 : props.triggerKind === "slash-mcp"
-                  ? "No MCP servers configured for this provider."
+                  ? props.mcpSupported
+                    ? "No MCP servers configured for this provider."
+                    : "MCP server browsing is not available for this provider."
                   : "No matching command."}
           </p>
         )}
@@ -1545,6 +1548,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       ? provider
       : selectedProvider;
   }, [activeThread?.session?.provider, selectedProvider]);
+  const composerMcpSupported = useMemo(
+    () => providerSupportsMcp(providerMcpStatuses, composerMcpProvider),
+    [composerMcpProvider, providerMcpStatuses],
+  );
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
@@ -1559,7 +1566,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     if (composerTrigger.kind === "slash-command") {
-      const slashCommandItems = [
+      const slashCommandItems: Array<Extract<ComposerCommandItem, { type: "slash-command" }>> = [
         {
           id: "slash:model",
           type: "slash-command",
@@ -1575,20 +1582,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
           description: "Switch this thread into plan mode",
         },
         {
-          id: "slash:mcp",
-          type: "slash-command",
-          command: "mcp",
-          label: "/mcp",
-          description: "Show MCP servers for the active provider",
-        },
-        {
           id: "slash:default",
           type: "slash-command",
           command: "default",
           label: "/default",
           description: "Switch this thread back to normal chat mode",
         },
-      ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+      ];
+      if (composerMcpSupported) {
+        slashCommandItems.splice(2, 0, {
+          id: "slash:mcp",
+          type: "slash-command",
+          command: "mcp",
+          label: "/mcp",
+          description: "Show MCP servers for the active provider",
+        });
+      }
       const query = composerTrigger.query.trim().toLowerCase();
       if (!query) {
         return [...slashCommandItems];
@@ -1633,6 +1642,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           provider === "codex" && shouldShowFastTierIcon(slug, selectedServiceTierSetting),
       }));
   }, [
+    composerMcpSupported,
     composerMcpProvider,
     composerTrigger,
     providerMcpStatuses,
@@ -4075,6 +4085,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         resolvedTheme={resolvedTheme}
                         isLoading={isComposerMenuLoading}
                         triggerKind={composerTriggerKind}
+                        mcpSupported={composerMcpSupported}
                         activeItemId={activeComposerMenuItem?.id ?? null}
                         onHighlightedItemChange={onComposerMenuItemHighlighted}
                         onSelect={onSelectComposerItem}

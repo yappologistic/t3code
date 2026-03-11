@@ -425,12 +425,13 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       const mcpServers = [
         {
           provider: "codex" as const,
+          supported: true,
           servers: yield* Effect.tryPromise(() => listCodexMcpServerStatuses()).pipe(
             Effect.orElseSucceed(() => []),
           ),
         },
-        { provider: "copilot" as const, servers: [] },
-        { provider: "kimi" as const, servers: [] },
+        { provider: "copilot" as const, supported: false, servers: [] },
+        { provider: "kimi" as const, supported: false, servers: [] },
       ] as const;
       mcpServersCache = mcpServers;
       return mcpServers;
