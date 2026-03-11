@@ -265,7 +265,8 @@ export async function fetchCopilotUsageSummary(
     if (!response.ok) {
       const detail = (await response.text()).trim();
       return buildUnavailableUsage({
-        status: response.status === 401 || response.status === 403 ? "requires-auth" : "unavailable",
+        status:
+          response.status === 401 || response.status === 403 ? "requires-auth" : "unavailable",
         fetchedAt,
         source: "copilot_internal_user",
         message:

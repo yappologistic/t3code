@@ -1,7 +1,4 @@
-import {
-  type ProviderRuntimeEvent,
-  type ProviderUserInputAnswers,
-} from "@t3tools/contracts";
+import { type ProviderRuntimeEvent, type ProviderUserInputAnswers } from "@t3tools/contracts";
 import { Effect, Layer, Queue, ServiceMap, Stream } from "effect";
 
 import {
@@ -67,10 +64,7 @@ export const makeKimiAdapterLive = (options?: KimiAdapterLiveOptions) =>
     KimiAdapter,
     Effect.gen(function* () {
       const eventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-      const manager =
-        options?.manager ??
-        options?.makeManager?.() ??
-        new KimiAcpManager();
+      const manager = options?.manager ?? options?.makeManager?.() ?? new KimiAcpManager();
 
       const handleEvent = (event: ProviderRuntimeEvent) => {
         void Effect.runPromise(Queue.offer(eventQueue, event).pipe(Effect.asVoid));
@@ -88,7 +82,9 @@ export const makeKimiAdapterLive = (options?: KimiAdapterLiveOptions) =>
               ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
               ...(input.model !== undefined ? { model: input.model } : {}),
               ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-              ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+              ...(input.providerOptions !== undefined
+                ? { providerOptions: input.providerOptions }
+                : {}),
               runtimeMode: input.runtimeMode,
             }),
           catch: (cause) => toRequestError(input.threadId, "session/start", cause),
@@ -161,13 +157,13 @@ export const makeKimiAdapterLive = (options?: KimiAdapterLiveOptions) =>
           catch: (cause) => toRequestError("_global", "provider/stopAll", cause),
         });
 
-        return {
-          provider: PROVIDER,
-          capabilities: {
-            sessionModelSwitch: "restart-session",
-          },
-          startSession,
-          sendTurn,
+      return {
+        provider: PROVIDER,
+        capabilities: {
+          sessionModelSwitch: "restart-session",
+        },
+        startSession,
+        sendTurn,
         interruptTurn,
         respondToRequest,
         respondToUserInput,

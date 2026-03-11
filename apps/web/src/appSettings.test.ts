@@ -25,13 +25,7 @@ describe("normalizeCustomModelSlugs", () => {
   it("normalizes aliases, removes built-ins, and deduplicates supported providers", () => {
     expect(
       normalizeCustomModelSlugs(
-        [
-          " custom/internal-model ",
-          "claude-sonnet-4.5",
-          "custom/internal-model",
-          "",
-          null,
-        ],
+        [" custom/internal-model ", "claude-sonnet-4.5", "custom/internal-model", "", null],
         "copilot",
       ),
     ).toEqual(["custom/internal-model"]);
@@ -115,23 +109,13 @@ describe("resolveAppModelSelection", () => {
 
 describe("getSlashModelOptions", () => {
   it("keeps Codex /model suggestions limited to the built-in catalog", () => {
-    const options = getSlashModelOptions(
-      "codex",
-      ["custom/internal-model"],
-      "",
-      "gpt-5.3-codex",
-    );
+    const options = getSlashModelOptions("codex", ["custom/internal-model"], "", "gpt-5.3-codex");
 
     expect(options.some((option) => option.slug === "custom/internal-model")).toBe(false);
   });
 
   it("filters slash-model suggestions across built-in Codex model names", () => {
-    const options = getSlashModelOptions(
-      "codex",
-      ["openai/gpt-oss-120b"],
-      "oss",
-      "gpt-5.3-codex",
-    );
+    const options = getSlashModelOptions("codex", ["openai/gpt-oss-120b"], "oss", "gpt-5.3-codex");
 
     expect(options).toEqual([]);
   });

@@ -440,7 +440,8 @@ export const checkCopilotProviderStatus: Effect.Effect<
       available: false,
       authStatus: "unknown" as const,
       checkedAt,
-      message: "GitHub Copilot CLI is installed but failed to run. Timed out while running command.",
+      message:
+        "GitHub Copilot CLI is installed but failed to run. Timed out while running command.",
     };
   }
 
@@ -564,9 +565,7 @@ export const ProviderHealthLive = Layer.effect(
     const providerStatusesFiber = yield* Effect.all(
       [checkCodexProviderStatus, checkCopilotProviderStatus, checkKimiProviderStatus],
       { concurrency: "unbounded" },
-    ).pipe(
-      Effect.forkScoped,
-    );
+    ).pipe(Effect.forkScoped);
 
     return {
       getStatuses: Fiber.join(providerStatusesFiber),

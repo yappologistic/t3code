@@ -260,7 +260,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.status, "error");
         assert.strictEqual(status.available, false);
         assert.strictEqual(status.authStatus, "unknown");
-        assert.strictEqual(status.message, "Kimi Code CLI (`kimi`) is not installed or not on PATH.");
+        assert.strictEqual(
+          status.message,
+          "Kimi Code CLI (`kimi`) is not installed or not on PATH.",
+        );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn kimi ENOENT"))),
     );
   });

@@ -3,7 +3,11 @@ import { watch } from "node:fs";
 import { join } from "node:path";
 import waitOn from "wait-on";
 
-import { desktopDir, resolveElectronPath, resolveLinuxDesktopLaunchEnv } from "./electron-launcher.mjs";
+import {
+  desktopDir,
+  resolveElectronPath,
+  resolveLinuxDesktopLaunchEnv,
+} from "./electron-launcher.mjs";
 
 const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5733);
 const devServerUrl = `http://localhost:${port}`;
@@ -65,19 +69,15 @@ function startApp() {
     },
   });
 
-  const app = spawn(
-    electronPath,
-    [`--t3code-dev-root=${desktopDir}`, "dist-electron/main.js"],
-    {
-      cwd: desktopDir,
-      env: {
-        ...childEnv,
-        ...linuxDesktopLaunchEnv,
-        VITE_DEV_SERVER_URL: devServerUrl,
-      },
-      stdio: "inherit",
+  const app = spawn(electronPath, [`--t3code-dev-root=${desktopDir}`, "dist-electron/main.js"], {
+    cwd: desktopDir,
+    env: {
+      ...childEnv,
+      ...linuxDesktopLaunchEnv,
+      VITE_DEV_SERVER_URL: devServerUrl,
     },
-  );
+    stdio: "inherit",
+  });
 
   currentApp = app;
 

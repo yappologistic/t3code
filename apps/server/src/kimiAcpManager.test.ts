@@ -152,7 +152,8 @@ describe("kimiAcpManager model availability", () => {
       normalizeKimiStartErrorMessage({
         rawMessage: "Kimi ACP initialize timed out after 10000ms.",
         loginProbeOutput: {
-          stdout: '{"type":"waiting","message":"Waiting for user authorization...: Authorization is pending"}',
+          stdout:
+            '{"type":"waiting","message":"Waiting for user authorization...: Authorization is pending"}',
         },
       }),
     ).toBe("Kimi Code CLI requires authentication. Run `kimi login` and try again.");

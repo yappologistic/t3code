@@ -1,27 +1,21 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "dev:desktop",
-			"type": "shell",
-			"command": "node",
-			"args": [
-				"scripts/dev-runner.ts",
-				"dev:desktop"
-			],
-			"isBackground": true,
-			"group": "build"
-		},
-		{
-			"label": "Desktop Dev Runner",
-			"type": "shell",
-			"command": "node",
-			"args": [
-				"scripts/dev-runner.ts",
-				"dev:desktop"
-			],
-			"isBackground": true,
-			"group": "build"
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:desktop",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/dev-runner.ts", "dev:desktop"],
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Desktop Dev Runner",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/dev-runner.ts", "dev:desktop"],
+      "isBackground": true,
+      "group": "build"
+    }
+  ]
 }

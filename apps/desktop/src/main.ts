@@ -590,6 +590,12 @@ function configureApplicationMenu(): void {
     {
       label: "View",
       submenu: [
+        {
+          label: "Toggle Sidebar",
+          accelerator: "CmdOrCtrl+B",
+          click: () => dispatchMenuAction("toggle-sidebar"),
+        },
+        { type: "separator" },
         { role: "reload" },
         { role: "forceReload" },
         { role: "toggleDevTools" },

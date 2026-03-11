@@ -55,9 +55,7 @@ describe("resolveAppliedCustomThemeId", () => {
 
 describe("resolveAppliedCustomTheme", () => {
   it("returns the applied preset metadata", () => {
-    expect(resolveAppliedCustomTheme("catppuccin-auto", "dark")?.label).toBe(
-      "Catppuccin Mocha",
-    );
+    expect(resolveAppliedCustomTheme("catppuccin-auto", "dark")?.label).toBe("Catppuccin Mocha");
     expect(resolveAppliedCustomTheme("github-dark-dimmed", "light")?.appearance).toBe("dark");
     expect(resolveAppliedCustomTheme("t3-chat-theme", "dark")?.label).toBe("T3 Chat Theme");
   });

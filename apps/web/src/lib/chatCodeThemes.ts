@@ -101,13 +101,7 @@ const T3_CHAT_CODE_THEME = {
       },
     },
     {
-      scope: [
-        "keyword.operator",
-        "punctuation",
-        "meta.brace",
-        "meta.delimiter",
-        "meta.separator",
-      ],
+      scope: ["keyword.operator", "punctuation", "meta.brace", "meta.delimiter", "meta.separator"],
       settings: {
         foreground: "#5c6370",
       },

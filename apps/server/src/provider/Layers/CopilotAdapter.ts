@@ -1,7 +1,4 @@
-import {
-  type ProviderRuntimeEvent,
-  type ProviderUserInputAnswers,
-} from "@t3tools/contracts";
+import { type ProviderRuntimeEvent, type ProviderUserInputAnswers } from "@t3tools/contracts";
 import { Effect, Layer, Queue, ServiceMap, Stream } from "effect";
 
 import {
@@ -67,10 +64,7 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
     CopilotAdapter,
     Effect.gen(function* () {
       const eventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-      const manager =
-        options?.manager ??
-        options?.makeManager?.() ??
-        new CopilotAcpManager();
+      const manager = options?.manager ?? options?.makeManager?.() ?? new CopilotAcpManager();
 
       yield* Effect.acquireRelease(
         Effect.sync(() => {
@@ -103,7 +97,9 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
                 ? { reasoningEffort: input.modelOptions.copilot.reasoningEffort }
                 : {}),
               ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-              ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+              ...(input.providerOptions !== undefined
+                ? { providerOptions: input.providerOptions }
+                : {}),
               runtimeMode: input.runtimeMode,
             }),
           catch: (cause) => toRequestError(input.threadId, "session/start", cause),

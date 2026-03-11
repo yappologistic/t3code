@@ -28,7 +28,8 @@
 
 @font-face {
   font-family: "Geist Mono";
-  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Italic[wght].woff2") format("woff2");
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Italic[wght].woff2")
+    format("woff2");
   font-style: italic;
   font-weight: 100 900;
   font-display: swap;
@@ -114,9 +115,7 @@
     transition-property: transform, opacity, height;
     transition-duration: 500ms, 500ms, 150ms;
     transition-timing-function:
-      var(--motion-ease-emphasized),
-      var(--motion-ease-emphasized),
-      var(--motion-ease-standard);
+      var(--motion-ease-emphasized), var(--motion-ease-emphasized), var(--motion-ease-standard);
   }
 
   .app-toast-popup-motion {
@@ -130,6 +129,12 @@
     transition-property: background-color, border-color, color, opacity, scale, box-shadow;
     transition-duration: var(--motion-duration-fast);
     transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .app-sidebar-motion {
+    transition-duration: var(--motion-duration-slow);
+    transition-timing-function: var(--motion-ease-emphasized);
+    will-change: width, left, right, transform;
   }
 
   .app-fade-motion {
@@ -146,6 +151,7 @@
   .app-toast-stack-motion,
   .app-toast-popup-motion,
   .app-interactive-motion,
+  .app-sidebar-motion,
   .app-fade-motion {
     transition-duration: 0ms !important;
     animation-duration: 0ms !important;
@@ -165,30 +171,11 @@
 :root {
   color-scheme: light;
   --font-user-message:
-    "Geist Sans",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    Inter,
-    "Segoe UI",
-    Roboto,
-    sans-serif,
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji";
+    "Geist Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Inter, "Segoe UI",
+    Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-code-snippet:
-    "Geist Mono",
-    ui-monospace,
-    "SFMono-Regular",
-    "Roboto Mono",
-    Menlo,
-    Monaco,
-    "Liberation Mono",
-    "DejaVu Sans Mono",
-    "Courier New",
-    monospace;
+    "Geist Mono", ui-monospace, "SFMono-Regular", "Roboto Mono", Menlo, Monaco, "Liberation Mono",
+    "DejaVu Sans Mono", "Courier New", monospace;
   --radius: 0.625rem;
   --background: var(--color-white);
   --foreground: var(--color-neutral-800);

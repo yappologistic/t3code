@@ -65,7 +65,9 @@ export function resolveEffectiveThemeAppearance(
   customThemeId: CustomThemeId,
 ): ResolvedTheme {
   const baseResolvedTheme = resolveThemeAppearance(theme, systemDark);
-  return resolveAppliedCustomTheme(customThemeId, baseResolvedTheme)?.appearance ?? baseResolvedTheme;
+  return (
+    resolveAppliedCustomTheme(customThemeId, baseResolvedTheme)?.appearance ?? baseResolvedTheme
+  );
 }
 
 export function resolveSyncedThemeSelection(theme: Theme, customThemeId: CustomThemeId): Theme {

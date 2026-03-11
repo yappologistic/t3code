@@ -12,6 +12,7 @@ import {
   isChatNewLocalShortcut,
   isDiffToggleShortcut,
   isOpenFavoriteEditorShortcut,
+  isSidebarToggleShortcut,
   isTerminalClearShortcut,
   isTerminalCloseShortcut,
   isTerminalNewShortcut,
@@ -76,6 +77,11 @@ function compile(bindings: TestBinding[]): ResolvedKeybindingsConfig {
 }
 
 const DEFAULT_BINDINGS = compile([
+  {
+    shortcut: modShortcut("b"),
+    command: "sidebar.toggle",
+    whenAst: whenNot(whenIdentifier("terminalFocus")),
+  },
   { shortcut: modShortcut("j"), command: "terminal.toggle" },
   {
     shortcut: modShortcut("d"),
@@ -114,6 +120,26 @@ describe("isTerminalToggleShortcut", () => {
   it("matches Ctrl+J on non-macOS", () => {
     assert.isTrue(
       isTerminalToggleShortcut(event({ ctrlKey: true }), DEFAULT_BINDINGS, { platform: "Win32" }),
+    );
+  });
+});
+
+describe("isSidebarToggleShortcut", () => {
+  it("matches Ctrl+B when terminal is not focused", () => {
+    assert.isTrue(
+      isSidebarToggleShortcut(event({ key: "b", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+  });
+
+  it("does not match when the terminal is focused", () => {
+    assert.isFalse(
+      isSidebarToggleShortcut(event({ key: "b", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
     );
   });
 });

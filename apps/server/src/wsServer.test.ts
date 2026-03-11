@@ -1903,5 +1903,4 @@ describe("WebSocket Server", () => {
     const welcome = await waitForPush(authorizedWs, WS_CHANNELS.serverWelcome);
     expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
   });
-
 });

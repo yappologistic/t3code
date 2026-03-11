@@ -24,58 +24,66 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 <task_context>
 You are working in the T3 Code monorepo.
 Priorities:
+
 1. Performance first.
 2. Reliability first.
 3. Predictable behavior under load, reconnects, and partial streams.
-Architecture:
+   Architecture:
+
 - apps/server: provider sessions, orchestration, websocket server
 - apps/web: React/Vite UI and session UX
 - apps/desktop: Electron shell and desktop-native integrations
 - packages/contracts: schemas/contracts only
 - packages/shared: shared runtime utilities
-Do not make schema-only packages carry runtime logic.
-Prefer shared extraction over duplicated local fixes.
-</task_context>
+  Do not make schema-only packages carry runtime logic.
+  Prefer shared extraction over duplicated local fixes.
+  </task_context>
 
 <tool_persistence_rules>
+
 - Use tools whenever they materially improve correctness, completeness, or grounding.
 - Use subagents when possible to keep the main context window clear.
 - Do not stop early when another inspection, search, or validation step would materially improve the result.
 - Keep going until the task is complete and verification passes.
 - If a lookup or test result is partial or suspiciously narrow, retry with a different strategy.
-</tool_persistence_rules>
+  </tool_persistence_rules>
 
 <dependency_checks>
+
 - Before editing, inspect the relevant code paths and contracts.
 - Do not skip prerequisite discovery just because the final change seems obvious.
 - Resolve upstream/downstream dependencies before mutating code.
-</dependency_checks>
+  </dependency_checks>
 
 <completeness_contract>
+
 - Treat the task as incomplete until all requested deliverables are handled or explicitly marked blocked.
 - Keep an internal checklist of affected runtime paths, UI paths, contracts, and tests.
 - If something is blocked, state exactly what is missing.
-</completeness_contract>
+  </completeness_contract>
 
 <verification_loop>
 Before finalizing:
+
 - Check correctness against the user request.
 - Check grounding against the codebase and tool outputs.
 - Check formatting and repo conventions.
 - Check whether tests/typecheck/lint relevant to the change should run.
-</verification_loop>
+  </verification_loop>
 
 <missing_context_gating>
+
 - If required context is missing, do not guess.
 - Prefer repo inspection first.
 - Ask only the minimal clarifying question when the answer cannot be derived locally.
-</missing_context_gating>
+  </missing_context_gating>
 
 <output_contract>
+
 - For implementation tasks: make the change, verify it, then summarize outcome and risks briefly.
 - For review tasks: list findings first with file/line references.
 - For no-change/planning tasks: provide the exact files and settings that would need changes.
-</output_contract>
+  </output_contract>
 
 ## Maintainability
 

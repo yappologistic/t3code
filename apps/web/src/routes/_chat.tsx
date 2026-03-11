@@ -3,10 +3,28 @@ import { useEffect } from "react";
 
 import { DiffWorkerPoolProvider } from "../components/DiffWorkerPoolProvider";
 import ThreadSidebar from "../components/Sidebar";
-import { Sidebar, SidebarProvider } from "~/components/ui/sidebar";
+import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { useQuery } from "@tanstack/react-query";
+import { Sidebar, SidebarProvider, useSidebar } from "~/components/ui/sidebar";
+import { resolveShortcutCommand } from "../keybindings";
+import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 
-function ChatRouteLayout() {
+const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
+
+function isTerminalFocused(): boolean {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLElement)) return false;
+  if (activeElement.classList.contains("xterm-helper-textarea")) return true;
+  return activeElement.closest(".thread-terminal-drawer .xterm") !== null;
+}
+
+function ChatRouteLayoutContent() {
   const navigate = useNavigate();
+  const { toggleSidebar } = useSidebar();
+  const { data: keybindings = EMPTY_KEYBINDINGS } = useQuery({
+    ...serverConfigQueryOptions(),
+    select: (config) => config.keybindings,
+  });
 
   useEffect(() => {
     const onMenuAction = window.desktopBridge?.onMenuAction;
@@ -15,17 +33,46 @@ function ChatRouteLayout() {
     }
 
     const unsubscribe = onMenuAction((action) => {
-      if (action !== "open-settings") return;
-      void navigate({ to: "/settings" });
+      if (action === "open-settings") {
+        void navigate({ to: "/settings" });
+        return;
+      }
+      if (action === "toggle-sidebar") {
+        toggleSidebar();
+      }
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [navigate]);
+  }, [navigate, toggleSidebar]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+        },
+      });
+      if (command !== "sidebar.toggle") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSidebar();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [keybindings, toggleSidebar]);
 
   return (
-    <SidebarProvider defaultOpen>
+    <>
       <Sidebar
         side="left"
         collapsible="offcanvas"
@@ -36,6 +83,14 @@ function ChatRouteLayout() {
       <DiffWorkerPoolProvider>
         <Outlet />
       </DiffWorkerPoolProvider>
+    </>
+  );
+}
+
+function ChatRouteLayout() {
+  return (
+    <SidebarProvider defaultOpen>
+      <ChatRouteLayoutContent />
     </SidebarProvider>
   );
 }

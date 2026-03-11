@@ -27,7 +27,9 @@ export function resolveProviderStatusForChat(input: {
 }
 
 function isSuccessfulSessionStatus(status: OrchestrationSessionStatus | null | undefined): boolean {
-  return status === "starting" || status === "running" || status === "ready" || status === "interrupted";
+  return (
+    status === "starting" || status === "running" || status === "ready" || status === "interrupted"
+  );
 }
 
 export function resolveVisibleProviderStatusForChat(input: {

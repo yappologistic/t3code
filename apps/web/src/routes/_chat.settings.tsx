@@ -22,9 +22,17 @@ import {
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { preferredTerminalEditor } from "../terminal-links";
+import ThreadNewButton from "../components/ThreadNewButton";
+import ThreadSidebarToggle from "../components/ThreadSidebarToggle";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -250,7 +258,9 @@ function SettingsRouteView() {
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         {isElectron && (
-          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
+          <div className="drag-region flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-5">
+            <ThreadSidebarToggle />
+            <ThreadNewButton />
             <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
               Settings
             </span>
@@ -259,11 +269,19 @@ function SettingsRouteView() {
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-            <header className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
-              <p className="text-sm text-muted-foreground">
-                Configure app-level preferences for this device.
-              </p>
+            <header className="flex items-start gap-3">
+              {!isElectron ? (
+                <div className="flex items-center gap-2">
+                  <ThreadSidebarToggle className="mt-0.5" />
+                  <ThreadNewButton className="mt-0.5" />
+                </div>
+              ) : null}
+              <div className="space-y-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
+                <p className="text-sm text-muted-foreground">
+                  Configure app-level preferences for this device.
+                </p>
+              </div>
             </header>
 
             <section className="rounded-2xl border border-border bg-card p-5">
@@ -305,7 +323,8 @@ function SettingsRouteView() {
               </div>
 
               <p className="mt-4 text-xs text-muted-foreground">
-                Active appearance: <span className="font-medium text-foreground">{resolvedTheme}</span>
+                Active appearance:{" "}
+                <span className="font-medium text-foreground">{resolvedTheme}</span>
               </p>
             </section>
 
@@ -313,7 +332,8 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Custom theme</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose a fully integrated preset for the app UI, diff panels, and syntax-highlighted code.
+                  Choose a fully integrated preset for the app UI, diff panels, and
+                  syntax-highlighted code.
                 </p>
               </div>
 
@@ -360,9 +380,7 @@ function SettingsRouteView() {
                 </p>
                 <p className="mt-1">
                   Selected preset:{" "}
-                  <span className="font-medium text-foreground">
-                    {selectedCustomTheme.label}
-                  </span>
+                  <span className="font-medium text-foreground">{selectedCustomTheme.label}</span>
                 </p>
                 <p className="mt-1">
                   Applied theme:{" "}
@@ -387,7 +405,9 @@ function SettingsRouteView() {
                   </p>
                 ) : null}
                 {activeCustomTheme && activeCustomTheme.appearance !== baseResolvedTheme ? (
-                  <p className="mt-1">This preset overrides the base appearance while it is active.</p>
+                  <p className="mt-1">
+                    This preset overrides the base appearance while it is active.
+                  </p>
                 ) : null}
                 <p className="mt-1">
                   Presets currently include {formatNaturalList(VISIBLE_CUSTOM_THEME_PRESET_LABELS)}.
@@ -522,7 +542,9 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Kimi Code CLI</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These overrides apply to new Kimi Code sessions. Install with <code>curl -LsSf https://code.kimi.com/install.sh | bash</code> and add a Kimi Code API key to let T3 Code start Kimi sessions directly.
+                  These overrides apply to new Kimi Code sessions. Install with{" "}
+                  <code>curl -LsSf https://code.kimi.com/install.sh | bash</code> and add a Kimi
+                  Code API key to let T3 Code start Kimi sessions directly.
                 </p>
               </div>
 
@@ -553,13 +575,15 @@ function SettingsRouteView() {
                     spellCheck={false}
                   />
                   <span className="text-xs text-muted-foreground">
-                    Generate this from the Kimi Code Console. T3 Code stores it locally on this device and injects it into new Kimi CLI sessions.
+                    Generate this from the Kimi Code Console. T3 Code stores it locally on this
+                    device and injects it into new Kimi CLI sessions.
                   </span>
                 </label>
 
                 <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <p>
-                    Binary source: <span className="font-medium text-foreground">{kimiBinaryPath || "PATH"}</span>
+                    Binary source:{" "}
+                    <span className="font-medium text-foreground">{kimiBinaryPath || "PATH"}</span>
                   </p>
                   <Button
                     size="xs"
@@ -581,8 +605,8 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Models</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Save additional provider model slugs for supported providers so they appear in
-                  the chat model picker and `/model` command suggestions. Codex uses the built-in
+                  Save additional provider model slugs for supported providers so they appear in the
+                  chat model picker and `/model` command suggestions. Codex uses the built-in
                   catalog only.
                 </p>
               </div>

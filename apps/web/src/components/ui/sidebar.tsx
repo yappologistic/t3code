@@ -1,9 +1,11 @@
+import { type KeybindingShortcut } from "@t3tools/contracts";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
 import * as React from "react";
-import { cn } from "~/lib/utils";
+import { formatShortcutLabel } from "~/keybindings";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -26,13 +28,111 @@ const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 
+type CookieStoreLike = {
+  set: (options: { expires: number; name: string; path: string; value: string }) => Promise<void>;
+};
+
+function parsePersistedSidebarState(value: string | null | undefined): boolean | null {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
+function readPersistedSidebarState(defaultOpen: boolean): boolean {
+  if (typeof document === "undefined") {
+    return defaultOpen;
+  }
+
+  const cookieValue = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+    ?.slice(SIDEBAR_COOKIE_NAME.length + 1);
+  const persistedState = parsePersistedSidebarState(
+    cookieValue ? decodeURIComponent(cookieValue) : undefined,
+  );
+
+  return persistedState ?? defaultOpen;
+}
+
+async function persistSidebarState(open: boolean): Promise<void> {
+  const value = String(open);
+  const expiresAt = Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000;
+
+  if (typeof document !== "undefined") {
+    document.cookie = `${SIDEBAR_COOKIE_NAME}=${encodeURIComponent(value)}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}; expires=${new Date(expiresAt).toUTCString()}; SameSite=Lax`;
+  }
+
+  const cookieStore = (
+    globalThis as typeof globalThis & {
+      cookieStore?: CookieStoreLike;
+    }
+  ).cookieStore;
+
+  if (!cookieStore) {
+    return;
+  }
+
+  try {
+    await cookieStore.set({
+      expires: expiresAt,
+      name: SIDEBAR_COOKIE_NAME,
+      path: "/",
+      value,
+    });
+  } catch {
+    // Ignore storage failures so sidebar interactions never break.
+  }
+}
+
+function buildSidebarKeyboardShortcut(key: string): KeybindingShortcut {
+  return {
+    key: key.toLowerCase(),
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    modKey: true,
+  };
+}
+
+function matchesSidebarKeyboardShortcut(
+  event: KeyboardEvent,
+  shortcut: KeybindingShortcut,
+  platform = navigator.platform,
+): boolean {
+  if (event.key.toLowerCase() !== shortcut.key) {
+    return false;
+  }
+
+  const useMetaForMod = isMacPlatform(platform);
+  const expectedMeta = shortcut.metaKey || (shortcut.modKey && useMetaForMod);
+  const expectedCtrl = shortcut.ctrlKey || (shortcut.modKey && !useMetaForMod);
+
+  return (
+    event.metaKey === expectedMeta &&
+    event.ctrlKey === expectedCtrl &&
+    event.shiftKey === shortcut.shiftKey &&
+    event.altKey === shortcut.altKey
+  );
+}
+
+function isTextInputTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
-  setOpen: (open: boolean) => void;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
   openMobile: boolean;
-  setOpenMobile: (open: boolean) => void;
+  setOpenMobile: React.Dispatch<React.SetStateAction<boolean>>;
   isMobile: boolean;
+  keyboardShortcutLabel: string | null;
   toggleSidebar: () => void;
 };
 
@@ -87,6 +187,7 @@ function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  keyboardShortcut = false,
   className,
   style,
   children,
@@ -95,13 +196,28 @@ function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  keyboardShortcut?: string | false;
 }) {
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [openMobile, setOpenMobile] = React.useState(false);
+  const resolvedKeyboardShortcut = React.useMemo<KeybindingShortcut | null>(() => {
+    if (!keyboardShortcut) {
+      return null;
+    }
+
+    return buildSidebarKeyboardShortcut(keyboardShortcut);
+  }, [keyboardShortcut]);
+  const keyboardShortcutLabel = React.useMemo(() => {
+    if (!resolvedKeyboardShortcut) {
+      return null;
+    }
+
+    return formatShortcutLabel(resolvedKeyboardShortcut);
+  }, [resolvedKeyboardShortcut]);
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  const [_open, _setOpen] = React.useState(() => readPersistedSidebarState(defaultOpen));
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     async (value: boolean | ((value: boolean) => boolean)) => {
@@ -110,15 +226,8 @@ function SidebarProvider({
         setOpenProp(openState);
       } else {
         _setOpen(openState);
+        await persistSidebarState(openState);
       }
-
-      // This sets the cookie to keep the sidebar state.
-      await cookieStore.set({
-        expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
-        name: SIDEBAR_COOKIE_NAME,
-        path: "/",
-        value: String(openState),
-      });
     },
     [setOpenProp, open],
   );
@@ -128,6 +237,28 @@ function SidebarProvider({
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
   }, [isMobile, setOpen]);
 
+  React.useEffect(() => {
+    if (!resolvedKeyboardShortcut || typeof window === "undefined") {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || isTextInputTarget(event.target)) {
+        return;
+      }
+      if (!matchesSidebarKeyboardShortcut(event, resolvedKeyboardShortcut)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void toggleSidebar();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [resolvedKeyboardShortcut, toggleSidebar]);
+
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open ? "expanded" : "collapsed";
@@ -135,6 +266,7 @@ function SidebarProvider({
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       isMobile,
+      keyboardShortcutLabel,
       open,
       openMobile,
       setOpen,
@@ -142,7 +274,7 @@ function SidebarProvider({
       state,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
+    [state, open, setOpen, isMobile, keyboardShortcutLabel, openMobile, toggleSidebar],
   );
 
   return (
@@ -263,7 +395,7 @@ function Sidebar({
         {/* This is what handles the sidebar gap on desktop */}
         <div
           className={cn(
-            "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+            "app-sidebar-motion relative w-(--sidebar-width) bg-transparent transition-[width] motion-reduce:transition-none",
             "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
             variant === "floating" || variant === "inset"
@@ -274,7 +406,7 @@ function Sidebar({
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+            "app-sidebar-motion fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] motion-reduce:transition-none md:flex",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -300,12 +432,28 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, openMobile } = useSidebar();
+function SidebarTrigger({
+  className,
+  onClick,
+  title,
+  showNativeTitle = true,
+  ...props
+}: React.ComponentProps<typeof Button> & {
+  showNativeTitle?: boolean;
+}) {
+  const { toggleSidebar, isMobile, keyboardShortcutLabel, open, openMobile } = useSidebar();
+  const isSidebarOpen = isMobile ? openMobile : open;
+  const actionLabel = isSidebarOpen ? "Collapse sidebar" : "Expand sidebar";
+  const triggerTitle =
+    title ??
+    (keyboardShortcutLabel ? `Toggle sidebar (${keyboardShortcutLabel})` : "Toggle sidebar");
 
   return (
     <Button
-      className={cn("size-7", className)}
+      aria-label={actionLabel}
+      aria-pressed={isSidebarOpen}
+      className={cn("app-interactive-motion size-7", className)}
+      data-state={isSidebarOpen ? "open" : "closed"}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       onClick={(event) => {
@@ -313,11 +461,12 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
         toggleSidebar();
       }}
       size="icon"
+      title={showNativeTitle ? triggerTitle : undefined}
       variant="ghost"
       {...props}
     >
-      {openMobile ? <PanelLeftCloseIcon /> : <PanelLeftIcon />}
-      <span className="sr-only">Toggle Sidebar</span>
+      {isSidebarOpen ? <PanelLeftCloseIcon /> : <PanelLeftIcon />}
+      <span className="sr-only">{actionLabel}</span>
     </Button>
   );
 }

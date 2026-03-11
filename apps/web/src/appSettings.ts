@@ -60,9 +60,7 @@ const AppSettingsSchema = Schema.Struct({
   enableCatppuccinTheme: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
-  customThemeId: CustomThemeIdSchema.pipe(
-    Schema.withConstructorDefault(() => Option.some("none")),
-  ),
+  customThemeId: CustomThemeIdSchema.pipe(Schema.withConstructorDefault(() => Option.some("none"))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(true))),
   enableAssistantStreaming: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),

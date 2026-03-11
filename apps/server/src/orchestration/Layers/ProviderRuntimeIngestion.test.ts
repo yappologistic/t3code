@@ -1214,12 +1214,10 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const thread = await waitForThread(
-      harness.engine,
-      (entry) =>
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "session.configured",
-        ),
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.kind === "session.configured",
+      ),
     );
     const configured = thread.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-session-configured",

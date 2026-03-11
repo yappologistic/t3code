@@ -106,7 +106,9 @@ interface CopilotReasoningEffortSelector {
 }
 
 function isCopilotReasoningEffort(value: unknown): value is CopilotReasoningEffort {
-  return typeof value === "string" && COPILOT_REASONING_EFFORT_SET.has(value as CopilotReasoningEffort);
+  return (
+    typeof value === "string" && COPILOT_REASONING_EFFORT_SET.has(value as CopilotReasoningEffort)
+  );
 }
 
 function flattenSessionConfigSelectOptions(
@@ -158,15 +160,11 @@ export function isCopilotModelAvailable(
   return availableModelIds.length === 0 || availableModelIds.includes(model);
 }
 
-function readResumeSessionId(input: {
-  readonly resumeCursor?: unknown;
-}): string | undefined {
+function readResumeSessionId(input: { readonly resumeCursor?: unknown }): string | undefined {
   return asString(asObject(input.resumeCursor)?.sessionId);
 }
 
-function mapCopilotRuntimeMode(
-  runtimeMode: ProviderSession["runtimeMode"],
-): ReadonlyArray<string> {
+function mapCopilotRuntimeMode(runtimeMode: ProviderSession["runtimeMode"]): ReadonlyArray<string> {
   return runtimeMode === "full-access" ? ["--allow-all"] : [];
 }
 
@@ -220,9 +218,7 @@ function mapToolCallStatus(
   }
 }
 
-function mapPlanEntryStatus(
-  status: acp.PlanEntryStatus,
-): "pending" | "inProgress" | "completed" {
+function mapPlanEntryStatus(status: acp.PlanEntryStatus): "pending" | "inProgress" | "completed" {
   switch (status) {
     case "in_progress":
       return "inProgress";
@@ -544,11 +540,15 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
             ...(mapToolCallStatus(params.update.status)
               ? { status: mapToolCallStatus(params.update.status) }
               : {}),
-            ...(summarizeToolContent(params.update.content) ? { detail: summarizeToolContent(params.update.content) } : {}),
+            ...(summarizeToolContent(params.update.content)
+              ? { detail: summarizeToolContent(params.update.content) }
+              : {}),
             data: {
               ...(params.update.locations ? { locations: params.update.locations } : {}),
               ...(params.update.rawInput !== undefined ? { rawInput: params.update.rawInput } : {}),
-              ...(params.update.rawOutput !== undefined ? { rawOutput: params.update.rawOutput } : {}),
+              ...(params.update.rawOutput !== undefined
+                ? { rawOutput: params.update.rawOutput }
+                : {}),
             },
           },
         });
@@ -573,7 +573,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
             itemType: mapToolKindToItemType(nextSnapshot.kind),
             title: nextSnapshot.title,
             ...(mapToolCallStatus(status) ? { status: mapToolCallStatus(status) } : {}),
-            ...(summarizeToolContent(params.update.content) ? { detail: summarizeToolContent(params.update.content) } : {}),
+            ...(summarizeToolContent(params.update.content)
+              ? { detail: summarizeToolContent(params.update.content) }
+              : {}),
             ...(params.update.content ? { data: { content: params.update.content } } : {}),
           },
         });
@@ -707,10 +709,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       this.updateSession(context, { model });
       this.emitSessionConfigured(context);
     } catch (error) {
-      throw new Error(
-        toMessage(error, `Failed to switch GitHub Copilot model to '${model}'.`),
-        { cause: error },
-      );
+      throw new Error(toMessage(error, `Failed to switch GitHub Copilot model to '${model}'.`), {
+        cause: error,
+      });
     }
   }
 
@@ -720,7 +721,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   ) {
     const selector = readCopilotReasoningEffortSelector(context.configOptions);
     if (!selector) {
-      throw new Error("GitHub Copilot CLI did not expose a reasoning-effort selector for this session.");
+      throw new Error(
+        "GitHub Copilot CLI did not expose a reasoning-effort selector for this session.",
+      );
     }
 
     if (!selector.options.includes(reasoningEffort)) {
@@ -818,9 +821,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       const resumeSupported =
         initializeResult.agentCapabilities?.sessionCapabilities?.resume !== undefined;
 
-      let sessionResult:
-        | acp.NewSessionResponse
-        | acp.ResumeSessionResponse;
+      let sessionResult: acp.NewSessionResponse | acp.ResumeSessionResponse;
       if (resumeSessionId) {
         if (!resumeSupported) {
           throw new Error(
@@ -868,7 +869,8 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       this.emitSessionStarted(context);
       return { ...context.session };
     } catch (error) {
-      const message = context.lastStderrLine ?? toMessage(error, "Failed to start GitHub Copilot session.");
+      const message =
+        context.lastStderrLine ?? toMessage(error, "Failed to start GitHub Copilot session.");
       this.updateSession(context, {
         status: "error",
         lastError: message,
@@ -904,7 +906,11 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       throw new Error("GitHub Copilot integration currently supports text prompts only.");
     }
 
-    if (context.turnInFlight || context.session.status === "running" || context.session.activeTurnId) {
+    if (
+      context.turnInFlight ||
+      context.session.status === "running" ||
+      context.session.activeTurnId
+    ) {
       throw new Error("GitHub Copilot already has a turn in progress for this session.");
     }
 
@@ -1017,7 +1023,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   }
 
   async respondToUserInput(): Promise<void> {
-    throw new Error("GitHub Copilot CLI does not expose structured user input requests in T3 Code.");
+    throw new Error(
+      "GitHub Copilot CLI does not expose structured user input requests in T3 Code.",
+    );
   }
 
   async stopSession(threadId: ThreadId): Promise<void> {

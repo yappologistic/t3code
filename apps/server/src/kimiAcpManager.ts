@@ -108,15 +108,11 @@ export function isKimiModelAvailable(
   return availableModelIds.length === 0 || availableModelIds.includes(model);
 }
 
-function readResumeSessionId(input: {
-  readonly resumeCursor?: unknown;
-}): string | undefined {
+function readResumeSessionId(input: { readonly resumeCursor?: unknown }): string | undefined {
   return asString(asObject(input.resumeCursor)?.sessionId);
 }
 
-function mapKimiRuntimeMode(
-  runtimeMode: ProviderSession["runtimeMode"],
-): ReadonlyArray<string> {
+function mapKimiRuntimeMode(runtimeMode: ProviderSession["runtimeMode"]): ReadonlyArray<string> {
   return runtimeMode === "full-access" ? ["--yolo"] : [];
 }
 
@@ -210,10 +206,10 @@ export function buildKimiApiKeyConfig(input: { readonly apiKey: string; readonly
   };
 }
 
-function createKimiApiKeyConfigFile(input: {
-  readonly apiKey: string;
-  readonly model?: string;
-}): { readonly dirPath: string; readonly filePath: string } {
+function createKimiApiKeyConfigFile(input: { readonly apiKey: string; readonly model?: string }): {
+  readonly dirPath: string;
+  readonly filePath: string;
+} {
   const dirPath = mkdtempSync(join(tmpdir(), "t3code-kimi-"));
   const filePath = join(dirPath, "config.json");
   try {
@@ -298,7 +294,10 @@ export function normalizeKimiStartErrorMessage(input: {
   return input.rawMessage;
 }
 
-function probeKimiLoginState(kimiBinaryPath: string): { readonly stdout: string; readonly stderr: string } {
+function probeKimiLoginState(kimiBinaryPath: string): {
+  readonly stdout: string;
+  readonly stderr: string;
+} {
   const result = spawnSync(kimiBinaryPath, ["login", "--json"], {
     env: process.env,
     encoding: "utf8",
@@ -364,9 +363,7 @@ function mapToolCallStatus(
   }
 }
 
-function mapPlanEntryStatus(
-  status: acp.PlanEntryStatus,
-): "pending" | "inProgress" | "completed" {
+function mapPlanEntryStatus(status: acp.PlanEntryStatus): "pending" | "inProgress" | "completed" {
   switch (status) {
     case "in_progress":
       return "inProgress";
@@ -672,11 +669,15 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
             ...(mapToolCallStatus(params.update.status)
               ? { status: mapToolCallStatus(params.update.status) }
               : {}),
-            ...(summarizeToolContent(params.update.content) ? { detail: summarizeToolContent(params.update.content) } : {}),
+            ...(summarizeToolContent(params.update.content)
+              ? { detail: summarizeToolContent(params.update.content) }
+              : {}),
             data: {
               ...(params.update.locations ? { locations: params.update.locations } : {}),
               ...(params.update.rawInput !== undefined ? { rawInput: params.update.rawInput } : {}),
-              ...(params.update.rawOutput !== undefined ? { rawOutput: params.update.rawOutput } : {}),
+              ...(params.update.rawOutput !== undefined
+                ? { rawOutput: params.update.rawOutput }
+                : {}),
             },
           },
         });
@@ -701,7 +702,9 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
             itemType: mapToolKindToItemType(nextSnapshot.kind),
             title: nextSnapshot.title,
             ...(mapToolCallStatus(status) ? { status: mapToolCallStatus(status) } : {}),
-            ...(summarizeToolContent(params.update.content) ? { detail: summarizeToolContent(params.update.content) } : {}),
+            ...(summarizeToolContent(params.update.content)
+              ? { detail: summarizeToolContent(params.update.content) }
+              : {}),
             ...(params.update.content ? { data: { content: params.update.content } } : {}),
           },
         });
@@ -830,10 +833,9 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       }
       this.updateSession(context, { model });
     } catch (error) {
-      throw new Error(
-        toMessage(error, `Failed to switch Kimi Code model to '${model}'.`),
-        { cause: error },
-      );
+      throw new Error(toMessage(error, `Failed to switch Kimi Code model to '${model}'.`), {
+        cause: error,
+      });
     }
   }
 
@@ -924,14 +926,10 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       const resumeSupported =
         initializeResult.agentCapabilities?.sessionCapabilities?.resume !== undefined;
 
-      let sessionResult:
-        | acp.NewSessionResponse
-        | acp.ResumeSessionResponse;
+      let sessionResult: acp.NewSessionResponse | acp.ResumeSessionResponse;
       if (resumeSessionId) {
         if (!resumeSupported) {
-          throw new Error(
-            "Kimi Code CLI ACP server does not advertise session resume support.",
-          );
+          throw new Error("Kimi Code CLI ACP server does not advertise session resume support.");
         }
 
         sessionResult = await withTimeout({

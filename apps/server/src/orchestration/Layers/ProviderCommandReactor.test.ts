@@ -85,7 +85,9 @@ describe("ProviderCommandReactor", () => {
 
   async function createHarness(input?: {
     readonly stateDir?: string;
-    readonly capabilitiesByProvider?: Partial<Record<ProviderSession["provider"], "in-session" | "restart-session" | "unsupported">>;
+    readonly capabilitiesByProvider?: Partial<
+      Record<ProviderSession["provider"], "in-session" | "restart-session" | "unsupported">
+    >;
   }) {
     const now = new Date().toISOString();
     const stateDir = input?.stateDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "t3code-reactor-"));
@@ -726,7 +728,9 @@ describe("ProviderCommandReactor", () => {
 
     const thread = await waitFor(async () => {
       const readModel = await Effect.runPromise(harness.engine.getReadModel());
-      const entry = readModel.threads.find((candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"));
+      const entry = readModel.threads.find(
+        (candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"),
+      );
       return (
         entry?.session?.status === "error" &&
         entry.activities.some(
@@ -739,7 +743,9 @@ describe("ProviderCommandReactor", () => {
       );
     }).then(async () => {
       const readModel = await Effect.runPromise(harness.engine.getReadModel());
-      const entry = readModel.threads.find((candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"));
+      const entry = readModel.threads.find(
+        (candidate) => candidate.id === ThreadId.makeUnsafe("thread-1"),
+      );
       if (!entry) {
         throw new Error("Expected thread to exist");
       }

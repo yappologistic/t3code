@@ -195,8 +195,7 @@ export const NodePtyAdapterLive = Layer.effect(
               cols: input.cols,
               rows: input.rows,
               env: input.env,
-              name:
-                globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+              name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
             }),
           catch: (cause) =>
             new PtySpawnError({
