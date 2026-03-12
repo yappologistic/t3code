@@ -16,6 +16,10 @@ import { Button } from "../components/ui/button";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import {
+  getServerConnectionBannerDescription,
+  getServerConnectionBannerTitle,
+} from "../serverConnectionBannerCopy";
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { clearPromotedDraftThreads, useComposerDraftStore } from "../composerDraftStore";
@@ -101,6 +105,8 @@ function ServerConnectionBanner() {
   }
 
   const retrying = connectionState === "reconnecting" || connectionState === "closed";
+  const bannerTitle = getServerConnectionBannerTitle({ retrying, isElectron });
+  const bannerDescription = getServerConnectionBannerDescription({ retrying, isElectron });
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-3 sm:px-6">
@@ -109,13 +115,9 @@ function ServerConnectionBanner() {
         className="pointer-events-auto w-full max-w-2xl border-border/80 bg-background/95 shadow-lg backdrop-blur"
       >
         <div>
-          <AlertTitle>{retrying ? "Connection lost" : "Connecting to local server"}</AlertTitle>
+          <AlertTitle>{bannerTitle}</AlertTitle>
           <AlertDescription>
-            <p>
-              {retrying
-                ? "The app is retrying the websocket connection automatically. If this keeps happening, restart the local dev server."
-                : "The app is waiting for the local server before live data and actions become available."}
-            </p>
+            <p>{bannerDescription}</p>
           </AlertDescription>
         </div>
         <AlertAction>
