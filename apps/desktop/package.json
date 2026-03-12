@@ -1,6 +1,6 @@
 {
   "name": "@t3tools/desktop",
-  "version": "0.0.12-fork.1",
+  "version": "0.0.12-fork.2",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
