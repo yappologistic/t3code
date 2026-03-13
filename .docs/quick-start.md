@@ -46,7 +46,7 @@ Use the matching host OS when possible. Cross-platform packaging is not the defa
 
 ## After startup
 
-- Open **Settings** to configure provider binary overrides, Kimi API key storage, and model preferences.
+- Open **Settings** to configure appearance, including theme presets and an optional chat background image, plus provider binary overrides, Kimi API key storage, and model preferences.
 - Save extra GitHub Copilot or Kimi model ids if you want them in the picker and `/model` suggestions.
 - For Codex, choose a default service tier in Settings and adjust reasoning / `Fast Mode` per turn from the composer.
 - Pick `Full access` or `Supervised` in the toolbar depending on whether you want direct execution or approval-gated actions.

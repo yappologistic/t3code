@@ -31,7 +31,9 @@ npx t3
 
 You can also just install the desktop app. It's cooler.
 
-Install the [desktop app from the Releases page](https://github.com/pingdotgg/t3code/releases)
+If this fork does not currently publish desktop releases, build one locally with the commands below.
+
+If you want the upstream published app instead, use the [upstream Releases page](https://github.com/pingdotgg/t3code/releases).
 
 Once the app is running, choose Codex, GitHub Copilot, or Kimi Code from the provider picker before starting a session.
 
@@ -70,6 +72,7 @@ For the full local packaging and release notes, see [docs/release.md](docs/relea
 
 Open Settings in the app to configure provider-specific behavior on the current device.
 
+- **Appearance**: choose the base light/dark/system mode, switch to integrated presets like Lilac, and configure a custom chat background image with adjustable fade and blur.
 - **Provider overrides**: set custom binary paths for Codex, Copilot, or Kimi, plus an optional Codex home path and Kimi API key.
 - **Custom model slugs**: save extra model ids for GitHub Copilot and Kimi so they appear in the model picker and `/model` suggestions.
 - **Codex service tier**: choose `Automatic`, `Fast`, or `Flex` as the default service tier for new Codex turns.

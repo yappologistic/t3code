@@ -1,6 +1,22 @@
 # Provider settings
 
-T3 Code stores app settings locally on the current device. Open **Settings** in the app to manage provider-specific paths, model options, and response defaults.
+CUT3 stores app settings locally on the current device. Open **Settings** in the app to manage appearance, provider-specific paths, model options, and response defaults.
+
+## Appearance
+
+The **Appearance** area currently includes:
+
+- **Theme preference**: `System`, `Light`, or `Dark`
+- **Chat background image**:
+  - add/change/remove a background image for the chat surface
+  - adjust its `Fade` and `Blur`
+  - stored locally on the current device
+  - limited to `10MB` per image
+- **Custom theme presets**:
+  - built-in presets including Catppuccin variants, GitHub Dark variants, Nord, Visual Studio 2017 Dark, T3 Chat Theme, and Lilac
+  - presets apply app UI colors, diff colors, and syntax-highlighting theme selection together
+
+The chat background image controls are separate from the color theme preset. You can mix the default theme or any preset with a custom chat background.
 
 ## Provider overrides
 
