@@ -4,6 +4,7 @@ import {
   DEFAULT_CHAT_BACKGROUND_IMAGE_BLUR_PX,
   DEFAULT_CHAT_BACKGROUND_IMAGE_FADE_PERCENT,
   getAppSettingsSnapshot,
+  DEFAULT_TIMESTAMP_FORMAT,
   getAppModelOptions,
   getSlashModelOptions,
   MAX_CHAT_BACKGROUND_IMAGE_BLUR_PX,
@@ -214,5 +215,11 @@ describe("chat background settings defaults", () => {
     expect(snapshot.chatBackgroundImageBlurPx).toBe(DEFAULT_CHAT_BACKGROUND_IMAGE_BLUR_PX);
     expect(MAX_CHAT_BACKGROUND_IMAGE_DATA_URL_LENGTH).toBeGreaterThan(0);
     expect(MAX_CHAT_BACKGROUND_IMAGE_BLUR_PX).toBeGreaterThan(0);
+  });
+});
+
+describe("timestamp format defaults", () => {
+  it("defaults timestamp format to locale", () => {
+    expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
   });
 });

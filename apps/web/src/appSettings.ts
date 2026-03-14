@@ -18,6 +18,9 @@ export const MAX_CHAT_BACKGROUND_IMAGE_DATA_URL_LENGTH = 1_500_000;
 export const MAX_CHAT_BACKGROUND_IMAGE_BLUR_PX = 24;
 export const DEFAULT_CHAT_BACKGROUND_IMAGE_FADE_PERCENT = 64;
 export const DEFAULT_CHAT_BACKGROUND_IMAGE_BLUR_PX = 0;
+export const TIMESTAMP_FORMAT_OPTIONS = ["locale", "12-hour", "24-hour"] as const;
+export type TimestampFormat = (typeof TIMESTAMP_FORMAT_OPTIONS)[number];
+export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 export const APP_SERVICE_TIER_OPTIONS = [
   {
     value: "auto",
@@ -83,12 +86,18 @@ const AppSettingsSchema = Schema.Struct({
   chatBackgroundImageBlurPx: Schema.Int.check(
     Schema.isBetween({ minimum: 0, maximum: MAX_CHAT_BACKGROUND_IMAGE_BLUR_PX }),
   ).pipe(Schema.withConstructorDefault(() => Option.some(DEFAULT_CHAT_BACKGROUND_IMAGE_BLUR_PX))),
+  defaultThreadEnvMode: Schema.Literals(["local", "worktree"]).pipe(
+    Schema.withConstructorDefault(() => Option.some("local")),
+  ),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(true))),
   enableAssistantStreaming: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
   codexServiceTier: AppServiceTierSchema.pipe(
     Schema.withConstructorDefault(() => Option.some("auto")),
+  ),
+  timestampFormat: Schema.Literals(["locale", "12-hour", "24-hour"]).pipe(
+    Schema.withConstructorDefault(() => Option.some(DEFAULT_TIMESTAMP_FORMAT)),
   ),
   customCodexModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
