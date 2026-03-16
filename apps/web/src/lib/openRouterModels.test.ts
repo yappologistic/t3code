@@ -7,6 +7,7 @@ import {
   isOpenRouterFreeModelEntry,
   OPENROUTER_MODELS_API_URL,
   readOpenRouterFreeModelCatalog,
+  supportsOpenRouterNativeToolCalling,
   supportsOpenRouterReasoningEffortControl,
 } from "./openRouterModels";
 
@@ -110,6 +111,7 @@ describe("openRouterModels", () => {
         description: "Routes to the current free OpenRouter pool.",
         contextLength: 200_000,
         supportsTools: true,
+        supportsToolChoice: true,
         supportsImages: true,
         supportsReasoning: true,
       }),
@@ -117,6 +119,7 @@ describe("openRouterModels", () => {
         slug: "z-ai/glm-4.5-air:free",
         name: "GLM 4.5 Air",
         supportsTools: true,
+        supportsToolChoice: false,
         supportsImages: true,
         supportsReasoning: true,
       }),
@@ -129,20 +132,20 @@ describe("openRouterModels", () => {
     ]);
   });
 
-  it("only keeps explicit free variants with tool support in the CUT3 picker", () => {
+  it("only keeps explicit free variants with full native tool-calling support in the CUT3 picker", () => {
     const models = extractOpenRouterFreeModels({
       data: [
         {
           id: "openrouter/free",
           name: "Free Models Router",
           pricing: { prompt: "0", completion: "0" },
-          supported_parameters: ["tools", "reasoning"],
+          supported_parameters: ["tool_choice", "tools", "reasoning"],
         },
         {
           id: "openrouter/hunter-alpha",
           name: "Hunter Alpha",
           pricing: { prompt: "0", completion: "0" },
-          supported_parameters: ["tools", "reasoning"],
+          supported_parameters: ["tool_choice", "tools", "reasoning"],
         },
         {
           id: "google/gemma-3-4b-it:free",
@@ -156,12 +159,31 @@ describe("openRouterModels", () => {
           pricing: { prompt: "0.0000001", completion: "0.0000002" },
           supported_parameters: ["tools", "reasoning"],
         },
+        {
+          id: "openai/gpt-oss-120b:free",
+          name: "GPT OSS 120B",
+          pricing: { prompt: "0.0000001", completion: "0.0000002" },
+          supported_parameters: ["tool_choice", "tools", "reasoning"],
+        },
       ],
     });
 
     expect(models.filter(isCut3CompatibleOpenRouterModelOption).map((model) => model.slug)).toEqual(
-      ["openrouter/free", "z-ai/glm-4.5-air:free"],
+      ["openrouter/free", "openai/gpt-oss-120b:free"],
     );
+  });
+
+  it("requires both tools and tool_choice for native tool calling", () => {
+    expect(
+      supportsOpenRouterNativeToolCalling({ supportsTools: true, supportsToolChoice: true }),
+    ).toBe(true);
+    expect(
+      supportsOpenRouterNativeToolCalling({ supportsTools: true, supportsToolChoice: false }),
+    ).toBe(false);
+    expect(
+      supportsOpenRouterNativeToolCalling({ supportsTools: false, supportsToolChoice: true }),
+    ).toBe(false);
+    expect(supportsOpenRouterNativeToolCalling(null)).toBe(false);
   });
 
   it("does not expose Codex-specific reasoning effort controls for OpenRouter models", () => {
@@ -172,6 +194,7 @@ describe("openRouterModels", () => {
         description: null,
         contextLength: 131_072,
         supportsTools: true,
+        supportsToolChoice: true,
         supportsImages: false,
         supportsReasoning: true,
         source: "catalog",

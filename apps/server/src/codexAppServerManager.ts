@@ -196,6 +196,23 @@ const OPENROUTER_NO_ELIGIBLE_ENDPOINT_SNIPPETS = [
   "allow fallbacks",
 ] as const;
 
+const OPENROUTER_RESPONSES_VALIDATION_SNIPPETS = [
+  "invalid responses api request",
+  "invalid_prompt",
+] as const;
+
+const OPENROUTER_MODEL_UNAVAILABLE_SNIPPETS = [
+  "model not found",
+  "404 not found",
+  "unavailable",
+  "bad gateway",
+  "service unavailable",
+  "upstream error",
+  "upstream failure",
+  "temporarily overloaded",
+  "overloaded",
+] as const;
+
 function asObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -473,16 +490,20 @@ export function formatCodexProviderErrorMessage(input: {
     lower.includes("settings/privacy");
   const looksLikeOpenRouterRoutingFailure =
     looksLikeOpenRouterContext &&
-    (OPENROUTER_NO_ELIGIBLE_ENDPOINT_SNIPPETS.some((snippet) => lower.includes(snippet)) ||
-      (lower.includes("404") &&
-        (lower.includes("endpoint") ||
-          lower.includes("provider") ||
-          lower.includes("openrouter"))));
+    OPENROUTER_NO_ELIGIBLE_ENDPOINT_SNIPPETS.some((snippet) => lower.includes(snippet));
   const looksLikeOpenRouterRateLimit =
     looksLikeOpenRouterContext &&
     ((lower.includes("429") && lower.includes("too many requests")) ||
       lower.includes("rate limit") ||
       lower.includes("retry limit"));
+  const isOpenRouterInsufficientCredits =
+    looksLikeOpenRouterContext && looksLikeOpenRouterInsufficientCredits(lower);
+  const looksLikeOpenRouterResponsesValidationFailure =
+    looksLikeOpenRouterContext &&
+    OPENROUTER_RESPONSES_VALIDATION_SNIPPETS.some((snippet) => lower.includes(snippet));
+  const looksLikeOpenRouterModelUnavailable =
+    looksLikeOpenRouterContext &&
+    OPENROUTER_MODEL_UNAVAILABLE_SNIPPETS.some((snippet) => lower.includes(snippet));
 
   const modelLabel = input.model ?? "the selected OpenRouter model";
 
@@ -490,11 +511,23 @@ export function formatCodexProviderErrorMessage(input: {
     return `OpenRouter rate-limited ${modelLabel}. Free OpenRouter endpoints for specific models can run out of capacity or hit shared quotas. Wait and retry, switch to another free model, or use ${OPENROUTER_FREE_ROUTER_MODEL} so OpenRouter can route to any currently available free endpoint. Original error: ${input.message}`;
   }
 
-  if (!looksLikeOpenRouterRoutingFailure) {
-    return input.message;
+  if (isOpenRouterInsufficientCredits) {
+    return `OpenRouter rejected ${modelLabel} because the selected API key or account does not currently have usable OpenRouter credits or free-tier allowance. OpenRouter's free models still run behind account-level limits, and purchased credits increase those free-model limits. Verify that your key belongs to the expected OpenRouter account, then check https://openrouter.ai/settings/credits and https://openrouter.ai/api/v1/key. Original error: ${input.message}`;
   }
 
-  return `OpenRouter could not find an eligible endpoint for ${modelLabel}. This usually means your OpenRouter privacy/provider settings or guardrails, or the request's required capabilities (for example tools, reasoning, images, or token limits), filtered out every available endpoint. If the original error mentions data policy, guardrails, or ZDR, check https://openrouter.ai/settings/privacy. Try another free model, remove unsupported parameters, or relax the matching OpenRouter privacy/provider filters. Original error: ${input.message}`;
+  if (looksLikeOpenRouterResponsesValidationFailure) {
+    return `OpenRouter rejected a Responses API payload for ${modelLabel}. The model id is usually still valid, but OpenRouter could not validate one of the multi-turn tool or history items that Codex sent. Retry the turn, switch to another free model, or use ${OPENROUTER_FREE_ROUTER_MODEL}. If it keeps happening, OpenRouter's Responses API compatibility for that route is likely failing upstream. Original error: ${input.message}`;
+  }
+
+  if (looksLikeOpenRouterRoutingFailure) {
+    return `OpenRouter could not find an eligible endpoint for ${modelLabel}. This usually means your OpenRouter privacy/provider settings or guardrails, or the request's required capabilities (for example tools, reasoning, images, or token limits), filtered out every available endpoint. If the original error mentions data policy, guardrails, or ZDR, check https://openrouter.ai/settings/privacy. Try another free model, remove unsupported parameters, or relax the matching OpenRouter privacy/provider filters. Original error: ${input.message}`;
+  }
+
+  if (looksLikeOpenRouterModelUnavailable) {
+    return `OpenRouter could not serve ${modelLabel}. Free models on OpenRouter are frequently rotated, removed, or temporarily overloaded. Switch to another free model or use ${OPENROUTER_FREE_ROUTER_MODEL} so OpenRouter can route to any currently available free endpoint. Original error: ${input.message}`;
+  }
+
+  return input.message;
 }
 
 function readOptionalOpenRouterApiKey(input: {
@@ -512,7 +545,7 @@ export function buildCodexAppServerArgs(input: { readonly model?: string }): Rea
     ...(usesOpenRouter
       ? [
           "--config",
-          `model_providers.openrouter={ name = "OpenRouter", base_url = "${OPENROUTER_BASE_URL}", env_key = "${OPENROUTER_ENV_KEY}", wire_api = "responses" }`,
+          `model_providers.openrouter={ name = "OpenRouter", base_url = "${OPENROUTER_BASE_URL}", env_key = "${OPENROUTER_ENV_KEY}" }`,
           "--config",
           'model_provider="openrouter"',
           "--config",
@@ -593,13 +626,30 @@ function shouldRetryOpenRouterViaFreeRouter(input: {
   }
 
   const lower = input.message.toLowerCase();
+
+  if (looksLikeOpenRouterInsufficientCredits(lower)) {
+    return false;
+  }
+  if (OPENROUTER_RESPONSES_VALIDATION_SNIPPETS.some((snippet) => lower.includes(snippet))) {
+    return false;
+  }
+
   return (
     OPENROUTER_NO_ELIGIBLE_ENDPOINT_SNIPPETS.some((snippet) => lower.includes(snippet)) ||
-    (lower.includes("404") &&
-      (lower.includes("endpoint") || lower.includes("provider") || lower.includes("openrouter"))) ||
+    OPENROUTER_MODEL_UNAVAILABLE_SNIPPETS.some((snippet) => lower.includes(snippet)) ||
+    lower.includes("502") ||
+    lower.includes("503") ||
     (lower.includes("429") && lower.includes("too many requests")) ||
     lower.includes("rate limit") ||
     lower.includes("retry limit")
+  );
+}
+
+function looksLikeOpenRouterInsufficientCredits(lower: string): boolean {
+  return (
+    (lower.includes("402") && lower.includes("payment required")) ||
+    lower.includes("insufficient credits") ||
+    lower.includes("never purchased credits")
   );
 }
 

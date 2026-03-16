@@ -268,6 +268,26 @@ describe("store read model sync", () => {
     expect(next.threads[0]?.model).toBe("custom/internal-model");
   });
 
+  it("preserves saved OpenRouter free models after the live session disappears", () => {
+    const initialState = makeState(
+      makeThread({
+        provider: "codex",
+        model: "openai/gpt-oss-120b:free",
+      }),
+    );
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "openai/gpt-oss-120b:free",
+        session: null,
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.provider).toBe("codex");
+    expect(next.threads[0]?.model).toBe("openai/gpt-oss-120b:free");
+  });
+
   it("preserves the current project order when syncing incoming read model updates", () => {
     const project1 = ProjectId.makeUnsafe("project-1");
     const project2 = ProjectId.makeUnsafe("project-2");

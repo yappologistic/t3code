@@ -58,10 +58,11 @@ This is an app-level default. It applies when starting new Codex turns from the 
 CUT3 now shows OpenRouter free models in their own settings card and their own top-level section inside the model picker.
 
 - CUT3 always includes the built-in `openrouter/free` router.
-- The settings page fetches OpenRouter's live model catalog, but CUT3 only lists models that are explicitly free-locked (`openrouter/free` or `:free`) and advertise tool use.
+- The settings page fetches OpenRouter's live model catalog, but CUT3 only lists models that are explicitly free-locked (`openrouter/free` or `:free`) and advertise the full native tool-calling surface CUT3 needs (`tools` plus `tool_choice`).
 - You can pin any listed OpenRouter free model into the picker and `/model` suggestions with one click.
 - If the live catalog cannot be fetched, CUT3 surfaces that state in Settings instead of silently hiding it.
-- If a pinned OpenRouter `:free` model cannot be served and CUT3 retries through `openrouter/free`, the chat UI now shows a warning banner so the turn does not silently drift onto a different free model.
+- If a pinned OpenRouter `:free` model cannot be served because the route is unavailable, overloaded, rate-limited, or filtered out by provider/privacy constraints, CUT3 automatically retries the turn through `openrouter/free` and shows a warning banner so the turn does not silently drift onto a billed model. CUT3 does not auto-retry Responses API validation failures or payment/credit errors, because those need explicit user action instead of a silent reroute.
+- OpenRouter free models still depend on OpenRouter account limits. New accounts only get a small free allowance, purchased credits raise the daily free-model limit, and negative balances can still produce `402 Payment Required` even for `openrouter/free`.
 
 ### Custom model slugs
 

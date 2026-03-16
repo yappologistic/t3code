@@ -282,6 +282,8 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         thread.session?.providerName !== null && thread.session?.providerName !== undefined
           ? toLegacyProvider(thread.session.providerName)
           : (existing?.provider ?? inferredProvider);
+      const normalizedThreadModel = normalizeModelSlug(thread.model, provider);
+      const normalizedExistingModel = normalizeModelSlug(existing?.model, provider);
       return {
         id: thread.id,
         codexThreadId: null,
@@ -293,7 +295,9 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
           model: thread.model,
           sessionProviderName: thread.session?.providerName ?? null,
           preserveUnknownCustomModel:
-            existing?.provider === provider && (provider === "copilot" || provider === "kimi"),
+            existing?.provider === provider &&
+            normalizedExistingModel !== null &&
+            normalizedExistingModel === normalizedThreadModel,
         }),
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,

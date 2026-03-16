@@ -21,6 +21,7 @@ import {
   type ThreadId,
   type TurnId,
   OrchestrationThreadActivity,
+  OPENROUTER_FREE_ROUTER_MODEL,
   RuntimeMode,
   ProviderInteractionMode,
 } from "@t3tools/contracts";
@@ -70,6 +71,7 @@ import {
 import {
   isCut3CompatibleOpenRouterModelOption,
   isOpenRouterGuaranteedFreeSlug,
+  supportsOpenRouterNativeToolCalling,
   supportsOpenRouterReasoningEffortControl,
 } from "~/lib/openRouterModels";
 import { buildComposerMcpServerItems, providerSupportsMcp } from "../mcpServers";
@@ -1110,6 +1112,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [configuredModelOptionsByProvider, settings],
   );
   const openRouterCatalogQuery = useQuery(openRouterFreeModelsQueryOptions());
+  const hasLiveOpenRouterCatalog = openRouterCatalogQuery.data?.status === "available";
   const openRouterModels = useMemo(
     () => openRouterCatalogQuery.data?.models ?? [],
     [openRouterCatalogQuery.data?.models],
@@ -1133,13 +1136,26 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const openRouterModelOptions = useMemo(
     () =>
       mergeModelOptions(
-        modelOptionsByProvider.codex.filter(
-          (option) =>
-            isCodexOpenRouterModel(option.slug) && isOpenRouterGuaranteedFreeSlug(option.slug),
-        ),
+        modelOptionsByProvider.codex.filter((option) => {
+          if (
+            !isCodexOpenRouterModel(option.slug) ||
+            !isOpenRouterGuaranteedFreeSlug(option.slug)
+          ) {
+            return false;
+          }
+          if (!hasLiveOpenRouterCatalog || option.slug === OPENROUTER_FREE_ROUTER_MODEL) {
+            return true;
+          }
+          return supportsOpenRouterNativeToolCalling(openRouterModelsBySlug.get(option.slug));
+        }),
         openRouterPickerOptions,
       ),
-    [modelOptionsByProvider.codex, openRouterPickerOptions],
+    [
+      hasLiveOpenRouterCatalog,
+      modelOptionsByProvider.codex,
+      openRouterModelsBySlug,
+      openRouterPickerOptions,
+    ],
   );
   const customModelsForSelectedProvider = useMemo(
     () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
@@ -1320,11 +1336,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const ensureSelectedOpenRouterModelSupportsTools = useCallback(
     (threadId?: ThreadId) => {
-      if (!selectedModelUsesOpenRouter || selectedOpenRouterModel?.supportsTools !== false) {
+      if (!selectedModelUsesOpenRouter) {
+        return true;
+      }
+      if (selectedModel === OPENROUTER_FREE_ROUTER_MODEL || !hasLiveOpenRouterCatalog) {
         return true;
       }
 
-      const message = `${selectedOpenRouterModel.name} does not advertise OpenRouter tool support, and CUT3 requires tool use for agent turns. Switch to another OpenRouter free model or use \`openrouter/free\`.`;
+      let message: string | null = null;
+      if (selectedOpenRouterModel === null) {
+        message = `\`${selectedModel}\` is not in OpenRouter's current live free catalog. Refresh the list, pick another listed free model, or use \`openrouter/free\`.`;
+      } else if (!supportsOpenRouterNativeToolCalling(selectedOpenRouterModel)) {
+        message = `${selectedOpenRouterModel.name} does not advertise the full OpenRouter native tool-calling surface (\`tools\` + \`tool_choice\`), and CUT3 requires both for agent turns. Switch to another OpenRouter free model or use \`openrouter/free\`.`;
+      }
+      if (message === null) {
+        return true;
+      }
+
       if (threadId) {
         setStoreThreadError(threadId, message);
       } else {
@@ -1336,7 +1364,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       return false;
     },
-    [selectedModelUsesOpenRouter, selectedOpenRouterModel, setStoreThreadError],
+    [
+      hasLiveOpenRouterCatalog,
+      selectedModel,
+      selectedModelUsesOpenRouter,
+      selectedOpenRouterModel,
+      setStoreThreadError,
+    ],
   );
   const selectedModelForPicker = selectedModel;
   const selectedModelForPickerWithCustomFallback = useMemo(() => {

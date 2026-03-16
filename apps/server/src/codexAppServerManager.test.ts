@@ -261,6 +261,69 @@ describe("formatCodexRpcErrorMessage", () => {
     expect(message).toContain("openrouter/free");
     expect(message).toContain("Original error: exceeded retry limit");
   });
+
+  it("rewrites OpenRouter insufficient-credit failures into actionable guidance", () => {
+    const message = formatCodexRpcErrorMessage({
+      method: "runtime error",
+      message:
+        "unexpected status 402 Payment Required: Insufficient credits. This account never purchased credits.",
+      model: "openrouter/free",
+    });
+
+    expect(message).toContain(
+      "does not currently have usable OpenRouter credits or free-tier allowance",
+    );
+    expect(message).toContain("https://openrouter.ai/settings/credits");
+    expect(message).toContain("https://openrouter.ai/api/v1/key");
+  });
+
+  it("rewrites OpenRouter Responses API validation failures into actionable guidance", () => {
+    const message = formatCodexRpcErrorMessage({
+      method: "runtime error",
+      message:
+        '{"error":{"code":"invalid_prompt","message":"Invalid Responses API request"},"metadata":{"raw":"invalid input"}}',
+      model: "openai/gpt-oss-120b:free",
+    });
+
+    expect(message).toContain("OpenRouter rejected a Responses API payload");
+    expect(message).toContain("openai/gpt-oss-120b:free");
+    expect(message).toContain("openrouter/free");
+  });
+
+  it("rewrites 'model not found' errors for OpenRouter free models", () => {
+    const message = formatCodexRpcErrorMessage({
+      method: "turn/start",
+      message: "model not found",
+      model: "openai/gpt-oss-120b:free",
+    });
+
+    expect(message).toContain("OpenRouter could not serve openai/gpt-oss-120b:free");
+    expect(message).toContain("frequently rotated");
+    expect(message).toContain("openrouter/free");
+  });
+
+  it("rewrites upstream unavailable errors for OpenRouter free models", () => {
+    const message = formatCodexRpcErrorMessage({
+      method: "turn/start",
+      message: "502 Bad Gateway",
+      model: "qwen/qwen3-235b-a22b:free",
+    });
+
+    expect(message).toContain("OpenRouter could not serve qwen/qwen3-235b-a22b:free");
+    expect(message).toContain("frequently rotated");
+    expect(message).toContain("openrouter/free");
+  });
+
+  it("rewrites standalone invalid_prompt errors for OpenRouter models", () => {
+    const message = formatCodexRpcErrorMessage({
+      method: "turn/start",
+      message: '{"error":{"code":"invalid_prompt","message":"some validation problem"}}',
+      model: "openai/gpt-oss-120b:free",
+    });
+
+    expect(message).toContain("OpenRouter rejected a Responses API payload");
+    expect(message).toContain("openai/gpt-oss-120b:free");
+  });
 });
 
 describe("handleServerNotification", () => {
@@ -473,6 +536,177 @@ describe("handleServerNotification", () => {
       expect(context.pendingOpenRouterTurnRetry?.currentTurnId).toBe("turn-2");
     });
   });
+
+  it("retries via openrouter/free when a free model returns 'model not found'", async () => {
+    const manager = new CodexAppServerManager();
+    const context: NotificationHarnessContext = {
+      session: {
+        provider: "codex",
+        status: "running",
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+        model: "openai/gpt-oss-120b:free",
+        activeTurnId: TurnId.makeUnsafe("turn-1"),
+        createdAt: "2026-03-16T00:00:00.000Z",
+        updatedAt: "2026-03-16T00:00:00.000Z",
+      },
+      pending: new Map(),
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      pendingOpenRouterTurnRetry: {
+        providerThreadId: asThreadId("thread-1"),
+        input: [{ type: "text", text: "hello", text_elements: [] }],
+        model: "openai/gpt-oss-120b:free",
+        currentTurnId: TurnId.makeUnsafe("turn-1"),
+        fallbackAttempted: false,
+      },
+      nextRequestId: 1,
+      stopping: false,
+    };
+    const sendRequest = vi
+      .spyOn(
+        manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> },
+        "sendRequest",
+      )
+      .mockResolvedValue({
+        turn: { id: "turn-2" },
+      });
+
+    (
+      manager as unknown as {
+        handleServerNotification: (
+          context: NotificationHarnessContext,
+          notification: { method: string; params?: unknown },
+        ) => void;
+      }
+    ).handleServerNotification(context, {
+      method: "turn/completed",
+      params: {
+        turn: {
+          id: "turn-1",
+          status: "failed",
+          error: {
+            message: "model not found",
+          },
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(sendRequest).toHaveBeenCalledWith(context, "turn/start", {
+        threadId: "thread-1",
+        input: [{ type: "text", text: "hello", text_elements: [] }],
+        model: "openrouter/free",
+      });
+      expect(context.pendingOpenRouterTurnRetry?.fallbackAttempted).toBe(true);
+    });
+  });
+
+  it("does not retry via openrouter/free when a free model returns invalid_prompt", () => {
+    const manager = new CodexAppServerManager();
+    const context: NotificationHarnessContext = {
+      session: {
+        provider: "codex",
+        status: "running",
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+        model: "qwen/qwen3-235b-a22b:free",
+        activeTurnId: TurnId.makeUnsafe("turn-1"),
+        createdAt: "2026-03-16T00:00:00.000Z",
+        updatedAt: "2026-03-16T00:00:00.000Z",
+      },
+      pending: new Map(),
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      pendingOpenRouterTurnRetry: {
+        providerThreadId: asThreadId("thread-1"),
+        input: [{ type: "text", text: "hello", text_elements: [] }],
+        model: "qwen/qwen3-235b-a22b:free",
+        currentTurnId: TurnId.makeUnsafe("turn-1"),
+        fallbackAttempted: false,
+      },
+      nextRequestId: 1,
+      stopping: false,
+    };
+
+    (
+      manager as unknown as {
+        handleServerNotification: (
+          context: NotificationHarnessContext,
+          notification: { method: string; params?: unknown },
+        ) => void;
+      }
+    ).handleServerNotification(context, {
+      method: "turn/completed",
+      params: {
+        turn: {
+          id: "turn-1",
+          status: "failed",
+          error: {
+            message:
+              '{"error":{"code":"invalid_prompt","message":"Invalid Responses API request"}}',
+          },
+        },
+      },
+    });
+
+    expect(context.session.status).toBe("error");
+    expect(context.session.lastError).toContain("OpenRouter rejected a Responses API payload");
+    expect(context.session.lastError).toContain("qwen/qwen3-235b-a22b:free");
+    expect(context.pendingOpenRouterTurnRetry).toBeUndefined();
+  });
+
+  it("does not retry via openrouter/free for insufficient credit errors", () => {
+    const manager = new CodexAppServerManager();
+    const context: NotificationHarnessContext = {
+      session: {
+        provider: "codex",
+        status: "running",
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+        model: "openai/gpt-oss-120b:free",
+        activeTurnId: TurnId.makeUnsafe("turn-1"),
+        createdAt: "2026-03-16T00:00:00.000Z",
+        updatedAt: "2026-03-16T00:00:00.000Z",
+      },
+      pending: new Map(),
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      pendingOpenRouterTurnRetry: {
+        providerThreadId: asThreadId("thread-1"),
+        input: [{ type: "text", text: "hello", text_elements: [] }],
+        model: "openai/gpt-oss-120b:free",
+        currentTurnId: TurnId.makeUnsafe("turn-1"),
+        fallbackAttempted: false,
+      },
+      nextRequestId: 1,
+      stopping: false,
+    };
+
+    (
+      manager as unknown as {
+        handleServerNotification: (
+          context: NotificationHarnessContext,
+          notification: { method: string; params?: unknown },
+        ) => void;
+      }
+    ).handleServerNotification(context, {
+      method: "turn/completed",
+      params: {
+        turn: {
+          id: "turn-1",
+          status: "failed",
+          error: {
+            message:
+              "402 Payment Required: Insufficient credits. This account never purchased credits.",
+          },
+        },
+      },
+    });
+
+    expect(context.session.status).toBe("error");
+    expect(context.pendingOpenRouterTurnRetry).toBeUndefined();
+  });
 });
 
 describe("buildCodexAppServerArgs", () => {
@@ -488,7 +722,7 @@ describe("buildCodexAppServerArgs", () => {
     ).toEqual([
       "app-server",
       "--config",
-      'model_providers.openrouter={ name = "OpenRouter", base_url = "https://openrouter.ai/api/v1", env_key = "OPENROUTER_API_KEY", wire_api = "responses" }',
+      'model_providers.openrouter={ name = "OpenRouter", base_url = "https://openrouter.ai/api/v1", env_key = "OPENROUTER_API_KEY" }',
       "--config",
       'model_provider="openrouter"',
       "--config",
@@ -504,7 +738,7 @@ describe("buildCodexAppServerArgs", () => {
     ).toEqual([
       "app-server",
       "--config",
-      'model_providers.openrouter={ name = "OpenRouter", base_url = "https://openrouter.ai/api/v1", env_key = "OPENROUTER_API_KEY", wire_api = "responses" }',
+      'model_providers.openrouter={ name = "OpenRouter", base_url = "https://openrouter.ai/api/v1", env_key = "OPENROUTER_API_KEY" }',
       "--config",
       'model_provider="openrouter"',
       "--config",

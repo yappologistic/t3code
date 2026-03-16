@@ -25,6 +25,7 @@ import {
   isCut3CompatibleOpenRouterModelOption,
   isOpenRouterGuaranteedFreeSlug,
   OPENROUTER_FREE_ROUTER_OPTION,
+  supportsOpenRouterNativeToolCalling,
 } from "../lib/openRouterModels";
 import { openRouterFreeModelsQueryOptions } from "../lib/openRouterReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
@@ -181,6 +182,7 @@ function SettingsRouteView() {
     () => openRouterCatalogQuery.data?.models ?? [OPENROUTER_FREE_ROUTER_OPTION],
     [openRouterCatalogQuery.data?.models],
   );
+  const hasLiveOpenRouterCatalog = openRouterCatalogQuery.data?.status === "available";
   const compatibleOpenRouterFreeModels = useMemo(
     () => openRouterFreeModels.filter(isCut3CompatibleOpenRouterModelOption),
     [openRouterFreeModels],
@@ -195,6 +197,34 @@ function SettingsRouteView() {
   const openRouterCustomModelInput = customModelInputByProvider.codex;
   const openRouterCustomModelError = customModelErrorByProvider.codex ?? null;
   const savedOpenRouterModels = settings.customCodexModels;
+  const savedOpenRouterModelWarnings = useMemo(
+    () =>
+      new Map(
+        savedOpenRouterModels.map((slug) => {
+          if (
+            !hasLiveOpenRouterCatalog ||
+            !isCodexOpenRouterModel(slug) ||
+            !isOpenRouterGuaranteedFreeSlug(slug) ||
+            slug === OPENROUTER_FREE_ROUTER_MODEL
+          ) {
+            return [slug, null] as const;
+          }
+
+          const catalogEntry = openRouterModelsBySlug.get(slug) ?? null;
+          if (catalogEntry === null) {
+            return [slug, "No longer appears in OpenRouter's current live free catalog."] as const;
+          }
+          if (!supportsOpenRouterNativeToolCalling(catalogEntry)) {
+            return [
+              slug,
+              "Missing OpenRouter native tool-calling support (`tools` + `tool_choice`).",
+            ] as const;
+          }
+          return [slug, null] as const;
+        }),
+      ),
+    [hasLiveOpenRouterCatalog, openRouterModelsBySlug, savedOpenRouterModels],
+  );
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
   const hasChatBackgroundImage =
@@ -277,7 +307,7 @@ function SettingsRouteView() {
           return false;
         }
 
-        if (openRouterCatalogQuery.data?.status === "available") {
+        if (hasLiveOpenRouterCatalog) {
           const catalogEntry = openRouterModelsBySlug.get(normalized) ?? null;
           if (normalized !== OPENROUTER_FREE_ROUTER_MODEL && catalogEntry === null) {
             setCustomModelErrorByProvider((existing) => ({
@@ -287,11 +317,11 @@ function SettingsRouteView() {
             }));
             return false;
           }
-          if (catalogEntry && !catalogEntry.supportsTools) {
+          if (catalogEntry && !supportsOpenRouterNativeToolCalling(catalogEntry)) {
             setCustomModelErrorByProvider((existing) => ({
               ...existing,
               codex:
-                "CUT3 requires OpenRouter models with tool use. Pick a free model that advertises tool support.",
+                "CUT3 requires OpenRouter models that advertise both `tools` and `tool_choice`. Pick another listed free model or use `openrouter/free`.",
             }));
             return false;
           }
@@ -305,7 +335,7 @@ function SettingsRouteView() {
       }));
       return true;
     },
-    [openRouterCatalogQuery.data?.status, openRouterModelsBySlug, settings, updateSettings],
+    [hasLiveOpenRouterCatalog, openRouterModelsBySlug, settings, updateSettings],
   );
 
   const addCustomModel = useCallback(
@@ -346,8 +376,8 @@ function SettingsRouteView() {
 
   const openRouterCatalogStatusMessage = openRouterCatalogQuery.isPending
     ? "Checking OpenRouter for the current free-model list..."
-    : openRouterCatalogQuery.data?.status === "available"
-      ? `${openRouterCatalogModelCount} live OpenRouter free model${openRouterCatalogModelCount === 1 ? " is" : "s are"} currently safe for CUT3, plus the built-in router.`
+    : hasLiveOpenRouterCatalog
+      ? `${openRouterCatalogModelCount} live OpenRouter free model${openRouterCatalogModelCount === 1 ? " is" : "s are"} currently compatible with CUT3's native tool-calling path, plus the built-in router.`
       : "Live OpenRouter free-model discovery is currently unavailable.";
 
   const openRouterCatalogError =
@@ -1176,7 +1206,8 @@ function SettingsRouteView() {
                         />
                         <span className="text-xs text-muted-foreground">
                           Save a custom Codex model id, or paste a currently listed OpenRouter{" "}
-                          <code>:free</code> slug if you want to pin it manually.
+                          <code>:free</code> slug that advertises <code>tools</code> and{" "}
+                          <code>tool_choice</code> if you want to pin it manually.
                         </span>
                       </label>
 
@@ -1205,23 +1236,31 @@ function SettingsRouteView() {
 
                       {savedOpenRouterModels.length > 0 ? (
                         <div className="space-y-2">
-                          {savedOpenRouterModels.map((slug) => (
-                            <div
-                              key={`openrouter:${slug}`}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
-                            >
-                              <code className="min-w-0 flex-1 truncate text-xs text-foreground">
-                                {slug}
-                              </code>
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                onClick={() => removeCustomModel("codex", slug)}
+                          {savedOpenRouterModels.map((slug) => {
+                            const warning = savedOpenRouterModelWarnings.get(slug) ?? null;
+                            return (
+                              <div
+                                key={`openrouter:${slug}`}
+                                className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
                               >
-                                Remove
-                              </Button>
-                            </div>
-                          ))}
+                                <div className="min-w-0 flex-1">
+                                  <code className="block min-w-0 truncate text-xs text-foreground">
+                                    {slug}
+                                  </code>
+                                  {warning ? (
+                                    <p className="mt-1 text-[11px] text-destructive">{warning}</p>
+                                  ) : null}
+                                </div>
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={() => removeCustomModel("codex", slug)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="rounded-lg border border-dashed border-border bg-background px-3 py-4 text-xs text-muted-foreground">

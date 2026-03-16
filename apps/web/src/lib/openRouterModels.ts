@@ -9,6 +9,7 @@ export interface OpenRouterFreeModelOption {
   readonly description: string | null;
   readonly contextLength: number | null;
   readonly supportsTools: boolean;
+  readonly supportsToolChoice: boolean;
   readonly supportsImages: boolean;
   readonly supportsReasoning: boolean;
   readonly source: "router" | "catalog";
@@ -34,6 +35,7 @@ export const OPENROUTER_FREE_ROUTER_OPTION: OpenRouterFreeModelOption = {
     "Routes requests to a currently available free OpenRouter model based on request capabilities.",
   contextLength: 200_000,
   supportsTools: true,
+  supportsToolChoice: true,
   supportsImages: true,
   supportsReasoning: true,
   source: "router",
@@ -48,8 +50,14 @@ export function isOpenRouterGuaranteedFreeSlug(model: string | null | undefined)
   return trimmed === OPENROUTER_FREE_ROUTER_MODEL || trimmed.endsWith(":free");
 }
 
+export function supportsOpenRouterNativeToolCalling(
+  model: Pick<OpenRouterFreeModelOption, "supportsTools" | "supportsToolChoice"> | null | undefined,
+): boolean {
+  return model?.supportsTools === true && model.supportsToolChoice === true;
+}
+
 export function isCut3CompatibleOpenRouterModelOption(model: OpenRouterFreeModelOption): boolean {
-  return isOpenRouterGuaranteedFreeSlug(model.slug) && model.supportsTools;
+  return isOpenRouterGuaranteedFreeSlug(model.slug) && supportsOpenRouterNativeToolCalling(model);
 }
 
 export function supportsOpenRouterReasoningEffortControl(
@@ -139,8 +147,8 @@ export function parseOpenRouterFreeModelCatalogEntry(
     name: asNonEmptyString(record.name) ?? slug,
     description: asNonEmptyString(record.description),
     contextLength: asNumber(record.context_length),
-    supportsTools:
-      supportedParameters.includes("tools") || supportedParameters.includes("tool_choice"),
+    supportsTools: supportedParameters.includes("tools"),
+    supportsToolChoice: supportedParameters.includes("tool_choice"),
     supportsImages: inputModalities.includes("image"),
     supportsReasoning:
       supportedParameters.includes("reasoning") ||
