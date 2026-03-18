@@ -77,7 +77,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-4.1", name: "GPT-4.1" },
   ],
   kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
-  opencode: [{ slug: OPENCODE_DEFAULT_MODEL, name: "OpenCode Default" }],
+  opencode: [{ slug: OPENCODE_DEFAULT_MODEL, name: "Default" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 

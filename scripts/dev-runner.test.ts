@@ -202,7 +202,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("keeps server offset stable for dev:web and only shifts web offset", () =>
+    it.effect("keeps dev:web on a shared free server/web pair", () =>
       Effect.gen(function* () {
         const taken = new Set([5733]);
         const offsets = yield* resolveModePortOffsets({
@@ -213,7 +213,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
         });
 
-        assert.deepStrictEqual(offsets, { serverOffset: 0, webOffset: 1 });
+        assert.deepStrictEqual(offsets, { serverOffset: 1, webOffset: 1 });
       }),
     );
 
@@ -229,6 +229,21 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         });
 
         assert.deepStrictEqual(offsets, { serverOffset: 1, webOffset: 1 });
+      }),
+    );
+
+    it.effect("reuses an active shared offset for split dev commands", () =>
+      Effect.gen(function* () {
+        const offsets = yield* resolveModePortOffsets({
+          mode: "dev:web",
+          startOffset: 0,
+          hasExplicitServerPort: false,
+          hasExplicitDevUrl: false,
+          activeSharedOffset: 2,
+          checkPortAvailability: () => Effect.succeed(false),
+        });
+
+        assert.deepStrictEqual(offsets, { serverOffset: 2, webOffset: 2 });
       }),
     );
 

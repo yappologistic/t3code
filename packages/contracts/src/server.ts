@@ -60,11 +60,13 @@ export const ServerOpenCodeCredential = Schema.Struct({
 export type ServerOpenCodeCredential = typeof ServerOpenCodeCredential.Type;
 
 const ServerOpenCodeCredentials = Schema.Array(ServerOpenCodeCredential);
+const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
 
 export const ServerOpenCodeModel = Schema.Struct({
   slug: TrimmedNonEmptyString,
   providerId: TrimmedNonEmptyString,
   modelId: TrimmedNonEmptyString,
+  contextWindowTokens: Schema.optional(NonNegativeNumber),
 });
 export type ServerOpenCodeModel = typeof ServerOpenCodeModel.Type;
 
@@ -102,8 +104,6 @@ export const ServerOpenCodeState = Schema.Union([
   ServerOpenCodeStateUnavailable,
 ]);
 export type ServerOpenCodeState = typeof ServerOpenCodeState.Type;
-
-const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
 export const ServerMcpServerStatusState = Schema.Literals(["enabled", "disabled"]);
 export type ServerMcpServerStatusState = typeof ServerMcpServerStatusState.Type;
 

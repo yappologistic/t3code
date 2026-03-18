@@ -21,32 +21,52 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
       <Button
         size="sm"
         variant="ghost"
+        type="button"
         disabled={isResponding}
-        onClick={() => void onRespondToApproval(requestId, "cancel")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void onRespondToApproval(requestId, "cancel");
+        }}
       >
         Cancel turn
       </Button>
       <Button
         size="sm"
         variant="destructive-outline"
+        type="button"
         disabled={isResponding}
-        onClick={() => void onRespondToApproval(requestId, "decline")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void onRespondToApproval(requestId, "decline");
+        }}
       >
         Decline
       </Button>
       <Button
         size="sm"
         variant="outline"
+        type="button"
         disabled={isResponding}
-        onClick={() => void onRespondToApproval(requestId, "acceptForSession")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void onRespondToApproval(requestId, "acceptForSession");
+        }}
       >
         Always allow this session
       </Button>
       <Button
         size="sm"
         variant="default"
+        type="button"
         disabled={isResponding}
-        onClick={() => void onRespondToApproval(requestId, "accept")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void onRespondToApproval(requestId, "accept");
+        }}
       >
         Approve once
       </Button>

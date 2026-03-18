@@ -11,6 +11,7 @@ import {
   MAX_CHAT_BACKGROUND_IMAGE_BLUR_PX,
   MAX_CHAT_BACKGROUND_IMAGE_DATA_URL_LENGTH,
   normalizeCustomModelSlugs,
+  normalizeModelVisibilitySlugs,
   resolveAppModelSelection,
   sanitizePersistedAppSettingsForStorage,
   supportsCustomModels,
@@ -99,7 +100,7 @@ describe("getAppModelOptions", () => {
 
     expect(options[0]).toEqual({
       slug: "opencode/default",
-      name: "OpenCode Default",
+      name: "Default",
       isCustom: false,
     });
     expect(options.at(-1)).toEqual({
@@ -127,6 +128,30 @@ describe("getAppModelOptions", () => {
       name: "custom-selected-model",
       isCustom: true,
     });
+  });
+});
+
+describe("normalizeModelVisibilitySlugs", () => {
+  it("keeps built-ins, custom models, and OpenRouter aliases when hiding picker entries", () => {
+    expect(
+      normalizeModelVisibilitySlugs([
+        " gpt-5.4 ",
+        "5.4",
+        "openrouter/free",
+        "custom/internal-model",
+        "",
+        null,
+      ]),
+    ).toEqual(["gpt-5.4", "openrouter/free", "custom/internal-model"]);
+  });
+
+  it("normalizes provider-scoped OpenCode model ids without dropping built-ins", () => {
+    expect(
+      normalizeModelVisibilitySlugs(
+        [" opencode/default ", "z-ai/glm-4.5", "opencode/default"],
+        "opencode",
+      ),
+    ).toEqual(["opencode/default", "z-ai/glm-4.5"]);
   });
 });
 

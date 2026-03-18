@@ -57,12 +57,11 @@ export const OpenCodeCredentialsManager = memo(function OpenCodeCredentialsManag
       <div className="rounded-lg border border-border bg-muted/30 p-3">
         <div className="mb-2 flex items-center gap-2">
           <KeyIcon className="size-4 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-foreground">OpenCode Authentication</h3>
+          <h3 className="text-xs font-medium text-foreground">Credentials</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          Manage OpenCode provider credentials in a terminal with <code>opencode auth login</code>{" "}
-          and <code>opencode auth logout</code>. CUT3 only inspects the current OpenCode state here;
-          it does not try to replace OpenCode&apos;s interactive credential flow.
+          Manage provider credentials in a terminal with <code>opencode auth login</code> and{" "}
+          <code>opencode auth logout</code>. CUT3 only reads the current state here.
         </p>
         <p
           className={
@@ -72,8 +71,8 @@ export const OpenCodeCredentialsManager = memo(function OpenCodeCredentialsManag
           }
         >
           {hasSharedOpenRouterKey
-            ? "CUT3 will inject the shared OpenRouter key into new OpenCode sessions as OPENROUTER_API_KEY."
-            : "If your OpenCode provider config expects OPENROUTER_API_KEY, add it in the top-level OpenRouter settings section above."}
+            ? "New OpenCode sessions will inherit the shared OpenRouter key as OPENROUTER_API_KEY."
+            : "Add the OpenRouter key above if your OpenCode config expects OPENROUTER_API_KEY."}
         </p>
         {stateMessage ? (
           <p
@@ -92,7 +91,7 @@ export const OpenCodeCredentialsManager = memo(function OpenCodeCredentialsManag
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-xs font-medium text-foreground">Configured Providers</h3>
+          <h3 className="text-xs font-medium text-foreground">Providers</h3>
           <Button
             size="xs"
             variant="ghost"
@@ -112,9 +111,7 @@ export const OpenCodeCredentialsManager = memo(function OpenCodeCredentialsManag
             Loading...
           </div>
         ) : credentials.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No stored OpenCode provider credentials detected.
-          </p>
+          <p className="text-xs text-muted-foreground">No stored provider credentials found.</p>
         ) : (
           <div className="space-y-1">
             {credentials.map((cred) => (
@@ -132,13 +129,13 @@ export const OpenCodeCredentialsManager = memo(function OpenCodeCredentialsManag
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-xs font-medium text-foreground">
-            Available Models ({uniqueProviderIds.length} providers, {models.length} models)
+            Models ({uniqueProviderIds.length} providers, {models.length} total)
           </h3>
         </div>
         {models.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No models discovered yet. Run <code>opencode auth login</code> for a provider or refresh
-            after updating your OpenCode config.
+            No models yet. Run <code>opencode auth login</code> for a provider or refresh after
+            updating your config.
           </p>
         ) : (
           <div className="max-h-40 overflow-y-auto rounded bg-muted/50 p-2">

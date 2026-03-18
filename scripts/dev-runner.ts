@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -15,6 +17,7 @@ const BASE_WEB_PORT = 5733;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
+const DEV_RUNNER_SELECTION_FILE = ".dev-runner-selection.json";
 
 export const DEFAULT_DEV_STATE_DIR = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(homedir(), ".t3", "dev"),
@@ -39,6 +42,17 @@ type DevMode = keyof typeof MODE_ARGS;
 type PortAvailabilityCheck<R = never> = (port: number) => Effect.Effect<boolean, never, R>;
 
 const DEV_RUNNER_MODES = Object.keys(MODE_ARGS) as Array<DevMode>;
+
+interface DevRunnerSelectionClaim {
+  readonly pid: number;
+  readonly mode: DevMode;
+}
+
+interface DevRunnerSelectionState {
+  readonly version: 1;
+  readonly offset: number;
+  readonly claims: ReadonlyArray<DevRunnerSelectionClaim>;
+}
 
 class DevRunnerError extends Data.TaggedError("DevRunnerError")<{
   readonly message: string;
@@ -114,6 +128,121 @@ function resolveStateDir(stateDir: string | undefined): Effect.Effect<string, ne
     }
 
     return yield* DEFAULT_DEV_STATE_DIR;
+  });
+}
+
+function getDevRunnerSelectionPath(stateDir: string): string {
+  return join(stateDir, DEV_RUNNER_SELECTION_FILE);
+}
+
+function isLiveProcess(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isDevMode(value: unknown): value is DevMode {
+  return typeof value === "string" && DEV_RUNNER_MODES.includes(value as DevMode);
+}
+
+async function readDevRunnerSelection(
+  selectionPath: string,
+): Promise<DevRunnerSelectionState | null> {
+  try {
+    const raw = await readFile(selectionPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      offset?: unknown;
+      claims?: ReadonlyArray<{ pid?: unknown; mode?: unknown }>;
+    };
+
+    if (
+      typeof parsed.offset !== "number" ||
+      !Number.isInteger(parsed.offset) ||
+      parsed.offset < 0 ||
+      !Array.isArray(parsed.claims)
+    ) {
+      return null;
+    }
+
+    const claims = parsed.claims.flatMap((claim) => {
+      if (
+        typeof claim?.pid !== "number" ||
+        !Number.isInteger(claim.pid) ||
+        claim.pid <= 0 ||
+        !isDevMode(claim.mode) ||
+        !isLiveProcess(claim.pid)
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          pid: claim.pid,
+          mode: claim.mode,
+        },
+      ];
+    });
+
+    if (claims.length === 0) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      offset: parsed.offset,
+      claims,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeDevRunnerSelection(
+  selectionPath: string,
+  state: DevRunnerSelectionState,
+): Promise<void> {
+  await mkdir(dirname(selectionPath), { recursive: true });
+  await writeFile(selectionPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+async function claimDevRunnerSelection(params: {
+  readonly selectionPath: string;
+  readonly offset: number;
+  readonly mode: DevMode;
+  readonly pid?: number;
+}): Promise<void> {
+  const pid = params.pid ?? process.pid;
+  const current = await readDevRunnerSelection(params.selectionPath);
+  const claims =
+    current?.offset === params.offset ? current.claims.filter((claim) => claim.pid !== pid) : [];
+
+  await writeDevRunnerSelection(params.selectionPath, {
+    version: 1,
+    offset: params.offset,
+    claims: [...claims, { pid, mode: params.mode }],
+  });
+}
+
+async function releaseDevRunnerSelection(selectionPath: string, pid = process.pid): Promise<void> {
+  const current = await readDevRunnerSelection(selectionPath);
+  if (!current) {
+    await rm(selectionPath, { force: true });
+    return;
+  }
+
+  const claims = current.claims.filter((claim) => claim.pid !== pid);
+  if (claims.length === 0) {
+    await rm(selectionPath, { force: true });
+    return;
+  }
+
+  await writeDevRunnerSelection(selectionPath, {
+    version: 1,
+    offset: current.offset,
+    claims,
   });
 }
 
@@ -284,6 +413,7 @@ interface ResolveModePortOffsetsInput<R = NetService> {
   readonly startOffset: number;
   readonly hasExplicitServerPort: boolean;
   readonly hasExplicitDevUrl: boolean;
+  readonly activeSharedOffset?: number;
   readonly checkPortAvailability?: PortAvailabilityCheck<R>;
 }
 
@@ -292,6 +422,7 @@ export function resolveModePortOffsets<R = NetService>({
   startOffset,
   hasExplicitServerPort,
   hasExplicitDevUrl,
+  activeSharedOffset,
   checkPortAvailability,
 }: ResolveModePortOffsetsInput<R>): Effect.Effect<
   { readonly serverOffset: number; readonly webOffset: number },
@@ -302,18 +433,22 @@ export function resolveModePortOffsets<R = NetService>({
     const checkPort = (checkPortAvailability ??
       defaultCheckPortAvailability) as PortAvailabilityCheck<R>;
 
+    if (activeSharedOffset !== undefined) {
+      return { serverOffset: activeSharedOffset, webOffset: activeSharedOffset };
+    }
+
     if (mode === "dev:web") {
       if (hasExplicitDevUrl) {
         return { serverOffset: startOffset, webOffset: startOffset };
       }
 
-      const webOffset = yield* findFirstAvailableOffset({
+      const sharedOffset = yield* findFirstAvailableOffset({
         startOffset,
-        requireServerPort: false,
+        requireServerPort: true,
         requireWebPort: true,
         checkPortAvailability: checkPort,
       });
-      return { serverOffset: startOffset, webOffset };
+      return { serverOffset: sharedOffset, webOffset: sharedOffset };
     }
 
     if (mode === "dev:server") {
@@ -321,13 +456,13 @@ export function resolveModePortOffsets<R = NetService>({
         return { serverOffset: startOffset, webOffset: startOffset };
       }
 
-      const serverOffset = yield* findFirstAvailableOffset({
+      const sharedOffset = yield* findFirstAvailableOffset({
         startOffset,
         requireServerPort: true,
-        requireWebPort: false,
+        requireWebPort: true,
         checkPortAvailability: checkPort,
       });
-      return { serverOffset, webOffset: serverOffset };
+      return { serverOffset: sharedOffset, webOffset: sharedOffset };
     }
 
     const sharedOffset = yield* findFirstAvailableOffset({
@@ -411,19 +546,48 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       logWebSocketEvents: readOptionalBooleanEnv("CUT3_LOG_WS_EVENTS"),
     };
 
-    const { serverOffset, webOffset } = yield* resolveModePortOffsets({
+    const resolvedStateDir = yield* resolveStateDir(input.stateDir);
+    const selectionPath =
+      input.port === undefined && input.devUrl === undefined
+        ? getDevRunnerSelectionPath(resolvedStateDir)
+        : undefined;
+    const activeSelection = yield* selectionPath
+      ? Effect.promise(() => readDevRunnerSelection(selectionPath))
+      : Effect.succeed(null);
+
+    const portOffsetInput = {
       mode: input.mode,
       startOffset: offset,
       hasExplicitServerPort: input.port !== undefined,
       hasExplicitDevUrl: input.devUrl !== undefined,
-    });
+    };
+
+    const { serverOffset, webOffset } = activeSelection
+      ? yield* resolveModePortOffsets({
+          ...portOffsetInput,
+          activeSharedOffset: activeSelection.offset,
+        })
+      : yield* resolveModePortOffsets(portOffsetInput);
+
+    if (selectionPath) {
+      yield* Effect.acquireRelease(
+        Effect.promise(() =>
+          claimDevRunnerSelection({
+            selectionPath,
+            offset: serverOffset,
+            mode: input.mode,
+          }),
+        ),
+        () => Effect.promise(() => releaseDevRunnerSelection(selectionPath)),
+      );
+    }
 
     const env = yield* createDevRunnerEnv({
       mode: input.mode,
       baseEnv: process.env,
       serverOffset,
       webOffset,
-      stateDir: input.stateDir,
+      stateDir: resolvedStateDir,
       authToken: input.authToken,
       noBrowser: resolveOptionalBooleanOverride(input.noBrowser, envOverrides.noBrowser),
       autoBootstrapProjectFromCwd: resolveOptionalBooleanOverride(

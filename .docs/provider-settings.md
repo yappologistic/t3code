@@ -82,7 +82,7 @@ CUT3 supports saved custom model ids for:
 - Additional Codex model ids you want to save manually
 - Additional OpenRouter `:free` model ids from the current live catalog
 
-OpenCode also advertises runtime-discovered models through ACP. CUT3 merges those live models into the picker after an OpenCode session starts, and keeps a built-in `OpenCode Default` option so a first session can start without CUT3 guessing a vendor-specific `provider/model` id.
+OpenCode also advertises runtime-discovered models through ACP. CUT3 merges those live models into the picker after an OpenCode session starts, and keeps a built-in `Default` option under OpenCode so a first session can start without CUT3 guessing a vendor-specific `provider/model` id.
 
 Saved custom model ids appear in:
 
@@ -92,6 +92,16 @@ Saved custom model ids appear in:
 The app normalizes entries before saving them, ignores built-in duplicates, and refuses OpenRouter slugs that are not explicit free variants.
 
 If you add an OpenRouter API key in Settings, CUT3 launches Codex with per-session OpenRouter overrides whenever you pick `openrouter/free` or another saved OpenRouter `:free` slug such as `google/gemma-3n-e4b-it:free`. Native Codex models still use your normal Codex authentication.
+
+### Chat picker controls
+
+The chat composer now exposes a richer model picker instead of only nested provider submenus.
+
+- The picker is searchable across provider names, model labels, and raw model slugs.
+- Models are grouped by provider, with OpenRouter kept as its own top-level section.
+- `Connect provider` opens an in-chat setup panel that shows provider health, lets you add or update the shared OpenRouter key and Kimi API key, and reminds you that OpenCode auth still lives in `opencode auth login` / `opencode auth logout`.
+- `Manage models` opens an in-chat model management surface with per-model visibility toggles.
+- Hidden models are removed from both the main picker and `/model` suggestions, but they stay saved locally so you can restore them later with `Show all`.
 
 ## Composer controls
 
