@@ -586,6 +586,13 @@ async function waitForInteractionModeButton(
   );
 }
 
+async function waitForComposerControl(controlName: string): Promise<HTMLElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLElement>(`[data-chat-composer-control="${controlName}"]`),
+    `Unable to find composer control "${controlName}".`,
+  );
+}
+
 async function waitForImagesToLoad(scope: ParentNode): Promise<void> {
   const images = Array.from(scope.querySelectorAll("img"));
   if (images.length === 0) {
@@ -1082,6 +1089,122 @@ describe("ChatView timeline estimator parity (full app)", () => {
         },
         { timeout: 8_000, interval: 16 },
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("center-aligns desktop composer footer controls when the expanded toolbar is visible", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-footer-alignment" as MessageId,
+        targetText: "footer alignment target",
+      }),
+    });
+
+    try {
+      await waitForComposerEditor();
+      await waitForLayout();
+
+      const footer = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-chat-composer-footer="true"]'),
+        "Unable to find composer footer.",
+      );
+      const [
+        providerPicker,
+        contextStatus,
+        interactionModeButton,
+        runtimeModeButton,
+        primaryAction,
+      ] = await Promise.all([
+        waitForComposerControl("provider-picker"),
+        waitForComposerControl("context-status"),
+        waitForComposerControl("interaction-mode"),
+        waitForComposerControl("runtime-mode"),
+        waitForComposerControl("primary-action"),
+      ]);
+
+      expect(getComputedStyle(footer).alignItems).toBe("center");
+
+      const controls = [
+        providerPicker,
+        contextStatus,
+        interactionModeButton,
+        runtimeModeButton,
+        primaryAction,
+      ];
+      const centerLines = controls.map((control) => {
+        const rect = control.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      });
+      const footerRect = footer.getBoundingClientRect();
+
+      for (const centerLine of centerLines) {
+        expect(Math.abs(centerLine - (footerRect.top + footerRect.height / 2))).toBeLessThanOrEqual(
+          4,
+        );
+      }
+      expect(primaryAction.getBoundingClientRect().right).toBeLessThanOrEqual(footerRect.right + 1);
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("keeps expanded composer footer controls visually aligned", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-footer-alignment" as MessageId,
+        targetText: "footer alignment target",
+      }),
+    });
+
+    try {
+      const footer = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-chat-composer-footer="true"]'),
+        "Unable to find the composer footer.",
+      );
+      const providerPicker = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            '[data-chat-composer-control="provider-picker"]',
+          ),
+        "Unable to find the provider picker control.",
+      );
+      const contextStatus = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-chat-composer-control="context-status"]'),
+        "Unable to find the composer context status control.",
+      );
+      const interactionModeButton = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            '[data-chat-composer-control="interaction-mode"]',
+          ),
+        "Unable to find the interaction mode button.",
+      );
+      const runtimeModeButton = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>('[data-chat-composer-control="runtime-mode"]'),
+        "Unable to find the runtime mode button.",
+      );
+
+      await waitForLayout();
+
+      const footerRect = footer.getBoundingClientRect();
+      const providerRect = providerPicker.getBoundingClientRect();
+      const contextRect = contextStatus.getBoundingClientRect();
+      const interactionRect = interactionModeButton.getBoundingClientRect();
+      const runtimeRect = runtimeModeButton.getBoundingClientRect();
+      const centerLines = [providerRect, contextRect, interactionRect, runtimeRect].map(
+        (rect) => rect.top + rect.height / 2,
+      );
+
+      expect(providerRect.height).toBeGreaterThanOrEqual(34);
+      expect(Math.abs(providerRect.height - contextRect.height)).toBeLessThanOrEqual(8);
+      expect(Math.max(...centerLines) - Math.min(...centerLines)).toBeLessThanOrEqual(6);
+      expect(providerRect.bottom).toBeLessThanOrEqual(footerRect.bottom);
+      expect(contextRect.bottom).toBeLessThanOrEqual(footerRect.bottom);
     } finally {
       await mounted.cleanup();
     }

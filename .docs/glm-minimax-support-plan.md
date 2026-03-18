@@ -17,7 +17,7 @@ Current shipped state:
 
 - CUT3 exposes `OpenCode` as a first-class provider in the picker and server contracts.
 - The server runs `opencode acp` through `apps/server/src/opencodeAcpManager.ts`.
-- OpenCode model lists flow back into CUT3 through ACP `session.configured` events, and CUT3 also ships an `OpenCode Default` sentinel so the first session can start without guessing a vendor-specific `provider/model` id.
+- OpenCode model lists flow back into CUT3 through ACP `session.configured` events, and CUT3 also ships a built-in `Default` sentinel under OpenCode so the first session can start without guessing a vendor-specific `provider/model` id.
 - `approval-required` runtime mode currently maps to OpenCode permission prompts for `edit` and `bash` through `OPENCODE_CONFIG_CONTENT`.
 - Authentication still stays outside CUT3 through `opencode auth login`, and CUT3 does not yet inspect OpenCode-configured MCP servers in `server.getConfig`.
 

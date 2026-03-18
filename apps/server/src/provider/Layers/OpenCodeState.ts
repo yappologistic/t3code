@@ -16,7 +16,32 @@ import { OpenCodeState } from "../Services/OpenCodeState";
 const DEFAULT_BINARY_PATH = "opencode";
 const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
 const REFRESH_MODELS_TIMEOUT_MS = 20_000;
+const MODELS_DEV_API_URL = "https://models.dev/api.json";
+const MODELS_DEV_TIMEOUT_MS = 5_000;
+const MODELS_DEV_CACHE_TTL_MS = 30 * 60 * 1_000;
 const ANSI_ESCAPE_PATTERN = new RegExp(String.raw`\u001B\[[0-9;?]*[ -/]*[@-~]`, "g");
+
+type ModelsDevModelEntry = {
+  readonly limit?: {
+    readonly context?: unknown;
+  };
+};
+
+type ModelsDevProviderEntry = {
+  readonly models?: Record<string, ModelsDevModelEntry>;
+};
+
+type ModelsDevCatalog = Record<string, ModelsDevProviderEntry>;
+
+const modelsDevCatalogCache: {
+  expiresAt: number;
+  value: ModelsDevCatalog | null;
+  pending: Promise<ModelsDevCatalog | null> | null;
+} = {
+  expiresAt: 0,
+  value: null,
+  pending: null,
+};
 
 function stripAnsi(value: string): string {
   return value.replace(ANSI_ESCAPE_PATTERN, "");
@@ -136,6 +161,84 @@ export function parseOpenCodeModelsOutput(output: string): ServerOpenCodeModel[]
   return models;
 }
 
+function readModelsDevContextWindowTokens(
+  catalog: ModelsDevCatalog | null | undefined,
+  model: Pick<ServerOpenCodeModel, "providerId" | "modelId">,
+): number | null {
+  if (!catalog) {
+    return null;
+  }
+
+  const providerEntry = catalog[model.providerId];
+  const models = providerEntry?.models;
+  if (!models) {
+    return null;
+  }
+
+  const directEntry = models[model.modelId];
+  const directContext = directEntry?.limit?.context;
+  if (typeof directContext === "number" && Number.isFinite(directContext) && directContext >= 0) {
+    return directContext;
+  }
+
+  const normalizedModelId = model.modelId.toLowerCase();
+  for (const [candidateId, entry] of Object.entries(models)) {
+    if (candidateId.toLowerCase() !== normalizedModelId) {
+      continue;
+    }
+    const context = entry?.limit?.context;
+    if (typeof context === "number" && Number.isFinite(context) && context >= 0) {
+      return context;
+    }
+  }
+
+  return null;
+}
+
+export function applyModelsDevContextWindows(
+  models: ReadonlyArray<ServerOpenCodeModel>,
+  catalog: ModelsDevCatalog | null | undefined,
+): ServerOpenCodeModel[] {
+  return models.map((model) => {
+    const contextWindowTokens = readModelsDevContextWindowTokens(catalog, model);
+    return contextWindowTokens === null ? model : { ...model, contextWindowTokens };
+  });
+}
+
+async function loadModelsDevCatalog(): Promise<ModelsDevCatalog | null> {
+  const now = Date.now();
+  if (modelsDevCatalogCache.value && modelsDevCatalogCache.expiresAt > now) {
+    return modelsDevCatalogCache.value;
+  }
+  if (modelsDevCatalogCache.pending) {
+    return modelsDevCatalogCache.pending;
+  }
+
+  modelsDevCatalogCache.pending = fetch(MODELS_DEV_API_URL, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(MODELS_DEV_TIMEOUT_MS),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        return null;
+      }
+      const payload = await response.json();
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+
+      modelsDevCatalogCache.value = payload as ModelsDevCatalog;
+      modelsDevCatalogCache.expiresAt = Date.now() + MODELS_DEV_CACHE_TTL_MS;
+      return modelsDevCatalogCache.value;
+    })
+    .catch(() => null)
+    .finally(() => {
+      modelsDevCatalogCache.pending = null;
+    });
+
+  return modelsDevCatalogCache.pending;
+}
+
 function unavailableState(input: {
   readonly fetchedAt: string;
   readonly checkedCwd: string;
@@ -241,7 +344,7 @@ async function readOpenCodeState(
     });
   }
 
-  const [authProbe, modelsProbe] = await Promise.all([
+  const [authProbe, modelsProbe, modelsDevCatalog] = await Promise.all([
     runCliCommand({
       command: binaryPath,
       args: ["auth", "list"],
@@ -272,6 +375,7 @@ async function readOpenCodeState(
           timedOut: false,
         }) satisfies ProcessRunResult,
     ),
+    loadModelsDevCatalog(),
   ]);
 
   const authResult = handleCommandResult({
@@ -297,7 +401,7 @@ async function readOpenCodeState(
     checkedCwd,
     binaryPath,
     credentials: [...authResult.items],
-    models: [...modelsResult.items],
+    models: applyModelsDevContextWindows([...modelsResult.items], modelsDevCatalog),
     ...(messages.length > 0 ? { message: messages.join(" ") } : {}),
   } satisfies ServerOpenCodeState;
 }

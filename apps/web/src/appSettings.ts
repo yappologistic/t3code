@@ -23,6 +23,7 @@ import { isOpenRouterGuaranteedFreeSlug } from "./lib/openRouterModels";
 
 const APP_SETTINGS_STORAGE_KEY = "cut3:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
+const MAX_HIDDEN_MODEL_COUNT = 512;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 export const MAX_CHAT_BACKGROUND_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_CHAT_BACKGROUND_IMAGE_DATA_URL_LENGTH = 1_500_000;
@@ -159,6 +160,18 @@ const AppSettingsSchema = Schema.Struct({
   customKimiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
+  hiddenCodexModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  hiddenCopilotModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  hiddenOpencodeModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  hiddenKimiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {
@@ -249,6 +262,29 @@ export function normalizeCustomModelSlugs(
   return normalizedModels;
 }
 
+export function normalizeModelVisibilitySlugs(
+  models: Iterable<string | null | undefined>,
+  provider: ProviderKind = "codex",
+): string[] {
+  const normalizedModels: string[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of models) {
+    const normalized = normalizeModelSlug(candidate, provider);
+    if (!normalized || normalized.length > MAX_CUSTOM_MODEL_LENGTH || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    normalizedModels.push(normalized);
+    if (normalizedModels.length >= MAX_HIDDEN_MODEL_COUNT) {
+      break;
+    }
+  }
+
+  return normalizedModels;
+}
+
 function normalizeAppSettings(settings: AppSettings): AppSettings {
   const customThemeId =
     settings.customThemeId === "none" && settings.enableCatppuccinTheme
@@ -267,6 +303,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customOpencodeModels: normalizeCustomModelSlugs(settings.customOpencodeModels, "opencode"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
+    hiddenCodexModels: normalizeModelVisibilitySlugs(settings.hiddenCodexModels, "codex"),
+    hiddenCopilotModels: normalizeModelVisibilitySlugs(settings.hiddenCopilotModels, "copilot"),
+    hiddenOpencodeModels: normalizeModelVisibilitySlugs(settings.hiddenOpencodeModels, "opencode"),
+    hiddenKimiModels: normalizeModelVisibilitySlugs(settings.hiddenKimiModels, "kimi"),
   };
 }
 

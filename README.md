@@ -87,10 +87,12 @@ Open Settings in the app to configure provider-specific behavior on the current 
 - **Provider overrides**: set custom binary paths for Codex, Copilot, OpenCode, or Kimi, plus an optional Codex home path, a shared OpenRouter API key, and a Kimi API key. OpenCode authentication still happens outside CUT3 through `opencode auth login`, and new OpenCode sessions now inherit that shared OpenRouter key as `OPENROUTER_API_KEY` when the OpenCode provider config expects it.
 - **OpenRouter free models**: review the current OpenRouter entries that are explicitly free-locked and compatible with CUT3's native tool-calling path (`tools` plus `tool_choice`), keep the built-in `openrouter/free` router handy, and pin any listed model into the picker.
 - **Custom model slugs**: save extra model ids for GitHub Copilot, OpenCode, Kimi, custom Codex models, or current OpenRouter `:free` slugs so they appear in the model picker and `/model` suggestions.
+- **Picker controls**: the chat composer now uses a searchable grouped model picker with direct `Connect provider` and `Manage models` actions.
+- **Model visibility**: hide or restore discovered and saved models without deleting them; hidden models are removed from both the picker and `/model` suggestions until you show them again.
 - **Codex service tier**: choose `Automatic`, `Fast`, or `Flex` as the default service tier for new Codex turns.
 - **Per-turn controls**: the composer exposes provider-aware reasoning controls, and Codex also supports a per-turn `Fast Mode` toggle.
 
-The chat model picker now shows OpenRouter as its own top-level section, with the built-in `openrouter/free` router plus the current OpenRouter `:free` models that CUT3 can safely use for native tool-calling turns.
+The chat model picker now shows OpenRouter as its own top-level section, with the built-in `openrouter/free` router plus the current OpenRouter `:free` models that CUT3 can safely use for native tool-calling turns. The picker is searchable, grouped by provider, and can open in-chat provider setup and model-management surfaces without sending you into Settings first.
 
 For the full details, see [.docs/provider-settings.md](.docs/provider-settings.md).
 

@@ -8,6 +8,7 @@
 - If a change affects user-visible behavior, settings, build steps, release steps, or developer workflows, update the relevant documentation in the same change as part of the implementation.
 - Treat stale docs as a bug. A task is not complete until `README.md`, `CONTRIBUTING.md`, `.docs/*`, `docs/*`, and any task-specific guides touched by the change are accurate.
 - Update `AGENTS.md` too when a task exposes a repeatable mistake, workflow correction, or durable lesson that should guide future work.
+- Keep developer docs aligned with the current `CUT3_*` dev-runner env names. `dev:web` and `dev:server` are expected to share one port offset per `CUT3_STATE_DIR`, so docs should not describe them as independently drifting port selections.
 - Keep provider availability claims in docs and onboarding copy aligned with `apps/web/src/session-logic.ts` and its tests.
 - Keep OpenCode auth UX aligned with the real CLI surface: credentials are managed via `opencode auth login/logout`, while CUT3 only inspects OpenCode state and forwards the shared OpenRouter key to new OpenCode sessions as `OPENROUTER_API_KEY` when configured.
 

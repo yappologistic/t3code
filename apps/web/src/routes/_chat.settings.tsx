@@ -64,7 +64,7 @@ const MODEL_PROVIDER_SETTINGS: Array<{
   {
     provider: "opencode",
     title: "OpenCode",
-    description: "Save additional OpenCode provider/model ids for the picker and `/model` command.",
+    description: "Save extra provider/model IDs for the picker and `/model`.",
     placeholder: "provider/model-id",
     example: "z-ai/glm-4.5",
   },
@@ -132,12 +132,12 @@ function getSettingsCopy(language: AppLanguage) {
       copilotBinaryPath: "مسیر باینری Copilot",
       leaveBlankCopilot: "برای استفاده از copilot از PATH این کادر را خالی بگذارید.",
       resetCopilotOverrides: "بازنشانی بازنویسی های Copilot",
-      opencodeTitle: "OpenCode CLI",
+      opencodeTitle: "OpenCode",
       opencodeDescription:
-        "این بازنویسی روی نشست های جدید OpenCode اعمال می شود و به شما اجازه می دهد از نصب غیرپیش فرض opencode استفاده کنید. اعتبارنامه های ارائه دهنده را بیرون از CUT3 با opencode auth login و opencode auth logout مدیریت کنید، پیکربندی معمول OpenCode را آماده نگه دارید، و اگر هر بخشی از پیکربندی ارائه دهنده OpenCode به OPENROUTER_API_KEY نیاز دارد کلید OpenRouter را در بخش بالایی CUT3 وارد کنید.",
-      opencodeBinaryPath: "مسیر باینری OpenCode",
+        "برای نشست های جدید OpenCode اعمال می شود و به CUT3 اجازه می دهد از نصب غیرپیش فرض opencode استفاده کند. اعتبارنامه ها را با opencode auth login و opencode auth logout مدیریت کنید، و اگر پیکربندی OpenCode شما به OPENROUTER_API_KEY نیاز دارد کلید OpenRouter را در بخش بالایی CUT3 وارد کنید.",
+      opencodeBinaryPath: "مسیر باینری",
       leaveBlankOpencode: "برای استفاده از opencode از PATH این کادر را خالی بگذارید.",
-      resetOpencodeOverrides: "بازنشانی بازنویسی های OpenCode",
+      resetOpencodeOverrides: "بازنشانی بازنویسی ها",
       kimiTitle: "Kimi Code CLI",
       kimiDescription:
         "این بازنویسی ها روی نشست های جدید Kimi Code اعمال می شوند. با دستور curl -LsSf https://code.kimi.com/install.sh | bash نصب کنید و یک کلید API Kimi Code اضافه کنید تا CUT3 بتواند نشست های Kimi را مستقیم اجرا کند.",
@@ -202,8 +202,7 @@ function getSettingsCopy(language: AppLanguage) {
         },
         opencode: {
           title: "OpenCode",
-          description:
-            "شناسه های provider/model اضافی OpenCode را برای انتخابگر و دستور /model ذخیره کنید.",
+          description: "شناسه های provider/model اضافی را برای انتخابگر و دستور /model ذخیره کنید.",
         },
         kimi: {
           title: "Kimi Code",
@@ -308,12 +307,12 @@ function getSettingsCopy(language: AppLanguage) {
     copilotBinaryPath: "Copilot binary path",
     leaveBlankCopilot: "Leave blank to use copilot from your PATH.",
     resetCopilotOverrides: "Reset copilot overrides",
-    opencodeTitle: "OpenCode CLI",
+    opencodeTitle: "OpenCode",
     opencodeDescription:
-      "This override applies to new OpenCode sessions and lets you use a non-default opencode install. Manage provider credentials outside CUT3 with `opencode auth login` and `opencode auth logout`, keep your normal OpenCode config ready, and set the top-level OpenRouter key in CUT3 if any OpenCode provider config expects `OPENROUTER_API_KEY`.",
-    opencodeBinaryPath: "OpenCode binary path",
+      "Applies to new OpenCode sessions and lets CUT3 use a non-default `opencode` install. Manage credentials with `opencode auth login` and `opencode auth logout`, and add the top-level OpenRouter key in CUT3 if your OpenCode config expects `OPENROUTER_API_KEY`.",
+    opencodeBinaryPath: "Binary path",
     leaveBlankOpencode: "Leave blank to use opencode from your PATH.",
-    resetOpencodeOverrides: "Reset OpenCode overrides",
+    resetOpencodeOverrides: "Reset overrides",
     kimiTitle: "Kimi Code CLI",
     kimiDescription:
       "These overrides apply to new Kimi Code sessions. Install with curl -LsSf https://code.kimi.com/install.sh | bash and add a Kimi Code API key to let CUT3 start Kimi sessions directly.",
@@ -377,8 +376,7 @@ function getSettingsCopy(language: AppLanguage) {
       },
       opencode: {
         title: "OpenCode",
-        description:
-          "Save additional OpenCode provider/model ids for the picker and /model command.",
+        description: "Save extra provider/model IDs for the picker and /model.",
       },
       kimi: {
         title: "Kimi Code",
