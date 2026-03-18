@@ -365,10 +365,11 @@ function buildProviderOptionsForDispatch(input: {
           }
         : undefined;
     case "opencode":
-      return opencodeBinaryPath
+      return opencodeBinaryPath || openRouterApiKey
         ? {
             opencode: {
-              binaryPath: opencodeBinaryPath,
+              ...(opencodeBinaryPath ? { binaryPath: opencodeBinaryPath } : {}),
+              ...(openRouterApiKey ? { openRouterApiKey } : {}),
             },
           }
         : undefined;

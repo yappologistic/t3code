@@ -134,7 +134,7 @@ function getSettingsCopy(language: AppLanguage) {
       resetCopilotOverrides: "بازنشانی بازنویسی های Copilot",
       opencodeTitle: "OpenCode CLI",
       opencodeDescription:
-        "این بازنویسی روی نشست های جدید OpenCode اعمال می شود و به شما اجازه می دهد از نصب غیرپیش فرض opencode استفاده کنید. پیش از شروع نشست های جدید، با opencode auth login وارد شوید و پیکربندی معمول OpenCode را آماده نگه دارید. توجه: برخی ارائه دهندگان مانند MiniMax از طریق OpenRouter مسیریابی می شوند و برای کار کردن به یک کلید API OpenRouter با اعتبار نیاز دارند.",
+        "این بازنویسی روی نشست های جدید OpenCode اعمال می شود و به شما اجازه می دهد از نصب غیرپیش فرض opencode استفاده کنید. اعتبارنامه های ارائه دهنده را بیرون از CUT3 با opencode auth login و opencode auth logout مدیریت کنید، پیکربندی معمول OpenCode را آماده نگه دارید، و اگر هر بخشی از پیکربندی ارائه دهنده OpenCode به OPENROUTER_API_KEY نیاز دارد کلید OpenRouter را در بخش بالایی CUT3 وارد کنید.",
       opencodeBinaryPath: "مسیر باینری OpenCode",
       leaveBlankOpencode: "برای استفاده از opencode از PATH این کادر را خالی بگذارید.",
       resetOpencodeOverrides: "بازنشانی بازنویسی های OpenCode",
@@ -310,7 +310,7 @@ function getSettingsCopy(language: AppLanguage) {
     resetCopilotOverrides: "Reset copilot overrides",
     opencodeTitle: "OpenCode CLI",
     opencodeDescription:
-      "This override applies to new OpenCode sessions and lets you use a non-default opencode install. Run `opencode auth login` and keep your normal OpenCode provider configuration ready before starting new sessions. Note: Some providers like MiniMax route through OpenRouter and require an OpenRouter API key with credits to work.",
+      "This override applies to new OpenCode sessions and lets you use a non-default opencode install. Manage provider credentials outside CUT3 with `opencode auth login` and `opencode auth logout`, keep your normal OpenCode config ready, and set the top-level OpenRouter key in CUT3 if any OpenCode provider config expects `OPENROUTER_API_KEY`.",
     opencodeBinaryPath: "OpenCode binary path",
     leaveBlankOpencode: "Leave blank to use opencode from your PATH.",
     resetOpencodeOverrides: "Reset OpenCode overrides",

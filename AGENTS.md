@@ -9,6 +9,7 @@
 - Treat stale docs as a bug. A task is not complete until `README.md`, `CONTRIBUTING.md`, `.docs/*`, `docs/*`, and any task-specific guides touched by the change are accurate.
 - Update `AGENTS.md` too when a task exposes a repeatable mistake, workflow correction, or durable lesson that should guide future work.
 - Keep provider availability claims in docs and onboarding copy aligned with `apps/web/src/session-logic.ts` and its tests.
+- Keep OpenCode auth UX aligned with the real CLI surface: credentials are managed via `opencode auth login/logout`, while CUT3 only inspects OpenCode state and forwards the shared OpenRouter key to new OpenCode sessions as `OPENROUTER_API_KEY` when configured.
 
 ## Project Snapshot
 

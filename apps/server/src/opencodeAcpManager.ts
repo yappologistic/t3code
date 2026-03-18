@@ -88,6 +88,7 @@ export interface OpenCodeAcpManagerEvents {
 
 const OPENCODE_ACP_INITIALIZE_TIMEOUT_MS = 10_000;
 const OPENCODE_ACP_SESSION_START_TIMEOUT_MS = 10_000;
+const OPENROUTER_ENV_KEY = "OPENROUTER_API_KEY";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -175,9 +176,15 @@ function mergeOpenCodeConfig(
 
 export function buildOpenCodeCliEnv(input: {
   readonly runtimeMode: ProviderSession["runtimeMode"];
+  readonly openRouterApiKey?: string;
   readonly baseEnv?: NodeJS.ProcessEnv;
 }): NodeJS.ProcessEnv {
   const env = { ...(input.baseEnv ?? process.env) };
+  const openRouterApiKey = input.openRouterApiKey?.trim();
+  if (openRouterApiKey) {
+    env[OPENROUTER_ENV_KEY] = openRouterApiKey;
+  }
+
   const runtimeConfig = buildOpenCodeRuntimeConfig(input.runtimeMode);
   if (Object.keys(runtimeConfig).length === 0) {
     return env;
@@ -192,6 +199,10 @@ export function buildOpenCodeCliEnv(input: {
 }
 
 export function normalizeOpenCodeStartErrorMessage(rawMessage: string): string {
+  if (/missing environment variable:\s*['"]?OPENROUTER_API_KEY['"]?/i.test(rawMessage)) {
+    return "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in CUT3 Settings or export OPENROUTER_API_KEY before starting CUT3.";
+  }
+
   if (
     /auth[_ ]required|authentication required|not logged in|run `?opencode auth login`?|loadapi key error|api key/i.test(
       rawMessage,
@@ -610,7 +621,12 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
 
     const opencodeBinaryPath = input.providerOptions?.opencode?.binaryPath ?? "opencode";
     const args = buildOpenCodeCliArgs({ cwd: resolvedCwd });
-    const env = buildOpenCodeCliEnv({ runtimeMode: input.runtimeMode });
+    const env = buildOpenCodeCliEnv({
+      runtimeMode: input.runtimeMode,
+      ...(input.providerOptions?.opencode?.openRouterApiKey
+        ? { openRouterApiKey: input.providerOptions.opencode.openRouterApiKey }
+        : {}),
+    });
 
     const child = spawn(opencodeBinaryPath, args, {
       cwd: resolvedCwd,

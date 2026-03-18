@@ -40,6 +40,7 @@ The **Providers** section supports local overrides for each provider runtime:
 - **OpenCode**
   - Custom binary path
   - Authentication stays in OpenCode itself via `opencode auth login`; CUT3 does not store OpenCode credentials in this phase
+  - When the top-level CUT3 OpenRouter key is set, new OpenCode sessions also inherit it as `OPENROUTER_API_KEY` so OpenCode provider configs can reference it through `{env:OPENROUTER_API_KEY}`
 - **Kimi Code**
   - Custom binary path
   - Optional API key stored locally and injected into new Kimi CLI sessions

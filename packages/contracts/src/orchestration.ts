@@ -55,6 +55,7 @@ const CopilotProviderStartOptions = Schema.Struct({
 });
 const OpenCodeProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
+  openRouterApiKey: Schema.optional(TrimmedNonEmptyString),
 });
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;

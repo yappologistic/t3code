@@ -307,38 +307,11 @@ async function addOpenCodeCredential(
 ): Promise<ServerOpenCodeCredentialResult> {
   const binaryPath = rawInput.binaryPath?.trim() || DEFAULT_BINARY_PATH;
   const provider = rawInput.provider.trim();
-  const apiKey = rawInput.apiKey.trim();
 
-  try {
-    const result = await runCliCommand({
-      command: binaryPath,
-      args: ["auth", "add", provider, apiKey],
-      cwd: process.cwd(),
-      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-    });
-
-    if (result.timedOut) {
-      return { success: false, message: "Adding credential timed out." };
-    }
-
-    if (result.code !== 0) {
-      const detail = detailFromResult(result);
-      return {
-        success: false,
-        message: detail ? `Failed to add credential: ${detail}` : "Failed to add credential.",
-      };
-    }
-
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? `Failed to add credential: ${error.message}`
-          : "Failed to add credential.",
-    };
-  }
+  return {
+    success: false,
+    message: `OpenCode credential setup is interactive in current CLI builds. Run \`${binaryPath} auth login -p ${provider}\` in a terminal and enter the credential there.`,
+  };
 }
 
 async function removeOpenCodeCredential(
@@ -347,36 +320,10 @@ async function removeOpenCodeCredential(
   const binaryPath = rawInput.binaryPath?.trim() || DEFAULT_BINARY_PATH;
   const provider = rawInput.provider.trim();
 
-  try {
-    const result = await runCliCommand({
-      command: binaryPath,
-      args: ["auth", "remove", provider],
-      cwd: process.cwd(),
-      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-    });
-
-    if (result.timedOut) {
-      return { success: false, message: "Removing credential timed out." };
-    }
-
-    if (result.code !== 0) {
-      const detail = detailFromResult(result);
-      return {
-        success: false,
-        message: detail ? `Failed to remove credential: ${detail}` : "Failed to remove credential.",
-      };
-    }
-
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? `Failed to remove credential: ${error.message}`
-          : "Failed to remove credential.",
-    };
-  }
+  return {
+    success: false,
+    message: `OpenCode credential removal is interactive in current CLI builds. Run \`${binaryPath} auth logout\` in a terminal and choose ${provider}.`,
+  };
 }
 
 export const OpenCodeStateLive = Layer.succeed(OpenCodeState, {

@@ -50,6 +50,23 @@ describe("opencodeAcpManager startup", () => {
     expect(buildOpenCodeCliArgs({ cwd: "/tmp/project" })).toEqual(["acp", "--cwd", "/tmp/project"]);
   });
 
+  it("injects OPENROUTER_API_KEY into the OpenCode subprocess env when provided", () => {
+    expect(
+      buildOpenCodeCliEnv({
+        runtimeMode: "full-access",
+        openRouterApiKey: "sk-or-secret",
+        baseEnv: {
+          PATH: "/usr/bin",
+          HOME: "/tmp/home",
+        },
+      }),
+    ).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/tmp/home",
+      OPENROUTER_API_KEY: "sk-or-secret",
+    });
+  });
+
   it("preserves unrelated env vars for full-access sessions", () => {
     expect(
       buildOpenCodeCliEnv({
@@ -88,6 +105,14 @@ describe("opencodeAcpManager startup", () => {
 });
 
 describe("opencodeAcpManager errors", () => {
+  it("rewrites missing OPENROUTER_API_KEY errors with actionable guidance", () => {
+    expect(
+      normalizeOpenCodeStartErrorMessage("Missing environment variable: 'OPENROUTER_API_KEY'."),
+    ).toBe(
+      "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in CUT3 Settings or export OPENROUTER_API_KEY before starting CUT3.",
+    );
+  });
+
   it("normalizes authentication errors into a login message", () => {
     expect(normalizeOpenCodeStartErrorMessage("Authentication required")).toBe(
       "OpenCode requires authentication. Run `opencode auth login` and try again.",

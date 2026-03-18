@@ -279,7 +279,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "OpenCode CLI is ready. Connect a provider in Settings to unlock additional models, or keep using the default OpenCode-free catalog.",
+          "OpenCode CLI is ready. Run `opencode auth login` to add provider credentials, or keep using the default OpenCode-free catalog.",
         );
       }).pipe(
         Effect.provide(

@@ -1607,6 +1607,122 @@ describe("WebSocket Server", () => {
     });
   });
 
+  it("passes transient OpenRouter provider options to live OpenCode session startup", async () => {
+    const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
+    const startSession = vi.fn((threadId: ThreadId, rawInput: unknown) => {
+      const input = rawInput as {
+        runtimeMode?: "approval-required" | "full-access";
+      };
+      return Effect.succeed({
+        provider: "opencode" as const,
+        status: "ready" as const,
+        runtimeMode: input.runtimeMode ?? "full-access",
+        threadId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    });
+    const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
+    const providerService: ProviderServiceShape = {
+      startSession,
+      sendTurn: ({ threadId }) =>
+        Effect.succeed({
+          threadId,
+          turnId: asTurnId("provider-turn-opencode-1"),
+        }),
+      interruptTurn: () => unsupported(),
+      respondToRequest: () => unsupported(),
+      respondToUserInput: () => unsupported(),
+      stopSession: () => unsupported(),
+      listSessions: () => Effect.succeed([]),
+      getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
+      rollbackConversation: () => unsupported(),
+      streamEvents: Stream.fromPubSub(runtimeEventPubSub),
+    };
+
+    server = await createTestServer({
+      cwd: "/test",
+      providerLayer: Layer.succeed(ProviderService, providerService),
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const workspaceRoot = makeTempDir("cut3-ws-opencode-project-");
+    const createdAt = new Date().toISOString();
+    const createProjectResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "project.create",
+      commandId: "cmd-ws-opencode-project-create",
+      projectId: "project-opencode",
+      title: "WS OpenCode Project",
+      workspaceRoot,
+      defaultModel: "minimax-coding-plan/MiniMax-M2.7",
+      createdAt,
+    });
+    expect(createProjectResponse.error).toBeUndefined();
+
+    const createThreadResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.create",
+      commandId: "cmd-ws-opencode-thread-create",
+      threadId: "thread-opencode",
+      projectId: "project-opencode",
+      title: "OpenCode Thread",
+      model: "minimax-coding-plan/MiniMax-M2.7",
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt,
+    });
+    expect(createThreadResponse.error).toBeUndefined();
+
+    const startTurnResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.turn.start",
+      commandId: "cmd-ws-opencode-turn-start",
+      threadId: "thread-opencode",
+      message: {
+        messageId: "msg-ws-opencode-1",
+        role: "user",
+        text: "hello opencode",
+        attachments: [],
+      },
+      provider: "opencode",
+      model: "minimax-coding-plan/MiniMax-M2.7",
+      providerOptions: {
+        opencode: {
+          binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-test-secret",
+        },
+      },
+      assistantDeliveryMode: "streaming",
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      createdAt,
+    });
+    expect(startTurnResponse.error).toBeUndefined();
+
+    await waitForPush(ws, ORCHESTRATION_WS_CHANNELS.domainEvent, (push) => {
+      const event = push.data as { type?: string };
+      return event.type === "thread.session-set";
+    });
+
+    expect(startSession).toHaveBeenCalledTimes(1);
+    expect(startSession.mock.calls[0]?.[0]).toBe("thread-opencode");
+    expect(startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "opencode",
+      model: "minimax-coding-plan/MiniMax-M2.7",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        opencode: {
+          binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-test-secret",
+        },
+      },
+    });
+  });
+
   it("routes terminal RPC methods and broadcasts terminal events", async () => {
     const cwd = makeTempDir("cut3-ws-terminal-cwd-");
     const terminalManager = new MockTerminalManager();

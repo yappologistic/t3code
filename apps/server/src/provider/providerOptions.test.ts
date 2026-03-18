@@ -28,6 +28,7 @@ describe("sanitizeProviderOptionsForPersistence", () => {
       sanitizeProviderOptionsForPersistence({
         opencode: {
           binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-secret",
         },
       }),
     ).toEqual({
@@ -61,6 +62,7 @@ describe("sanitizeProviderOptionsRecordForPersistence", () => {
       sanitizeProviderOptionsRecordForPersistence({
         opencode: {
           binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-secret",
         },
       }),
     ).toEqual({
