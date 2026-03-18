@@ -972,6 +972,7 @@ describe("PROVIDER_OPTIONS", () => {
       { value: "openrouter", label: "OpenRouter", available: true },
       { value: "copilot", label: "GitHub Copilot", available: true },
       { value: "kimi", label: "Kimi Code", available: true },
+      { value: "opencode", label: "OpenCode", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);
@@ -994,6 +995,7 @@ describe("getProviderPickerBackingProvider", () => {
     expect(getProviderPickerBackingProvider("openrouter")).toBe("codex");
     expect(getProviderPickerBackingProvider("copilot")).toBe("copilot");
     expect(getProviderPickerBackingProvider("kimi")).toBe("kimi");
+    expect(getProviderPickerBackingProvider("opencode")).toBe("opencode");
     expect(getProviderPickerBackingProvider("claudeCode")).toBeNull();
   });
 });
@@ -1003,5 +1005,6 @@ describe("getProviderPickerKindForSelection", () => {
     expect(getProviderPickerKindForSelection("codex", "openrouter/free")).toBe("openrouter");
     expect(getProviderPickerKindForSelection("codex", "gpt-5")).toBe("codex");
     expect(getProviderPickerKindForSelection("copilot", "claude-sonnet-4.6")).toBe("copilot");
+    expect(getProviderPickerKindForSelection("opencode", "opencode/default")).toBe("opencode");
   });
 });

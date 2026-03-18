@@ -46,9 +46,9 @@ Use the matching host OS when possible. Cross-platform packaging is not the defa
 
 ## After startup
 
-- Open **Settings** to configure appearance, including theme presets, per-mode palette/font controls, an English/Persian language switch, and an optional chat background image, plus provider binary overrides, OpenRouter and Kimi API keys, and model preferences.
+- Open **Settings** to configure appearance, including theme presets, per-mode palette/font controls, an English/Persian language switch, and an optional chat background image, plus provider binary overrides, OpenRouter and Kimi API keys, OpenCode binary selection, and model preferences.
 - Use the **OpenRouter Free Models** card in Settings to review the current OpenRouter catalog entries that are both free-locked and CUT3-compatible, then pin any of them into the picker.
-- Save extra GitHub Copilot, Kimi, custom Codex ids, or currently listed OpenRouter `:free` model ids if you want them in the picker and `/model` suggestions.
+- Save extra GitHub Copilot, OpenCode, Kimi, custom Codex ids, or currently listed OpenRouter `:free` model ids if you want them in the picker and `/model` suggestions.
 - For Codex, choose a default service tier in Settings, use the top-level OpenRouter section in the model picker when you want `openrouter/free` or another current free OpenRouter model, and adjust reasoning / `Fast Mode` per turn from the composer. OpenRouter models can advertise reasoning support, but CUT3 does not expose Codex-specific reasoning-effort levels for them. If CUT3 has to retry a pinned OpenRouter free model through `openrouter/free`, the chat shows a warning banner instead of switching silently.
 - Pick `Full access` or `Supervised` in the toolbar depending on whether you want direct execution or approval-gated actions.
 - Switch between `Chat` and `Plan` when you want plan-first collaboration with the plan sidebar.

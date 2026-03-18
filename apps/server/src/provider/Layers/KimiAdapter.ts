@@ -1,13 +1,8 @@
-import { type ProviderRuntimeEvent, type ProviderUserInputAnswers } from "@t3tools/contracts";
-import { Effect, Layer, Queue, ServiceMap, Stream } from "effect";
+import { type ProviderUserInputAnswers } from "@t3tools/contracts";
+import { Effect, Layer, ServiceMap } from "effect";
 
-import {
-  ProviderAdapterRequestError,
-  ProviderAdapterSessionClosedError,
-  ProviderAdapterSessionNotFoundError,
-  type ProviderAdapterError,
-} from "../Errors.ts";
 import { KimiAcpManager } from "../../kimiAcpManager.ts";
+import { createAcpEventStream, toAcpRequestError } from "../acpAdapterSupport.ts";
 import { KimiAdapter, type KimiAdapterShape } from "../Services/KimiAdapter.ts";
 
 const PROVIDER = "kimi" as const;
@@ -17,61 +12,21 @@ export interface KimiAdapterLiveOptions {
   readonly makeManager?: (services?: ServiceMap.ServiceMap<never>) => KimiAcpManager;
 }
 
-function toMessage(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.length > 0) {
-    return cause.message;
-  }
-  return fallback;
-}
-
-function toSessionError(
-  threadId: string,
-  cause: unknown,
-): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
-  const normalized = toMessage(cause, "").toLowerCase();
-  if (normalized.includes("unknown kimi session")) {
-    return new ProviderAdapterSessionNotFoundError({
-      provider: PROVIDER,
-      threadId,
-      cause,
-    });
-  }
-  if (normalized.includes("session is closed")) {
-    return new ProviderAdapterSessionClosedError({
-      provider: PROVIDER,
-      threadId,
-      cause,
-    });
-  }
-  return undefined;
-}
-
-function toRequestError(threadId: string, method: string, cause: unknown): ProviderAdapterError {
-  const sessionError = toSessionError(threadId, cause);
-  if (sessionError) {
-    return sessionError;
-  }
-  return new ProviderAdapterRequestError({
-    provider: PROVIDER,
-    method,
-    detail: toMessage(cause, `${method} failed`),
-    cause,
-  });
-}
-
 export const makeKimiAdapterLive = (options?: KimiAdapterLiveOptions) =>
   Layer.effect(
     KimiAdapter,
     Effect.gen(function* () {
-      const eventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
       const manager = options?.manager ?? options?.makeManager?.() ?? new KimiAcpManager();
+      const toRequestError = (threadId: string, method: string, cause: unknown) =>
+        toAcpRequestError({
+          provider: PROVIDER,
+          threadId,
+          method,
+          cause,
+          unknownSessionNeedle: "unknown kimi session",
+        });
 
-      const handleEvent = (event: ProviderRuntimeEvent) => {
-        void Effect.runPromise(Queue.offer(eventQueue, event).pipe(Effect.asVoid));
-      };
-      manager.on("event", handleEvent);
-
-      const streamEvents = Stream.fromQueue(eventQueue);
+      const streamEvents = yield* createAcpEventStream(manager);
 
       const startSession: KimiAdapterShape["startSession"] = (input) =>
         Effect.tryPromise({

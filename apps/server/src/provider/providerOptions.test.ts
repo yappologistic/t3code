@@ -22,6 +22,21 @@ describe("sanitizeProviderOptionsForPersistence", () => {
       },
     });
   });
+
+  it("persists the OpenCode binary override without adding extra fields", () => {
+    expect(
+      sanitizeProviderOptionsForPersistence({
+        opencode: {
+          binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-secret",
+        },
+      }),
+    ).toEqual({
+      opencode: {
+        binaryPath: "/tmp/opencode",
+      },
+    });
+  });
 });
 
 describe("sanitizeProviderOptionsRecordForPersistence", () => {
@@ -38,6 +53,21 @@ describe("sanitizeProviderOptionsRecordForPersistence", () => {
       codex: {
         binaryPath: "/tmp/codex",
         homePath: "/tmp/.codex",
+      },
+    });
+  });
+
+  it("keeps trusted OpenCode binary overrides from runtime payloads", () => {
+    expect(
+      sanitizeProviderOptionsRecordForPersistence({
+        opencode: {
+          binaryPath: "/tmp/opencode",
+          openRouterApiKey: "sk-or-secret",
+        },
+      }),
+    ).toEqual({
+      opencode: {
+        binaryPath: "/tmp/opencode",
       },
     });
   });

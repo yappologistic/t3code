@@ -45,6 +45,64 @@ export const ServerProviderStatus = Schema.Struct({
 export type ServerProviderStatus = typeof ServerProviderStatus.Type;
 
 const ServerProviderStatuses = Schema.Array(ServerProviderStatus);
+export const ServerOpenCodeCredentialAuthType = Schema.Literals([
+  "api",
+  "oauth",
+  "wellknown",
+  "unknown",
+]);
+export type ServerOpenCodeCredentialAuthType = typeof ServerOpenCodeCredentialAuthType.Type;
+
+export const ServerOpenCodeCredential = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  authType: ServerOpenCodeCredentialAuthType,
+});
+export type ServerOpenCodeCredential = typeof ServerOpenCodeCredential.Type;
+
+const ServerOpenCodeCredentials = Schema.Array(ServerOpenCodeCredential);
+
+export const ServerOpenCodeModel = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  providerId: TrimmedNonEmptyString,
+  modelId: TrimmedNonEmptyString,
+});
+export type ServerOpenCodeModel = typeof ServerOpenCodeModel.Type;
+
+const ServerOpenCodeModels = Schema.Array(ServerOpenCodeModel);
+
+export const ServerOpenCodeStateInput = Schema.Struct({
+  cwd: Schema.optional(TrimmedNonEmptyString),
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  refreshModels: Schema.optional(Schema.Boolean),
+});
+export type ServerOpenCodeStateInput = typeof ServerOpenCodeStateInput.Type;
+
+const ServerOpenCodeStateAvailable = Schema.Struct({
+  status: Schema.Literal("available"),
+  fetchedAt: IsoDateTime,
+  checkedCwd: TrimmedNonEmptyString,
+  binaryPath: TrimmedNonEmptyString,
+  credentials: ServerOpenCodeCredentials,
+  models: ServerOpenCodeModels,
+  message: Schema.optional(TrimmedNonEmptyString),
+});
+
+const ServerOpenCodeStateUnavailable = Schema.Struct({
+  status: Schema.Literal("unavailable"),
+  fetchedAt: IsoDateTime,
+  checkedCwd: TrimmedNonEmptyString,
+  binaryPath: TrimmedNonEmptyString,
+  credentials: ServerOpenCodeCredentials,
+  models: ServerOpenCodeModels,
+  message: TrimmedNonEmptyString,
+});
+
+export const ServerOpenCodeState = Schema.Union([
+  ServerOpenCodeStateAvailable,
+  ServerOpenCodeStateUnavailable,
+]);
+export type ServerOpenCodeState = typeof ServerOpenCodeState.Type;
+
 const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
 export const ServerMcpServerStatusState = Schema.Literals(["enabled", "disabled"]);
 export type ServerMcpServerStatusState = typeof ServerMcpServerStatusState.Type;
@@ -164,3 +222,22 @@ export const ServerConfigUpdatedPayload = Schema.Struct({
   providers: ServerProviderStatuses,
 });
 export type ServerConfigUpdatedPayload = typeof ServerConfigUpdatedPayload.Type;
+
+export const ServerOpenCodeAddCredentialInput = Schema.Struct({
+  provider: TrimmedNonEmptyString,
+  apiKey: TrimmedNonEmptyString,
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerOpenCodeAddCredentialInput = typeof ServerOpenCodeAddCredentialInput.Type;
+
+export const ServerOpenCodeRemoveCredentialInput = Schema.Struct({
+  provider: TrimmedNonEmptyString,
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerOpenCodeRemoveCredentialInput = typeof ServerOpenCodeRemoveCredentialInput.Type;
+
+export const ServerOpenCodeCredentialResult = Schema.Struct({
+  success: Schema.Boolean,
+  message: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerOpenCodeCredentialResult = typeof ServerOpenCodeCredentialResult.Type;

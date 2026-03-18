@@ -54,7 +54,12 @@ export type AppServiceTier = (typeof APP_SERVICE_TIER_OPTIONS)[number]["value"];
 const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
 const CustomThemeIdSchema = Schema.Literals(CUSTOM_THEME_IDS);
 const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
-const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>(["codex", "copilot", "kimi"]);
+const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>([
+  "codex",
+  "copilot",
+  "kimi",
+  "opencode",
+]);
 const AppearanceThemeConfigSchema = Schema.Struct({
   accent: Schema.String.check(Schema.isMaxLength(32)),
   background: Schema.String.check(Schema.isMaxLength(32)),
@@ -68,6 +73,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
   kimi: new Set(getModelOptions("kimi").map((option) => option.slug)),
+  opencode: new Set(getModelOptions("opencode").map((option) => option.slug)),
 };
 
 const AppSettingsSchema = Schema.Struct({
@@ -81,6 +87,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some("")),
   ),
   copilotBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  opencodeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withConstructorDefault(() => Option.some("")),
   ),
   kimiBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
@@ -142,6 +151,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   customCopilotModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  customOpencodeModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   customKimiModels: Schema.Array(Schema.String).pipe(
@@ -253,6 +265,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     usePointerCursors: Boolean(settings.usePointerCursors),
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
+    customOpencodeModels: normalizeCustomModelSlugs(settings.customOpencodeModels, "opencode"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
   };
 }

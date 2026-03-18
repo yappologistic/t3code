@@ -4,7 +4,7 @@
   <img src="./CUT3.png" alt="CUT3" width="144" />
 </p>
 
-CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub Copilot, and Kimi Code. Claude Code and Cursor remain visible in the provider picker as unavailable placeholders.
+CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub Copilot, OpenCode, and Kimi Code. Claude Code and Cursor remain visible in the provider picker as unavailable placeholders.
 
 ## Screenshot
 
@@ -14,6 +14,7 @@ CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub
 
 - Codex
 - GitHub Copilot
+- OpenCode
 - Kimi Code
 
 Claude Code and Cursor are intentionally shown in the provider picker as unavailable placeholders. They are not wired up for sessions yet.
@@ -25,6 +26,7 @@ Claude Code and Cursor are intentionally shown in the provider picker as unavail
 >
 > - [Codex CLI](https://github.com/openai/codex)
 > - [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/use-copilot-agents/coding-agent/using-the-github-copilot-coding-agent-in-the-cli)
+> - [OpenCode CLI](https://opencode.ai/docs)
 > - [Kimi Code CLI](https://www.kimi.com/code/docs/en/)
 
 ```bash
@@ -43,7 +45,7 @@ If this fork does not currently publish desktop releases, build one locally with
 
 Published CUT3 builds are listed on the [CUT3 Releases page](https://github.com/yappologistic/t3code/releases).
 
-Once the app is running, choose Codex, GitHub Copilot, or Kimi Code from the provider picker before starting a session.
+Once the app is running, choose Codex, GitHub Copilot, OpenCode, or Kimi Code from the provider picker before starting a session.
 
 ## Build your own desktop release
 
@@ -82,9 +84,9 @@ Open Settings in the app to configure provider-specific behavior on the current 
 
 - **Appearance**: choose the base light/dark/system mode, switch to integrated presets like Lilac, and configure a custom chat background image with adjustable fade and blur.
 - **Language**: switch the settings experience and shared app shell between English and Persian. Persian also flips document direction and locale-aware time/date formatting in the web UI.
-- **Provider overrides**: set custom binary paths for Codex, Copilot, or Kimi, plus an optional Codex home path, an OpenRouter API key for Codex, and a Kimi API key.
+- **Provider overrides**: set custom binary paths for Codex, Copilot, OpenCode, or Kimi, plus an optional Codex home path, a shared OpenRouter API key, and a Kimi API key. OpenCode authentication still happens outside CUT3 through `opencode auth login`, and new OpenCode sessions now inherit that shared OpenRouter key as `OPENROUTER_API_KEY` when the OpenCode provider config expects it.
 - **OpenRouter free models**: review the current OpenRouter entries that are explicitly free-locked and compatible with CUT3's native tool-calling path (`tools` plus `tool_choice`), keep the built-in `openrouter/free` router handy, and pin any listed model into the picker.
-- **Custom model slugs**: save extra model ids for GitHub Copilot, Kimi, custom Codex models, or current OpenRouter `:free` slugs so they appear in the model picker and `/model` suggestions.
+- **Custom model slugs**: save extra model ids for GitHub Copilot, OpenCode, Kimi, custom Codex models, or current OpenRouter `:free` slugs so they appear in the model picker and `/model` suggestions.
 - **Codex service tier**: choose `Automatic`, `Fast`, or `Flex` as the default service tier for new Codex turns.
 - **Per-turn controls**: the composer exposes provider-aware reasoning controls, and Codex also supports a per-turn `Fast Mode` toggle.
 
@@ -107,6 +109,7 @@ For the full details, see [.docs/runtime-modes.md](.docs/runtime-modes.md).
 
 - [Codex prerequisites](.docs/codex-prerequisites.md)
 - [Desktop architecture and verification](apps/desktop/README.md)
+- [GLM and MiniMax support plan](.docs/glm-minimax-support-plan.md)
 - [Quick start](.docs/quick-start.md)
 - [Runtime modes](.docs/runtime-modes.md)
 

@@ -27,7 +27,7 @@ export const ORCHESTRATION_WS_CHANNELS = {
   domainEvent: "orchestration.domainEvent",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "copilot", "kimi"]);
+export const ProviderKind = Schema.Literals(["codex", "copilot", "kimi", "opencode"]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -52,6 +52,10 @@ const CodexProviderStartOptions = Schema.Struct({
 });
 const CopilotProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
+const OpenCodeProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  openRouterApiKey: Schema.optional(TrimmedNonEmptyString),
 });
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
@@ -82,6 +86,7 @@ export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   copilot: Schema.optional(CopilotProviderStartOptions),
   kimi: Schema.optional(KimiProviderStartOptions),
+  opencode: Schema.optional(OpenCodeProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;

@@ -60,6 +60,11 @@ import {
   ServerCopilotReasoningProbe,
   ServerCopilotReasoningProbeInput,
   ServerCopilotUsage,
+  ServerOpenCodeAddCredentialInput,
+  ServerOpenCodeCredentialResult,
+  ServerOpenCodeRemoveCredentialInput,
+  ServerOpenCodeState,
+  ServerOpenCodeStateInput,
   ServerUpsertKeybindingResult,
 } from "./server";
 
@@ -101,7 +106,10 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverGetCopilotUsage: "server.getCopilotUsage",
   serverProbeCopilotReasoning: "server.probeCopilotReasoning",
+  serverGetOpenCodeState: "server.getOpenCodeState",
   serverUpsertKeybinding: "server.upsertKeybinding",
+  serverAddOpenCodeCredential: "server.addOpenCodeCredential",
+  serverRemoveOpenCodeCredential: "server.removeOpenCodeCredential",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -167,7 +175,10 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverGetCopilotUsage, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverProbeCopilotReasoning, ServerCopilotReasoningProbeInput),
+  tagRequestBody(WS_METHODS.serverGetOpenCodeState, ServerOpenCodeStateInput),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
+  tagRequestBody(WS_METHODS.serverAddOpenCodeCredential, ServerOpenCodeAddCredentialInput),
+  tagRequestBody(WS_METHODS.serverRemoveOpenCodeCredential, ServerOpenCodeRemoveCredentialInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({
@@ -290,7 +301,10 @@ export const WsRpcResultSchemaByMethod = {
   [WS_METHODS.serverGetConfig]: ServerConfig,
   [WS_METHODS.serverGetCopilotUsage]: ServerCopilotUsage,
   [WS_METHODS.serverProbeCopilotReasoning]: ServerCopilotReasoningProbe,
+  [WS_METHODS.serverGetOpenCodeState]: ServerOpenCodeState,
   [WS_METHODS.serverUpsertKeybinding]: ServerUpsertKeybindingResult,
+  [WS_METHODS.serverAddOpenCodeCredential]: ServerOpenCodeCredentialResult,
+  [WS_METHODS.serverRemoveOpenCodeCredential]: ServerOpenCodeCredentialResult,
 } as const;
 
 export type WsRpcMethod = keyof typeof WsRpcResultSchemaByMethod;

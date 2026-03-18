@@ -76,6 +76,19 @@ describe("TerminalOpenInput", () => {
     });
   });
 
+  it("accepts direct command launch settings", () => {
+    const parsed = decodeSync(TerminalOpenInput, {
+      threadId: "thread-1",
+      cwd: "/tmp/project",
+      cols: 100,
+      rows: 24,
+      command: "/usr/local/bin/opencode",
+      args: ["auth", "login"],
+    });
+    expect(parsed.command).toBe("/usr/local/bin/opencode");
+    expect(parsed.args).toEqual(["auth", "login"]);
+  });
+
   it("rejects invalid env keys", () => {
     expect(
       decodes(TerminalOpenInput, {

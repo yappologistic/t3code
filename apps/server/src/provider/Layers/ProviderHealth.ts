@@ -22,12 +22,14 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "../codexCliVersion";
+import { parseOpenCodeAuthListOutput } from "./OpenCodeState";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const COPILOT_PROVIDER = "copilot" as const;
 const KIMI_PROVIDER = "kimi" as const;
+const OPENCODE_PROVIDER = "opencode" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -51,6 +53,7 @@ function isCommandMissingCause(error: unknown): boolean {
     lower.includes("spawn codex enoent") ||
     lower.includes("spawn copilot enoent") ||
     lower.includes("spawn kimi enoent") ||
+    lower.includes("spawn opencode enoent") ||
     lower.includes("enoent") ||
     lower.includes("notfound")
   );
@@ -281,6 +284,7 @@ const runCliCommand = (commandName: string, args: ReadonlyArray<string>) =>
 const runCodexCommand = (args: ReadonlyArray<string>) => runCliCommand("codex", args);
 const runCopilotCommand = (args: ReadonlyArray<string>) => runCliCommand("copilot", args);
 const runKimiCommand = (args: ReadonlyArray<string>) => runCliCommand("kimi", args);
+const runOpenCodeCommand = (args: ReadonlyArray<string>) => runCliCommand("opencode", args);
 
 // ── Health check ────────────────────────────────────────────────────
 
@@ -557,13 +561,135 @@ export const checkKimiProviderStatus: Effect.Effect<
   };
 });
 
+export const checkOpenCodeProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runOpenCodeCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "OpenCode CLI (`opencode`) is not installed or not on PATH."
+        : `Failed to execute OpenCode CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "OpenCode CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `OpenCode CLI is installed but failed to run. ${detail}`
+        : "OpenCode CLI is installed but failed to run.",
+    };
+  }
+
+  const authProbe = yield* runOpenCodeCommand(["auth", "list"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(authProbe)) {
+    const error = authProbe.failure;
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "OpenCode CLI is ready, but the provider credential command is unavailable in this installation."
+        : `OpenCode CLI is ready, but provider credentials could not be checked: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(authProbe.success)) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        "OpenCode CLI is ready, but provider credentials could not be checked before the timeout.",
+    };
+  }
+
+  const authStatusResult = authProbe.success.value;
+  if (authStatusResult.code !== 0) {
+    const detail = detailFromResult(authStatusResult);
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `OpenCode CLI is ready, but provider credentials could not be checked. ${detail}`
+        : "OpenCode CLI is ready, but provider credentials could not be checked.",
+    };
+  }
+
+  const credentials = parseOpenCodeAuthListOutput(authStatusResult.stdout);
+
+  return {
+    provider: OPENCODE_PROVIDER,
+    status: "ready" as const,
+    available: true,
+    authStatus: credentials.length > 0 ? ("authenticated" as const) : ("unknown" as const),
+    checkedAt,
+    ...(credentials.length > 0
+      ? {
+          message: `OpenCode CLI is ready with ${credentials.length} stored provider credential${credentials.length === 1 ? "" : "s"}.`,
+        }
+      : {
+          message:
+            "OpenCode CLI is ready. Run `opencode auth login` to add provider credentials, or keep using the default OpenCode-free catalog.",
+        }),
+  };
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
     const providerStatusesFiber = yield* Effect.all(
-      [checkCodexProviderStatus, checkCopilotProviderStatus, checkKimiProviderStatus],
+      [
+        checkCodexProviderStatus,
+        checkCopilotProviderStatus,
+        checkKimiProviderStatus,
+        checkOpenCodeProviderStatus,
+      ],
       { concurrency: "unbounded" },
     ).pipe(Effect.forkScoped);
 

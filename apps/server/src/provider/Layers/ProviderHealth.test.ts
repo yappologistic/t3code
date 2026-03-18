@@ -7,6 +7,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   checkCodexProviderStatus,
   checkKimiProviderStatus,
+  checkOpenCodeProviderStatus,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
   readCodexConfigModelProvider,
@@ -265,6 +266,85 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           "Kimi Code CLI (`kimi`) is not installed or not on PATH.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn kimi ENOENT"))),
+    );
+  });
+
+  describe("checkOpenCodeProviderStatus", () => {
+    it.effect("returns ready when opencode is installed without stored credentials", () =>
+      Effect.gen(function* () {
+        const status = yield* checkOpenCodeProviderStatus;
+        assert.strictEqual(status.provider, "opencode");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(
+          status.message,
+          "OpenCode CLI is ready. Run `opencode auth login` to add provider credentials, or keep using the default OpenCode-free catalog.",
+        );
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((commandName, args) => {
+            const joined = args.join(" ");
+            if (commandName === "opencode" && joined === "--version") {
+              return { stdout: "opencode 1.0.0\n", stderr: "", code: 0 };
+            }
+            if (commandName === "opencode" && joined === "auth list") {
+              return {
+                stdout: "┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n",
+                stderr: "",
+                code: 0,
+              };
+            }
+            throw new Error(`Unexpected args: ${commandName} ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("returns authenticated when opencode has stored credentials", () =>
+      Effect.gen(function* () {
+        const status = yield* checkOpenCodeProviderStatus;
+        assert.strictEqual(status.provider, "opencode");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.strictEqual(
+          status.message,
+          "OpenCode CLI is ready with 2 stored provider credentials.",
+        );
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((commandName, args) => {
+            const joined = args.join(" ");
+            if (commandName === "opencode" && joined === "--version") {
+              return { stdout: "opencode 1.0.0\n", stderr: "", code: 0 };
+            }
+            if (commandName === "opencode" && joined === "auth list") {
+              return {
+                stdout:
+                  "┌  Credentials ~/.local/share/opencode/auth.json\n│\n●  Anthropic oauth\n│\n●  OpenAI oauth\n│\n└  2 credentials\n",
+                stderr: "",
+                code: 0,
+              };
+            }
+            throw new Error(`Unexpected args: ${commandName} ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("returns unavailable when opencode is missing", () =>
+      Effect.gen(function* () {
+        const status = yield* checkOpenCodeProviderStatus;
+        assert.strictEqual(status.provider, "opencode");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(
+          status.message,
+          "OpenCode CLI (`opencode`) is not installed or not on PATH.",
+        );
+      }).pipe(Effect.provide(failingSpawnerLayer("spawn opencode ENOENT"))),
     );
   });
 

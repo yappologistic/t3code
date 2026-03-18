@@ -15,6 +15,11 @@ const TerminalEnvKeySchema = Schema.String.check(
   Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
 ).check(Schema.isMaxLength(128));
 const TerminalEnvValueSchema = Schema.String.check(Schema.isMaxLength(8_192));
+const TerminalCommandSchema = TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(4_096));
+const TerminalCommandArgSchema = Schema.String.check(Schema.isMaxLength(4_096));
+const TerminalCommandArgsSchema = Schema.Array(TerminalCommandArgSchema).check(
+  Schema.isMaxLength(64),
+);
 const TerminalEnvSchema = Schema.Record(TerminalEnvKeySchema, TerminalEnvValueSchema).check(
   Schema.isMaxProperties(128),
 );
@@ -39,6 +44,8 @@ export const TerminalOpenInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   cols: Schema.optional(TerminalColsSchema),
   rows: Schema.optional(TerminalRowsSchema),
+  command: Schema.optional(TerminalCommandSchema),
+  args: Schema.optional(TerminalCommandArgsSchema),
   env: Schema.optional(TerminalEnvSchema),
 });
 export type TerminalOpenInput = Schema.Codec.Encoded<typeof TerminalOpenInput>;
@@ -64,6 +71,8 @@ export const TerminalRestartInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   cols: TerminalColsSchema,
   rows: TerminalRowsSchema,
+  command: Schema.optional(TerminalCommandSchema),
+  args: Schema.optional(TerminalCommandArgsSchema),
   env: Schema.optional(TerminalEnvSchema),
 });
 export type TerminalRestartInput = Schema.Codec.Encoded<typeof TerminalRestartInput>;

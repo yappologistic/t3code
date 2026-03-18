@@ -103,7 +103,10 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" &&
         input !== null &&
         "provider" in input &&
-        (input.provider === "codex" || input.provider === "copilot" || input.provider === "kimi")
+        (input.provider === "codex" ||
+          input.provider === "copilot" ||
+          input.provider === "kimi" ||
+          input.provider === "opencode")
           ? input.provider
           : "codex";
       const resumeCursor =
@@ -355,6 +358,42 @@ describe("ProviderCommandReactor", () => {
           fastMode: true,
         },
       },
+    });
+  });
+
+  it("preserves explicit opencode provider turns", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-opencode"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-opencode"),
+          role: "user",
+          text: "hello opencode",
+          attachments: [],
+        },
+        provider: "opencode",
+        model: "minimax-coding-plan/MiniMax-M2.7",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "opencode",
+      model: "minimax-coding-plan/MiniMax-M2.7",
+      runtimeMode: "approval-required",
+    });
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.makeUnsafe("thread-1"),
+      model: "minimax-coding-plan/MiniMax-M2.7",
     });
   });
 

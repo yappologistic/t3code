@@ -74,6 +74,27 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.kimi?.binaryPath).toBe("/usr/local/bin/kimi");
   });
 
+  it("accepts opencode-compatible payloads with an OpenRouter override", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "opencode",
+      cwd: "/tmp/workspace",
+      model: "minimax-coding-plan/MiniMax-M2.7",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        opencode: {
+          binaryPath: "/usr/local/bin/opencode",
+          openRouterApiKey: "sk-or-test",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("opencode");
+    expect(parsed.model).toBe("minimax-coding-plan/MiniMax-M2.7");
+    expect(parsed.providerOptions?.opencode?.binaryPath).toBe("/usr/local/bin/opencode");
+    expect(parsed.providerOptions?.opencode?.openRouterApiKey).toBe("sk-or-test");
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({

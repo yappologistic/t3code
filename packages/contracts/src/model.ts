@@ -7,6 +7,7 @@ export const COPILOT_REASONING_EFFORT_VALUES = CODEX_REASONING_EFFORT_OPTIONS;
 export const COPILOT_REASONING_EFFORT_OPTIONS = ["low", "medium", "high"] as const;
 export type CopilotReasoningEffort = (typeof COPILOT_REASONING_EFFORT_VALUES)[number];
 export const OPENROUTER_FREE_ROUTER_MODEL = "openrouter/free" as const;
+export const OPENCODE_DEFAULT_MODEL = "opencode/default" as const;
 
 export const CodexModelOptions = Schema.Struct({
   reasoningEffort: Schema.optional(Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS)),
@@ -76,6 +77,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-4.1", name: "GPT-4.1" },
   ],
   kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
+  opencode: [{ slug: OPENCODE_DEFAULT_MODEL, name: "OpenCode Default" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -86,6 +88,7 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   codex: "gpt-5.4",
   copilot: "claude-sonnet-4.5",
   kimi: "kimi-for-coding",
+  opencode: OPENCODE_DEFAULT_MODEL,
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_CONTEXT_WINDOW_INFO_BY_PROVIDER = {
@@ -219,6 +222,12 @@ export const MODEL_CONTEXT_WINDOW_INFO_BY_PROVIDER = {
       note: "The Kimi integration configures a default max_context_size of 262,144 tokens.",
     },
   },
+  opencode: {
+    [OPENCODE_DEFAULT_MODEL]: {
+      source: "provider-config",
+      note: "CUT3 leaves model selection to OpenCode's own provider/config defaults until the session advertises a concrete model list.",
+    },
+  },
 } as const satisfies Record<ProviderKind, Record<string, ModelContextWindowInfo>>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -231,16 +240,19 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
   },
   copilot: {},
   kimi: {},
+  opencode: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   codex: CODEX_REASONING_EFFORT_OPTIONS,
   copilot: COPILOT_REASONING_EFFORT_OPTIONS,
   kimi: [],
+  opencode: [],
 } as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   copilot: "high",
   kimi: null,
+  opencode: null,
 } as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;

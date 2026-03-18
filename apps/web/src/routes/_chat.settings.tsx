@@ -31,6 +31,7 @@ import { openRouterFreeModelsQueryOptions } from "../lib/openRouterReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { AppearanceSettingsSection } from "../components/AppearanceSettingsSection";
+import { OpenCodeCredentialsManager } from "../components/OpenCodeCredentialsManager";
 import ThreadNewButton from "../components/ThreadNewButton";
 import ThreadSidebarToggle from "../components/ThreadSidebarToggle";
 import { Button } from "../components/ui/button";
@@ -47,7 +48,7 @@ import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
 
 const MODEL_PROVIDER_SETTINGS: Array<{
-  provider: Extract<ProviderKind, "copilot" | "kimi">;
+  provider: Extract<ProviderKind, "copilot" | "opencode" | "kimi">;
   title: string;
   description: string;
   placeholder: string;
@@ -59,6 +60,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     description: "Save additional Copilot model slugs for the picker and `/model` command.",
     placeholder: "your-copilot-model-slug",
     example: "claude-sonnet-4.6",
+  },
+  {
+    provider: "opencode",
+    title: "OpenCode",
+    description: "Save additional OpenCode provider/model ids for the picker and `/model` command.",
+    placeholder: "provider/model-id",
+    example: "z-ai/glm-4.5",
   },
   {
     provider: "kimi",
@@ -124,6 +132,12 @@ function getSettingsCopy(language: AppLanguage) {
       copilotBinaryPath: "مسیر باینری Copilot",
       leaveBlankCopilot: "برای استفاده از copilot از PATH این کادر را خالی بگذارید.",
       resetCopilotOverrides: "بازنشانی بازنویسی های Copilot",
+      opencodeTitle: "OpenCode CLI",
+      opencodeDescription:
+        "این بازنویسی روی نشست های جدید OpenCode اعمال می شود و به شما اجازه می دهد از نصب غیرپیش فرض opencode استفاده کنید. اعتبارنامه های ارائه دهنده را بیرون از CUT3 با opencode auth login و opencode auth logout مدیریت کنید، پیکربندی معمول OpenCode را آماده نگه دارید، و اگر هر بخشی از پیکربندی ارائه دهنده OpenCode به OPENROUTER_API_KEY نیاز دارد کلید OpenRouter را در بخش بالایی CUT3 وارد کنید.",
+      opencodeBinaryPath: "مسیر باینری OpenCode",
+      leaveBlankOpencode: "برای استفاده از opencode از PATH این کادر را خالی بگذارید.",
+      resetOpencodeOverrides: "بازنشانی بازنویسی های OpenCode",
       kimiTitle: "Kimi Code CLI",
       kimiDescription:
         "این بازنویسی ها روی نشست های جدید Kimi Code اعمال می شوند. با دستور curl -LsSf https://code.kimi.com/install.sh | bash نصب کنید و یک کلید API Kimi Code اضافه کنید تا CUT3 بتواند نشست های Kimi را مستقیم اجرا کند.",
@@ -185,6 +199,11 @@ function getSettingsCopy(language: AppLanguage) {
         copilot: {
           title: "GitHub Copilot",
           description: "اسلاگ های مدل اضافی Copilot را برای انتخابگر و دستور /model ذخیره کنید.",
+        },
+        opencode: {
+          title: "OpenCode",
+          description:
+            "شناسه های provider/model اضافی OpenCode را برای انتخابگر و دستور /model ذخیره کنید.",
         },
         kimi: {
           title: "Kimi Code",
@@ -289,6 +308,12 @@ function getSettingsCopy(language: AppLanguage) {
     copilotBinaryPath: "Copilot binary path",
     leaveBlankCopilot: "Leave blank to use copilot from your PATH.",
     resetCopilotOverrides: "Reset copilot overrides",
+    opencodeTitle: "OpenCode CLI",
+    opencodeDescription:
+      "This override applies to new OpenCode sessions and lets you use a non-default opencode install. Manage provider credentials outside CUT3 with `opencode auth login` and `opencode auth logout`, keep your normal OpenCode config ready, and set the top-level OpenRouter key in CUT3 if any OpenCode provider config expects `OPENROUTER_API_KEY`.",
+    opencodeBinaryPath: "OpenCode binary path",
+    leaveBlankOpencode: "Leave blank to use opencode from your PATH.",
+    resetOpencodeOverrides: "Reset OpenCode overrides",
     kimiTitle: "Kimi Code CLI",
     kimiDescription:
       "These overrides apply to new Kimi Code sessions. Install with curl -LsSf https://code.kimi.com/install.sh | bash and add a Kimi Code API key to let CUT3 start Kimi sessions directly.",
@@ -349,6 +374,11 @@ function getSettingsCopy(language: AppLanguage) {
       copilot: {
         title: "GitHub Copilot",
         description: "Save additional Copilot model slugs for the picker and /model command.",
+      },
+      opencode: {
+        title: "OpenCode",
+        description:
+          "Save additional OpenCode provider/model ids for the picker and /model command.",
       },
       kimi: {
         title: "Kimi Code",
@@ -438,6 +468,8 @@ function getCustomModelsForProvider(
       return settings.customCodexModels;
     case "copilot":
       return settings.customCopilotModels;
+    case "opencode":
+      return settings.customOpencodeModels;
     case "kimi":
       return settings.customKimiModels;
     default:
@@ -454,6 +486,8 @@ function getDefaultCustomModelsForProvider(
       return defaults.customCodexModels;
     case "copilot":
       return defaults.customCopilotModels;
+    case "opencode":
+      return defaults.customOpencodeModels;
     case "kimi":
       return defaults.customKimiModels;
     default:
@@ -467,6 +501,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
       return { customCodexModels: models };
     case "copilot":
       return { customCopilotModels: models };
+    case "opencode":
+      return { customOpencodeModels: models };
     case "kimi":
       return { customKimiModels: models };
     default:
@@ -498,6 +534,7 @@ function SettingsRouteView() {
   >({
     codex: "",
     copilot: "",
+    opencode: "",
     kimi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
@@ -509,6 +546,7 @@ function SettingsRouteView() {
   const codexHomePath = settings.codexHomePath;
   const openRouterApiKey = settings.openRouterApiKey;
   const copilotBinaryPath = settings.copilotBinaryPath;
+  const opencodeBinaryPath = settings.opencodeBinaryPath;
   const kimiBinaryPath = settings.kimiBinaryPath;
   const kimiApiKey = settings.kimiApiKey;
   const codexServiceTier = settings.codexServiceTier;
@@ -1268,6 +1306,54 @@ function SettingsRouteView() {
                   >
                     {copy.resetCopilotOverrides}
                   </Button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">{copy.opencodeTitle}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{copy.opencodeDescription}</p>
+              </div>
+
+              <div className="space-y-4">
+                <label htmlFor="opencode-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">
+                    {copy.opencodeBinaryPath}
+                  </span>
+                  <Input
+                    id="opencode-binary-path"
+                    dir="ltr"
+                    value={opencodeBinaryPath}
+                    onChange={(event) => updateSettings({ opencodeBinaryPath: event.target.value })}
+                    placeholder="opencode"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">{copy.leaveBlankOpencode}</span>
+                </label>
+
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <p>
+                    Binary source:{" "}
+                    <span className="font-medium text-foreground">
+                      {opencodeBinaryPath || "PATH"}
+                    </span>
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        opencodeBinaryPath: defaults.opencodeBinaryPath,
+                      })
+                    }
+                  >
+                    {copy.resetOpencodeOverrides}
+                  </Button>
+                </div>
+
+                <div className="pt-4 border-t border-border">
+                  <OpenCodeCredentialsManager />
                 </div>
               </div>
             </section>

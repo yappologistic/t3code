@@ -57,6 +57,8 @@ function getModelOptionsForProviderPicker(
       return modelOptionsByProvider.copilot;
     case "kimi":
       return modelOptionsByProvider.kimi;
+    case "opencode":
+      return modelOptionsByProvider.opencode;
     default:
       return modelOptionsByProvider.codex;
   }
@@ -100,16 +102,14 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   openrouter: OpenRouterIcon,
   copilot: GitHubIcon,
   kimi: KimiIcon,
+  opencode: OpenCodeIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
 const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
-const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
-  { id: "gemini", label: "Gemini", icon: Gemini },
-] as const;
+const COMING_SOON_PROVIDER_OPTIONS = [{ id: "gemini", label: "Gemini", icon: Gemini }] as const;
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   provider: ProviderKind;

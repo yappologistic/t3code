@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts";
 
 function isProviderKind(value: string | null | undefined): value is ProviderKind {
-  return value === "codex" || value === "copilot" || value === "kimi";
+  return value === "codex" || value === "copilot" || value === "kimi" || value === "opencode";
 }
 
 export function findProviderStatus(

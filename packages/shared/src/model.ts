@@ -18,6 +18,7 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<CatalogProvider, ReadonlySet<ModelSlug>
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
   copilot: new Set(MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => option.slug)),
   kimi: new Set(MODEL_OPTIONS_BY_PROVIDER.kimi.map((option) => option.slug)),
+  opencode: new Set(MODEL_OPTIONS_BY_PROVIDER.opencode.map((option) => option.slug)),
 };
 
 export function getModelOptions(provider: ProviderKind = "codex") {

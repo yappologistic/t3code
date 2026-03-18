@@ -21,6 +21,8 @@ import {
   ServerConfig,
   ServerCopilotReasoningProbe,
   ServerCopilotUsage,
+  ServerOpenCodeCredentialResult,
+  ServerOpenCodeState,
   ServerUpsertKeybindingResult,
   TerminalSessionSnapshot,
   WS_CHANNELS,
@@ -232,8 +234,22 @@ export function createWsNativeApi(): NativeApi {
           ServerCopilotReasoningProbe,
           input,
         ),
+      getOpenCodeState: (input) =>
+        requestWithSchema(WS_METHODS.serverGetOpenCodeState, ServerOpenCodeState, input ?? {}),
       upsertKeybinding: (input) =>
         requestWithSchema(WS_METHODS.serverUpsertKeybinding, ServerUpsertKeybindingResult, input),
+      addOpenCodeCredential: (input) =>
+        requestWithSchema(
+          WS_METHODS.serverAddOpenCodeCredential,
+          ServerOpenCodeCredentialResult,
+          input,
+        ),
+      removeOpenCodeCredential: (input) =>
+        requestWithSchema(
+          WS_METHODS.serverRemoveOpenCodeCredential,
+          ServerOpenCodeCredentialResult,
+          input,
+        ),
     },
     orchestration: {
       getSnapshot: () =>

@@ -37,6 +37,10 @@ The **Providers** section supports local overrides for each provider runtime:
   - Optional OpenRouter API key used only for Codex sessions that route through OpenRouter
 - **GitHub Copilot**
   - Custom binary path
+- **OpenCode**
+  - Custom binary path
+  - Authentication stays in OpenCode itself via `opencode auth login`; CUT3 does not store OpenCode credentials in this phase
+  - When the top-level CUT3 OpenRouter key is set, new OpenCode sessions also inherit it as `OPENROUTER_API_KEY` so OpenCode provider configs can reference it through `{env:OPENROUTER_API_KEY}`
 - **Kimi Code**
   - Custom binary path
   - Optional API key stored locally and injected into new Kimi CLI sessions
@@ -73,9 +77,12 @@ CUT3 now shows OpenRouter free models in their own settings card and their own t
 CUT3 supports saved custom model ids for:
 
 - **GitHub Copilot**
+- **OpenCode** provider/model ids such as `z-ai/glm-4.5` or `minimax/MiniMax-M2.7`
 - **Kimi Code**
 - Additional Codex model ids you want to save manually
 - Additional OpenRouter `:free` model ids from the current live catalog
+
+OpenCode also advertises runtime-discovered models through ACP. CUT3 merges those live models into the picker after an OpenCode session starts, and keeps a built-in `OpenCode Default` option so a first session can start without CUT3 guessing a vendor-specific `provider/model` id.
 
 Saved custom model ids appear in:
 
@@ -94,6 +101,7 @@ The composer exposes provider-aware turn controls.
 
 - **Codex**: `Low`, `Medium`, `High`, `Extra High`
 - **GitHub Copilot**: provider-supported reasoning values, currently surfaced as `Low`, `Medium`, or `High`
+- **OpenCode**: no reasoning-effort picker is shown
 - **Kimi Code**: no reasoning-effort picker is shown
 
 Reasoning choices are scoped by provider. CUT3 still shows a Reasoning badge for OpenRouter models that advertise reasoning support, but it does not expose Codex-style reasoning-effort levels for OpenRouter models because the OpenRouter catalog does not currently describe which effort values are valid per model.
@@ -110,6 +118,10 @@ Codex also has a per-turn `Fast Mode` toggle in the composer controls. This is s
 ### Context window UI
 
 CUT3 hides the "token context left" UI for OpenRouter-routed models because the routed model can change and the remaining-context display is not reliable enough there.
+
+### OpenCode MCP visibility
+
+OpenCode can use MCP servers from its own config, but CUT3 does not yet inspect or list those configured servers in `server.getConfig`. The OpenCode runtime still sees them when `opencode acp` loads your normal OpenCode configuration.
 
 ## Related docs
 

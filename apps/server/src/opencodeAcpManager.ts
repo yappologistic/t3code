@@ -6,8 +6,8 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import {
   ApprovalRequestId,
-  COPILOT_REASONING_EFFORT_VALUES,
   EventId,
+  OPENCODE_DEFAULT_MODEL,
   type ProviderApprovalDecision,
   type ProviderRuntimeEvent,
   type ProviderSession,
@@ -16,7 +16,6 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnId,
-  type CopilotReasoningEffort,
   type ProviderTurnStartResult,
 } from "@t3tools/contracts";
 
@@ -49,13 +48,12 @@ interface ToolSnapshot {
   readonly title: string;
 }
 
-interface CopilotSessionContext {
+interface OpenCodeSessionContext {
   session: ProviderSession;
   child: ChildProcessWithoutNullStreams;
   connection: acp.ClientSideConnection;
   acpSessionId: string;
   models: acp.SessionModelState | null;
-  configOptions: ReadonlyArray<acp.SessionConfigOption> | null;
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>;
   toolSnapshots: Map<string, ToolSnapshot>;
   currentTurnId: TurnId | undefined;
@@ -64,119 +62,200 @@ interface CopilotSessionContext {
   lastStderrLine?: string;
 }
 
-export interface CopilotAppServerStartSessionInput {
+export interface OpenCodeAppServerStartSessionInput {
   readonly threadId: ThreadId;
-  readonly provider?: "copilot";
+  readonly provider?: "opencode";
   readonly cwd?: string;
   readonly model?: string;
-  readonly reasoningEffort?: CopilotReasoningEffort;
   readonly resumeCursor?: unknown;
   readonly providerOptions?: ProviderSessionStartInput["providerOptions"];
   readonly runtimeMode: ProviderSession["runtimeMode"];
 }
 
-export interface CopilotThreadTurnSnapshot {
+export interface OpenCodeThreadTurnSnapshot {
   readonly id: TurnId;
   readonly items: ReadonlyArray<unknown>;
 }
 
-export interface CopilotThreadSnapshot {
+export interface OpenCodeThreadSnapshot {
   readonly threadId: ThreadId;
-  readonly turns: ReadonlyArray<CopilotThreadTurnSnapshot>;
+  readonly turns: ReadonlyArray<OpenCodeThreadTurnSnapshot>;
 }
 
-export interface CopilotAcpManagerEvents {
+export interface OpenCodeAcpManagerEvents {
   event: [event: ProviderRuntimeEvent];
 }
 
-const COPILOT_REASONING_EFFORT_SET = new Set<CopilotReasoningEffort>(
-  COPILOT_REASONING_EFFORT_VALUES,
-);
+const OPENCODE_ACP_INITIALIZE_TIMEOUT_MS = 10_000;
+const OPENCODE_ACP_SESSION_START_TIMEOUT_MS = 10_000;
+const OPENROUTER_ENV_KEY = "OPENROUTER_API_KEY";
 
-interface CopilotReasoningEffortSelector {
-  readonly id: string;
-  readonly currentValue: CopilotReasoningEffort | null;
-  readonly options: ReadonlyArray<CopilotReasoningEffort>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isCopilotReasoningEffort(value: unknown): value is CopilotReasoningEffort {
-  return (
-    typeof value === "string" && COPILOT_REASONING_EFFORT_SET.has(value as CopilotReasoningEffort)
-  );
+export function isOpenCodeDefaultModel(model: string | null | undefined): boolean {
+  return model?.trim() === OPENCODE_DEFAULT_MODEL;
 }
 
-function flattenSessionConfigSelectOptions(
-  options: acp.SessionConfigSelectOptions,
-): ReadonlyArray<acp.SessionConfigSelectOption> {
-  return options.flatMap((entry) => ("value" in entry ? [entry] : entry.options));
-}
-
-export function readCopilotReasoningEffortSelector(
-  configOptions: ReadonlyArray<acp.SessionConfigOption> | null | undefined,
-): CopilotReasoningEffortSelector | null {
-  const selector = configOptions?.find(
-    (option) =>
-      option.type === "select" &&
-      (option.category === "thought_level" || option.id === "reasoning_effort"),
-  );
-  if (!selector) {
-    return null;
+function normalizeRequestedOpenCodeModel(model: string | null | undefined): string | undefined {
+  const trimmed = model?.trim();
+  if (!trimmed || isOpenCodeDefaultModel(trimmed)) {
+    return undefined;
   }
-
-  const options: CopilotReasoningEffort[] = [];
-  const seen = new Set<CopilotReasoningEffort>();
-  for (const entry of flattenSessionConfigSelectOptions(selector.options)) {
-    if (!isCopilotReasoningEffort(entry.value) || seen.has(entry.value)) {
-      continue;
-    }
-    seen.add(entry.value);
-    options.push(entry.value);
-  }
-
-  return {
-    id: selector.id,
-    currentValue: isCopilotReasoningEffort(selector.currentValue) ? selector.currentValue : null,
-    options,
-  };
+  return trimmed;
 }
 
-export function readAvailableCopilotModelIds(
+export function readAvailableOpenCodeModelIds(
   models: acp.SessionModelState | null | undefined,
 ): ReadonlyArray<string> {
   return models?.availableModels.map((entry) => entry.modelId) ?? [];
 }
 
-export function isCopilotModelAvailable(
+export function isOpenCodeModelAvailable(
   models: acp.SessionModelState | null | undefined,
   model: string,
 ): boolean {
-  const availableModelIds = readAvailableCopilotModelIds(models);
+  const availableModelIds = readAvailableOpenCodeModelIds(models);
   return availableModelIds.length === 0 || availableModelIds.includes(model);
 }
 
-function mapCopilotRuntimeMode(runtimeMode: ProviderSession["runtimeMode"]): ReadonlyArray<string> {
-  return runtimeMode === "full-access" ? ["--allow-all"] : [];
+export function buildOpenCodeCliArgs(input: { readonly cwd: string }): ReadonlyArray<string> {
+  return ["acp", "--cwd", input.cwd];
 }
 
-export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
-  private readonly sessions = new Map<ThreadId, CopilotSessionContext>();
-  private readonly startingSessions = new Map<ThreadId, CopilotSessionContext>();
+function parseOpenCodeConfigContent(raw: string | undefined): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildOpenCodeRuntimeConfig(
+  runtimeMode: ProviderSession["runtimeMode"],
+): Record<string, unknown> {
+  if (runtimeMode === "full-access") {
+    return {};
+  }
+
+  return {
+    permission: {
+      edit: "ask",
+      bash: "ask",
+    },
+  };
+}
+
+function mergeOpenCodeConfig(
+  baseConfig: Record<string, unknown>,
+  overrideConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.keys(overrideConfig).length === 0) {
+    return baseConfig;
+  }
+
+  const merged = { ...baseConfig, ...overrideConfig };
+  const basePermission = isRecord(baseConfig.permission) ? baseConfig.permission : undefined;
+  const overridePermission = isRecord(overrideConfig.permission)
+    ? overrideConfig.permission
+    : undefined;
+  if (basePermission || overridePermission) {
+    merged.permission = {
+      ...basePermission,
+      ...overridePermission,
+    };
+  }
+  return merged;
+}
+
+export function buildOpenCodeCliEnv(input: {
+  readonly runtimeMode: ProviderSession["runtimeMode"];
+  readonly openRouterApiKey?: string;
+  readonly baseEnv?: NodeJS.ProcessEnv;
+}): NodeJS.ProcessEnv {
+  const env = { ...(input.baseEnv ?? process.env) };
+  const openRouterApiKey = input.openRouterApiKey?.trim();
+  if (openRouterApiKey) {
+    env[OPENROUTER_ENV_KEY] = openRouterApiKey;
+  }
+
+  const runtimeConfig = buildOpenCodeRuntimeConfig(input.runtimeMode);
+  if (Object.keys(runtimeConfig).length === 0) {
+    return env;
+  }
+
+  const mergedConfig = mergeOpenCodeConfig(
+    parseOpenCodeConfigContent(env.OPENCODE_CONFIG_CONTENT),
+    runtimeConfig,
+  );
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(mergedConfig);
+  return env;
+}
+
+export function normalizeOpenCodeStartErrorMessage(rawMessage: string): string {
+  if (/missing environment variable:\s*['"]?OPENROUTER_API_KEY['"]?/i.test(rawMessage)) {
+    return "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in CUT3 Settings or export OPENROUTER_API_KEY before starting CUT3.";
+  }
+
+  if (
+    /auth[_ ]required|authentication required|not logged in|run `?opencode auth login`?|loadapi key error|api key/i.test(
+      rawMessage,
+    )
+  ) {
+    return "OpenCode requires authentication. Run `opencode auth login` and try again.";
+  }
+
+  return rawMessage;
+}
+
+function withTimeout<T>(input: {
+  readonly label: string;
+  readonly timeoutMs: number;
+  readonly promise: Promise<T>;
+}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${input.label} timed out after ${input.timeoutMs}ms.`));
+    }, input.timeoutMs);
+
+    input.promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
+  private readonly sessions = new Map<ThreadId, OpenCodeSessionContext>();
+  private readonly startingSessions = new Map<ThreadId, OpenCodeSessionContext>();
 
   private emitRuntimeEvent(event: ProviderRuntimeEvent) {
     this.emit("event", event);
   }
 
-  private createEventBase(context: CopilotSessionContext) {
+  private createEventBase(context: OpenCodeSessionContext) {
     return {
       eventId: EventId.makeUnsafe(randomUUID()),
-      provider: "copilot" as const,
+      provider: "opencode" as const,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
     };
   }
 
   private updateSession(
-    context: CopilotSessionContext,
+    context: OpenCodeSessionContext,
     patch: Partial<ProviderSession>,
   ): ProviderSession {
     context.session = {
@@ -187,8 +266,8 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     return context.session;
   }
 
-  private emitSessionConfigured(context: CopilotSessionContext) {
-    if (!context.models && !context.configOptions) {
+  private emitSessionConfigured(context: OpenCodeSessionContext) {
+    if (!context.models) {
       return;
     }
 
@@ -197,24 +276,19 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       type: "session.configured",
       payload: {
         config: {
-          ...(context.models
-            ? {
-                currentModelId: context.models.currentModelId,
-                availableModels: context.models.availableModels,
-              }
-            : {}),
-          ...(context.configOptions ? { configOptions: context.configOptions } : {}),
+          currentModelId: context.models.currentModelId,
+          availableModels: context.models.availableModels,
         },
       },
     });
   }
 
-  private emitSessionStarted(context: CopilotSessionContext) {
+  private emitSessionStarted(context: OpenCodeSessionContext) {
     const sessionStarted: ProviderRuntimeEvent = {
       ...this.createEventBase(context),
       type: "session.started",
       payload: {
-        message: "Connected to GitHub Copilot CLI ACP server.",
+        message: "Connected to OpenCode ACP server.",
         resume: context.session.resumeCursor,
       },
     };
@@ -227,12 +301,11 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     };
     this.emitRuntimeEvent(sessionStarted);
     this.emitRuntimeEvent(threadStarted);
-
     this.emitSessionConfigured(context);
   }
 
   private emitSessionExit(
-    context: CopilotSessionContext,
+    context: OpenCodeSessionContext,
     input: {
       readonly reason?: string;
       readonly exitKind: "graceful" | "error";
@@ -250,7 +323,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     });
   }
 
-  private emitRuntimeError(context: CopilotSessionContext, message: string, turnId?: TurnId) {
+  private emitRuntimeError(context: OpenCodeSessionContext, message: string, turnId?: TurnId) {
     this.emitRuntimeEvent({
       ...this.createEventBase(context),
       ...(turnId ? { turnId } : {}),
@@ -261,14 +334,14 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     });
   }
 
-  private resolvePendingApprovalsAsCancelled(context: CopilotSessionContext) {
+  private resolvePendingApprovalsAsCancelled(context: OpenCodeSessionContext) {
     for (const pending of context.pendingApprovals.values()) {
       pending.resolve({ outcome: { outcome: "cancelled" } });
     }
     context.pendingApprovals.clear();
   }
 
-  private handleSessionUpdate(context: CopilotSessionContext, params: acp.SessionNotification) {
+  private handleSessionUpdate(context: OpenCodeSessionContext, params: acp.SessionNotification) {
     const turnId = context.currentTurnId;
     const createdAt = new Date().toISOString();
     const base = {
@@ -327,12 +400,6 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
             })),
           },
         });
-        return;
-      }
-
-      case "config_option_update": {
-        context.configOptions = params.update.configOptions;
-        this.emitSessionConfigured(context);
         return;
       }
 
@@ -410,7 +477,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   }
 
   private async requestPermission(
-    context: CopilotSessionContext,
+    context: OpenCodeSessionContext,
     params: acp.RequestPermissionRequest,
   ): Promise<acp.RequestPermissionResponse> {
     const requestId = ApprovalRequestId.makeUnsafe(randomUUID());
@@ -453,7 +520,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     return response;
   }
 
-  private attachProcessListeners(context: CopilotSessionContext) {
+  private attachProcessListeners(context: OpenCodeSessionContext) {
     context.child.stderr.setEncoding("utf8");
     context.child.stderr.on("data", (chunk: string) => {
       const trimmed = chunk.trim();
@@ -475,8 +542,8 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       if (!context.stopping) {
         const reason =
           context.lastStderrLine ??
-          (signal ? `Copilot CLI exited from signal ${signal}.` : undefined) ??
-          (code !== null ? `Copilot CLI exited with code ${code}.` : "Copilot CLI exited.");
+          (signal ? `OpenCode exited from signal ${signal}.` : undefined) ??
+          (code !== null ? `OpenCode exited with code ${code}.` : "OpenCode exited.");
         this.emitSessionExit(context, {
           reason,
           exitKind: code === 0 ? "graceful" : "error",
@@ -490,7 +557,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     };
 
     context.child.once("error", (error) => {
-      context.lastStderrLine = toMessage(error, "Failed to start GitHub Copilot CLI.");
+      context.lastStderrLine = toMessage(error, "Failed to start OpenCode CLI.");
       onExit(null, null);
     });
 
@@ -498,22 +565,22 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     context.connection.closed.catch(() => undefined);
   }
 
-  private requireSession(threadId: ThreadId): CopilotSessionContext {
+  private requireSession(threadId: ThreadId): OpenCodeSessionContext {
     const context = this.sessions.get(threadId);
     if (!context) {
-      throw new Error(`Unknown Copilot session: ${threadId}`);
+      throw new Error(`Unknown OpenCode session: ${threadId}`);
     }
     if (context.session.status === "closed") {
-      throw new Error(`Copilot session is closed: ${threadId}`);
+      throw new Error(`OpenCode session is closed: ${threadId}`);
     }
     return context;
   }
 
-  private async setSessionModel(context: CopilotSessionContext, model: string) {
-    const availableModelIds = readAvailableCopilotModelIds(context.models);
+  private async setSessionModel(context: OpenCodeSessionContext, model: string) {
+    const availableModelIds = readAvailableOpenCodeModelIds(context.models);
     if (availableModelIds.length > 0 && !availableModelIds.includes(model)) {
       throw new Error(
-        `GitHub Copilot CLI does not expose model '${model}' for this account. Available models: ${availableModelIds.join(", ")}.`,
+        `OpenCode does not expose model '${model}' for this session. Available models: ${availableModelIds.join(", ")}.`,
       );
     }
 
@@ -531,55 +598,18 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       this.updateSession(context, { model });
       this.emitSessionConfigured(context);
     } catch (error) {
-      throw new Error(toMessage(error, `Failed to switch GitHub Copilot model to '${model}'.`), {
+      throw new Error(toMessage(error, `Failed to switch OpenCode model to '${model}'.`), {
         cause: error,
       });
     }
   }
 
-  private async setSessionReasoningEffort(
-    context: CopilotSessionContext,
-    reasoningEffort: CopilotReasoningEffort,
-  ) {
-    const selector = readCopilotReasoningEffortSelector(context.configOptions);
-    if (!selector) {
-      throw new Error(
-        "GitHub Copilot CLI did not expose a reasoning-effort selector for this session.",
-      );
-    }
-
-    if (!selector.options.includes(reasoningEffort)) {
-      throw new Error(
-        `GitHub Copilot CLI does not expose reasoning effort '${reasoningEffort}' for this session. Available reasoning levels: ${selector.options.join(", ")}.`,
-      );
-    }
-
-    if (selector.currentValue === reasoningEffort) {
-      return;
-    }
-
-    try {
-      const response = await context.connection.setSessionConfigOption({
-        sessionId: context.acpSessionId,
-        configId: selector.id,
-        value: reasoningEffort,
-      });
-      context.configOptions = response.configOptions;
-      this.emitSessionConfigured(context);
-    } catch (error) {
-      throw new Error(
-        toMessage(error, `Failed to set GitHub Copilot reasoning effort to '${reasoningEffort}'.`),
-        { cause: error },
-      );
-    }
-  }
-
-  async startSession(input: CopilotAppServerStartSessionInput): Promise<ProviderSession> {
+  async startSession(input: OpenCodeAppServerStartSessionInput): Promise<ProviderSession> {
     const resolvedCwd = input.cwd ?? process.cwd();
     const now = new Date().toISOString();
     const previousContext = this.sessions.get(input.threadId);
     const session: ProviderSession = {
-      provider: "copilot",
+      provider: "opencode",
       status: "connecting",
       runtimeMode: input.runtimeMode,
       model: input.model,
@@ -589,18 +619,24 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       updatedAt: now,
     };
 
-    const copilotBinaryPath = input.providerOptions?.copilot?.binaryPath ?? "copilot";
-    const args = ["--acp", "--no-ask-user", ...mapCopilotRuntimeMode(input.runtimeMode)];
+    const opencodeBinaryPath = input.providerOptions?.opencode?.binaryPath ?? "opencode";
+    const args = buildOpenCodeCliArgs({ cwd: resolvedCwd });
+    const env = buildOpenCodeCliEnv({
+      runtimeMode: input.runtimeMode,
+      ...(input.providerOptions?.opencode?.openRouterApiKey
+        ? { openRouterApiKey: input.providerOptions.opencode.openRouterApiKey }
+        : {}),
+    });
 
-    const child = spawn(copilotBinaryPath, args, {
+    const child = spawn(opencodeBinaryPath, args, {
       cwd: resolvedCwd,
-      env: process.env,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       shell: process.platform === "win32",
     });
 
     const stream = acp.ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout));
-    let context: CopilotSessionContext | undefined;
+    let context: OpenCodeSessionContext | undefined;
 
     const client: acp.Client = {
       requestPermission: async (params) => {
@@ -624,7 +660,6 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       connection,
       acpSessionId: "",
       models: null,
-      configOptions: null,
       pendingApprovals: new Map(),
       toolSnapshots: new Map(),
       currentTurnId: undefined,
@@ -635,9 +670,13 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     this.attachProcessListeners(context);
 
     try {
-      const initializeResult = await connection.initialize({
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {},
+      const initializeResult = await withTimeout({
+        label: "OpenCode ACP initialize",
+        timeoutMs: OPENCODE_ACP_INITIALIZE_TIMEOUT_MS,
+        promise: connection.initialize({
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        }),
       });
 
       const resumeSessionId = readResumeSessionId(input);
@@ -647,46 +686,46 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       let sessionResult: acp.NewSessionResponse | acp.ResumeSessionResponse;
       if (resumeSessionId) {
         if (!resumeSupported) {
-          throw new Error(
-            "GitHub Copilot CLI ACP server does not advertise session resume support.",
-          );
+          throw new Error("OpenCode ACP server does not advertise session resume support.");
         }
 
-        sessionResult = await connection.unstable_resumeSession({
-          sessionId: resumeSessionId,
-          cwd: resolvedCwd,
-          mcpServers: [],
+        sessionResult = await withTimeout({
+          label: "OpenCode ACP resumeSession",
+          timeoutMs: OPENCODE_ACP_SESSION_START_TIMEOUT_MS,
+          promise: connection.unstable_resumeSession({
+            sessionId: resumeSessionId,
+            cwd: resolvedCwd,
+            mcpServers: [],
+          }),
         });
         context.acpSessionId = resumeSessionId;
       } else {
-        const createdSession = await connection.newSession({
-          cwd: resolvedCwd,
-          mcpServers: [],
+        const createdSession = await withTimeout({
+          label: "OpenCode ACP newSession",
+          timeoutMs: OPENCODE_ACP_SESSION_START_TIMEOUT_MS,
+          promise: connection.newSession({
+            cwd: resolvedCwd,
+            mcpServers: [],
+          }),
         });
         sessionResult = createdSession;
         context.acpSessionId = createdSession.sessionId;
       }
 
       context.models = sessionResult.models ?? null;
-      context.configOptions = sessionResult.configOptions ?? null;
       this.updateSession(context, {
         status: "ready",
         model: sessionResult.models?.currentModelId ?? session.model,
         resumeCursor: { sessionId: context.acpSessionId },
       });
 
-      const requestedModel = input.model?.trim();
+      const requestedModel = normalizeRequestedOpenCodeModel(input.model);
       if (
         requestedModel &&
         requestedModel !== context.session.model &&
-        context.models !== null &&
-        isCopilotModelAvailable(context.models, requestedModel)
+        isOpenCodeModelAvailable(context.models, requestedModel)
       ) {
         await this.setSessionModel(context, requestedModel);
-      }
-
-      if (input.reasoningEffort) {
-        await this.setSessionReasoningEffort(context, input.reasoningEffort);
       }
 
       this.emitSessionStarted(context);
@@ -697,8 +736,9 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       }
       return { ...context.session };
     } catch (error) {
-      const message =
-        context.lastStderrLine ?? toMessage(error, "Failed to start GitHub Copilot session.");
+      const rawMessage =
+        context.lastStderrLine ?? toMessage(error, "Failed to start OpenCode session.");
+      const message = normalizeOpenCodeStartErrorMessage(rawMessage);
       this.startingSessions.delete(input.threadId);
       this.updateSession(context, {
         status: "error",
@@ -721,15 +761,14 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     readonly input?: string;
     readonly attachments?: ReadonlyArray<unknown>;
     readonly model?: string;
-    readonly reasoningEffort?: CopilotReasoningEffort;
   }): Promise<ProviderTurnStartResult> {
     const context = this.requireSession(input.threadId);
     const promptText = input.input?.trim();
     if (!promptText) {
-      throw new Error("GitHub Copilot turns require a non-empty text prompt.");
+      throw new Error("OpenCode turns require a non-empty text prompt.");
     }
     if ((input.attachments?.length ?? 0) > 0) {
-      throw new Error("GitHub Copilot integration currently supports text prompts only.");
+      throw new Error("OpenCode integration currently supports text prompts only.");
     }
 
     if (
@@ -737,21 +776,17 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       context.session.status === "running" ||
       context.session.activeTurnId
     ) {
-      throw new Error("GitHub Copilot already has a turn in progress for this session.");
+      throw new Error("OpenCode already has a turn in progress for this session.");
     }
 
     context.turnInFlight = true;
 
     try {
-      const requestedModel = input.model?.trim();
+      const requestedModel = normalizeRequestedOpenCodeModel(input.model);
       if (requestedModel && requestedModel !== context.session.model) {
-        if (isCopilotModelAvailable(context.models, requestedModel)) {
+        if (isOpenCodeModelAvailable(context.models, requestedModel)) {
           await this.setSessionModel(context, requestedModel);
         }
-      }
-
-      if (input.reasoningEffort) {
-        await this.setSessionReasoningEffort(context, input.reasoningEffort);
       }
 
       const turnId = TurnId.makeUnsafe(randomUUID());
@@ -801,7 +836,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
           resumeCursor: { sessionId: context.acpSessionId },
         };
       } catch (error) {
-        const message = toMessage(error, "GitHub Copilot turn failed.");
+        const message = toMessage(error, "OpenCode turn failed.");
         this.emitRuntimeEvent({
           ...this.createEventBase(context),
           turnId,
@@ -843,13 +878,13 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     const context = this.requireSession(threadId);
     const pending = context.pendingApprovals.get(requestId);
     if (!pending) {
-      throw new Error(`Unknown pending Copilot approval request: ${requestId}`);
+      throw new Error(`Unknown pending OpenCode approval request: ${requestId}`);
     }
     pending.resolve(createPermissionOutcome(decision, pending.options));
   }
 
   async respondToUserInput(): Promise<void> {
-    throw new Error("GitHub Copilot CLI does not expose structured user input requests in CUT3.");
+    throw new Error("OpenCode ACP does not expose structured user input requests in CUT3 yet.");
   }
 
   async stopSession(threadId: ThreadId): Promise<void> {
@@ -860,13 +895,13 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
 
     await this.disposeContext(context);
     this.emitSessionExit(context, {
-      reason: "GitHub Copilot session stopped.",
+      reason: "OpenCode session stopped.",
       exitKind: "graceful",
       recoverable: true,
     });
   }
 
-  private deleteTrackedSession(threadId: ThreadId, context: CopilotSessionContext): void {
+  private deleteTrackedSession(threadId: ThreadId, context: OpenCodeSessionContext): void {
     if (this.sessions.get(threadId) === context) {
       this.sessions.delete(threadId);
     }
@@ -875,14 +910,14 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     }
   }
 
-  private isTrackedContext(context: CopilotSessionContext): boolean {
+  private isTrackedContext(context: OpenCodeSessionContext): boolean {
     const threadId = context.session.threadId;
     return (
       this.sessions.get(threadId) === context || this.startingSessions.get(threadId) === context
     );
   }
 
-  private async disposeContext(context: CopilotSessionContext): Promise<void> {
+  private async disposeContext(context: OpenCodeSessionContext): Promise<void> {
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -903,31 +938,20 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     return Array.from(this.sessions.values(), (context) => context.session);
   }
 
-  async getSessionConfiguration(threadId: ThreadId): Promise<{
-    readonly models: acp.SessionModelState | null;
-    readonly configOptions: ReadonlyArray<acp.SessionConfigOption> | null;
-  }> {
-    const context = this.requireSession(threadId);
-    return {
-      models: context.models,
-      configOptions: context.configOptions,
-    };
-  }
-
   async hasSession(threadId: ThreadId): Promise<boolean> {
     return this.sessions.has(threadId);
   }
 
-  async readThread(threadId: ThreadId): Promise<CopilotThreadSnapshot> {
+  async readThread(threadId: ThreadId): Promise<OpenCodeThreadSnapshot> {
     this.requireSession(threadId);
     throw new Error(
-      "Reading historical Copilot thread snapshots is not implemented in this ACP integration yet.",
+      "Reading historical OpenCode thread snapshots is not implemented in this ACP integration yet.",
     );
   }
 
-  async rollbackThread(threadId: ThreadId, _numTurns: number): Promise<CopilotThreadSnapshot> {
+  async rollbackThread(threadId: ThreadId, _numTurns: number): Promise<OpenCodeThreadSnapshot> {
     this.requireSession(threadId);
-    throw new Error("Rolling back GitHub Copilot threads is not supported by this integration.");
+    throw new Error("Rolling back OpenCode threads is not supported by this integration.");
   }
 
   async stopAll(): Promise<void> {

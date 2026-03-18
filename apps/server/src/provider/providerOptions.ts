@@ -14,6 +14,9 @@ export function sanitizeProviderOptionsForPersistence(
   const kimi = providerOptions.kimi?.binaryPath
     ? { kimi: { binaryPath: providerOptions.kimi.binaryPath } }
     : {};
+  const opencode = providerOptions.opencode?.binaryPath
+    ? { opencode: { binaryPath: providerOptions.opencode.binaryPath } }
+    : {};
   const next = {
     ...(providerOptions.codex
       ? {
@@ -27,6 +30,7 @@ export function sanitizeProviderOptionsForPersistence(
       : {}),
     ...(providerOptions.copilot ? { copilot: providerOptions.copilot } : {}),
     ...kimi,
+    ...opencode,
   } satisfies ProviderStartOptions;
 
   return Object.keys(next).length > 0 ? next : undefined;
@@ -71,6 +75,16 @@ export function sanitizeProviderOptionsRecordForPersistence(
     }
     if (Object.keys(kimi).length > 0) {
       next.kimi = kimi;
+    }
+  }
+
+  if (isRecord(providerOptions.opencode)) {
+    const opencode: Record<string, unknown> = {};
+    if (typeof providerOptions.opencode.binaryPath === "string") {
+      opencode.binaryPath = providerOptions.opencode.binaryPath;
+    }
+    if (Object.keys(opencode).length > 0) {
+      next.opencode = opencode;
     }
   }
 

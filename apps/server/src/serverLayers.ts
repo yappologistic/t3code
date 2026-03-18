@@ -22,6 +22,8 @@ import { ProviderUnsupportedError } from "./provider/Errors";
 import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeKimiAdapterLive } from "./provider/Layers/KimiAdapter";
+import { makeOpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
+import { OpenCodeStateLive } from "./provider/Layers/OpenCodeState";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
@@ -62,10 +64,12 @@ export function makeServerProviderLayer(): Layer.Layer<
     );
     const copilotAdapterLayer = makeCopilotAdapterLive();
     const kimiAdapterLayer = makeKimiAdapterLive();
+    const opencodeAdapterLayer = makeOpenCodeAdapterLive();
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(copilotAdapterLayer),
       Layer.provide(kimiAdapterLayer),
+      Layer.provide(opencodeAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(
@@ -132,6 +136,7 @@ export function makeServerRuntimeServicesLayer() {
     gitCoreLayer,
     gitManagerLayer,
     terminalLayer,
+    OpenCodeStateLive,
     KeybindingsLive,
   ).pipe(Layer.provideMerge(NodeServices.layer));
 }

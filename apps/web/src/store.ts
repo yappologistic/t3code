@@ -190,7 +190,12 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "copilot" || providerName === "kimi") {
+  if (
+    providerName === "codex" ||
+    providerName === "copilot" ||
+    providerName === "kimi" ||
+    providerName === "opencode"
+  ) {
     return providerName;
   }
   return "codex";
@@ -201,6 +206,9 @@ const COPILOT_MODEL_SLUGS = new Set<string>(
   getModelOptions("copilot").map((option) => option.slug),
 );
 const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
+const OPENCODE_MODEL_SLUGS = new Set<string>(
+  getModelOptions("opencode").map((option) => option.slug),
+);
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
@@ -209,9 +217,14 @@ function inferProviderForThreadModel(input: {
   if (
     input.sessionProviderName === "codex" ||
     input.sessionProviderName === "copilot" ||
-    input.sessionProviderName === "kimi"
+    input.sessionProviderName === "kimi" ||
+    input.sessionProviderName === "opencode"
   ) {
     return input.sessionProviderName;
+  }
+  const normalizedOpenCode = normalizeModelSlug(input.model, "opencode");
+  if (normalizedOpenCode && OPENCODE_MODEL_SLUGS.has(normalizedOpenCode)) {
+    return "opencode";
   }
   const normalizedKimi = normalizeModelSlug(input.model, "kimi");
   if (normalizedKimi && KIMI_MODEL_SLUGS.has(normalizedKimi)) {

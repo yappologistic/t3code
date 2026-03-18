@@ -63,6 +63,7 @@ import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnap
 import { OrchestrationReactor } from "./orchestration/Services/OrchestrationReactor";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
+import { OpenCodeState } from "./provider/Services/OpenCodeState";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
@@ -327,7 +328,8 @@ export type ServerCoreRuntimeServices =
   | CheckpointDiffQuery
   | OrchestrationReactor
   | ProviderService
-  | ProviderHealth;
+  | ProviderHealth
+  | OpenCodeState;
 
 export type ServerRuntimeServices =
   | ServerCoreRuntimeServices
@@ -441,6 +443,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   }
 
   const providerStatuses = yield* providerHealth.getStatuses;
+  const openCodeState = yield* OpenCodeState;
   let mcpServersCache: ReadonlyArray<ServerProviderMcpStatus> | null = null;
   const getMcpServers = () =>
     Effect.gen(function* () {
@@ -457,6 +460,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         },
         { provider: "copilot" as const, supported: false, servers: [] },
         { provider: "kimi" as const, supported: false, servers: [] },
+        { provider: "opencode" as const, supported: false, servers: [] },
       ] as const;
       mcpServersCache = mcpServers;
       return mcpServers;
@@ -1297,6 +1301,21 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.serverProbeCopilotReasoning: {
         const body = stripRequestTag(request.body);
         return yield* Effect.tryPromise(() => probeCopilotReasoning(body));
+      }
+
+      case WS_METHODS.serverGetOpenCodeState: {
+        const body = stripRequestTag(request.body);
+        return yield* openCodeState.getState(body);
+      }
+
+      case WS_METHODS.serverAddOpenCodeCredential: {
+        const body = stripRequestTag(request.body);
+        return yield* openCodeState.addCredential(body);
+      }
+
+      case WS_METHODS.serverRemoveOpenCodeCredential: {
+        const body = stripRequestTag(request.body);
+        return yield* openCodeState.removeCredential(body);
       }
 
       case WS_METHODS.serverUpsertKeybinding: {

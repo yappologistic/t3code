@@ -32,6 +32,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "openrouter", label: "OpenRouter", available: true },
   { value: "copilot", label: "GitHub Copilot", available: true },
   { value: "kimi", label: "Kimi Code", available: true },
+  { value: "opencode", label: "OpenCode", available: true },
   { value: "claudeCode", label: "Claude Code", available: false },
   { value: "cursor", label: "Cursor", available: false },
 ];
@@ -47,6 +48,8 @@ export function getProviderPickerBackingProvider(
       return "copilot";
     case "kimi":
       return "kimi";
+    case "opencode":
+      return "opencode";
     case "claudeCode":
     case "cursor":
       return null;

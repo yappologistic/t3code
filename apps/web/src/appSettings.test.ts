@@ -94,6 +94,21 @@ describe("getAppModelOptions", () => {
     });
   });
 
+  it("supports opencode model catalogs and custom entries", () => {
+    const options = getAppModelOptions("opencode", ["z-ai/glm-4.5"]);
+
+    expect(options[0]).toEqual({
+      slug: "opencode/default",
+      name: "OpenCode Default",
+      isCustom: false,
+    });
+    expect(options.at(-1)).toEqual({
+      slug: "z-ai/glm-4.5",
+      name: "z-ai/glm-4.5",
+      isCustom: true,
+    });
+  });
+
   it("formats friendly labels for kimi custom models with qualifiers", () => {
     const options = getAppModelOptions("kimi", ["moonshot/v1,k2,preview"]);
 
@@ -126,6 +141,7 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
+    expect(resolveAppModelSelection("opencode", [], "")).toBe("opencode/default");
   });
 });
 describe("getSlashModelOptions", () => {
@@ -163,6 +179,7 @@ describe("supportsCustomModels", () => {
     expect(supportsCustomModels("codex")).toBe(true);
     expect(supportsCustomModels("copilot")).toBe(true);
     expect(supportsCustomModels("kimi")).toBe(true);
+    expect(supportsCustomModels("opencode")).toBe(true);
   });
 });
 

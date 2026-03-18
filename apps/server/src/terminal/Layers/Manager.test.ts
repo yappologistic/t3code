@@ -238,6 +238,50 @@ describe("TerminalManager", () => {
     await manager.dispose();
   });
 
+  it("spawns direct commands when command metadata is provided", async () => {
+    const { manager, ptyAdapter } = makeManager();
+
+    await manager.open(
+      openInput({
+        command: "/usr/local/bin/opencode",
+        args: ["auth", "login"],
+      }),
+    );
+
+    expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    expect(ptyAdapter.spawnInputs[0]).toMatchObject({
+      shell: "/usr/local/bin/opencode",
+      args: ["auth", "login"],
+    });
+
+    await manager.dispose();
+  });
+
+  it("restarts a session when the direct launch command changes", async () => {
+    const { manager, ptyAdapter } = makeManager();
+
+    await manager.open(
+      openInput({
+        command: "/usr/local/bin/opencode",
+        args: ["auth", "login"],
+      }),
+    );
+    await manager.open(
+      openInput({
+        command: "/usr/local/bin/opencode",
+        args: ["auth", "logout"],
+      }),
+    );
+
+    expect(ptyAdapter.spawnInputs).toHaveLength(2);
+    expect(ptyAdapter.spawnInputs[1]).toMatchObject({
+      shell: "/usr/local/bin/opencode",
+      args: ["auth", "logout"],
+    });
+
+    await manager.dispose();
+  });
+
   it("forwards write and resize to active pty process", async () => {
     const { manager, ptyAdapter } = makeManager();
     await manager.open(openInput());

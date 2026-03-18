@@ -29,6 +29,8 @@ export interface TerminalSessionState {
   threadId: string;
   terminalId: string;
   cwd: string;
+  launchCommand: string | null;
+  launchArgs: string[] | null;
   status: TerminalSessionStatus;
   pid: number | null;
   history: string;

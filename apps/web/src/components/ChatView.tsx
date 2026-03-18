@@ -60,6 +60,7 @@ import {
   serverConfigQueryOptions,
   serverCopilotReasoningProbeQueryOptions,
   serverCopilotUsageQueryOptions,
+  serverOpenCodeStateQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
 import { formatCopilotRequestCost } from "~/lib/copilotBilling";
@@ -331,6 +332,7 @@ function buildProviderOptionsForDispatch(input: {
     readonly codexHomePath: string;
     readonly openRouterApiKey: string;
     readonly copilotBinaryPath: string;
+    readonly opencodeBinaryPath: string;
     readonly kimiBinaryPath: string;
     readonly kimiApiKey: string;
   };
@@ -339,6 +341,7 @@ function buildProviderOptionsForDispatch(input: {
   const codexHomePath = input.settings.codexHomePath.trim();
   const openRouterApiKey = input.settings.openRouterApiKey.trim();
   const copilotBinaryPath = input.settings.copilotBinaryPath.trim();
+  const opencodeBinaryPath = input.settings.opencodeBinaryPath.trim();
   const kimiBinaryPath = input.settings.kimiBinaryPath.trim();
   const kimiApiKey = input.settings.kimiApiKey.trim();
 
@@ -358,6 +361,15 @@ function buildProviderOptionsForDispatch(input: {
         ? {
             copilot: {
               binaryPath: copilotBinaryPath,
+            },
+          }
+        : undefined;
+    case "opencode":
+      return opencodeBinaryPath || openRouterApiKey
+        ? {
+            opencode: {
+              ...(opencodeBinaryPath ? { binaryPath: opencodeBinaryPath } : {}),
+              ...(openRouterApiKey ? { openRouterApiKey } : {}),
             },
           }
         : undefined;
@@ -384,6 +396,8 @@ function getCustomModelsForProvider(
       return settings.customCodexModels;
     case "copilot":
       return settings.customCopilotModels;
+    case "opencode":
+      return settings.customOpencodeModels;
     case "kimi":
       return settings.customKimiModels;
     default:
@@ -394,6 +408,7 @@ function getCustomModelsForProvider(
 type ProviderCustomModelSettings = {
   readonly customCodexModels: readonly string[];
   readonly customCopilotModels: readonly string[];
+  readonly customOpencodeModels: readonly string[];
   readonly customKimiModels: readonly string[];
 };
 
@@ -1107,6 +1122,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         activeThread?.activities ?? EMPTY_ACTIVITIES,
         "copilot",
       ),
+      opencode: deriveConfiguredModelOptions(
+        activeThread?.activities ?? EMPTY_ACTIVITIES,
+        "opencode",
+      ),
       kimi: deriveConfiguredModelOptions(activeThread?.activities ?? EMPTY_ACTIVITIES, "kimi"),
     }),
     [activeThread?.activities],
@@ -1161,6 +1180,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
       openRouterPickerOptions,
     ],
   );
+  const openCodeStateQuery = useQuery(
+    serverOpenCodeStateQueryOptions({
+      cwd: activeProject?.cwd,
+      binaryPath: settings.opencodeBinaryPath.trim() || undefined,
+      refreshModels: false,
+    }),
+  );
+  const opencodeModelOptions = useMemo(() => {
+    if (openCodeStateQuery.data?.status !== "available") {
+      return [];
+    }
+    return openCodeStateQuery.data.models.map((model) => ({
+      slug: model.slug,
+      name: `${model.providerId}/${model.modelId}`,
+    }));
+  }, [openCodeStateQuery.data]);
   const customModelsForSelectedProvider = useMemo(
     () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
     [modelOptionsByProvider, selectedProvider],
@@ -1382,6 +1417,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       selectedProviderPickerKind,
       modelOptionsByProvider,
       openRouterModelOptions,
+      opencodeModelOptions,
     );
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
       ? selectedModelForPicker
@@ -1389,6 +1425,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [
     modelOptionsByProvider,
     openRouterModelOptions,
+    opencodeModelOptions,
     selectedModelForPicker,
     selectedProvider,
     selectedProviderPickerKind,
@@ -1404,6 +1441,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           option.value,
           modelOptionsByProvider,
           openRouterModelOptions,
+          opencodeModelOptions,
         ).map(({ slug, name }) => ({
           provider: getProviderPickerBackingProvider(option.value) ?? "codex",
           providerLabel: option.label,
@@ -1414,7 +1452,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           searchProvider: option.label.toLowerCase(),
         })),
       ),
-    [lockedProvider, modelOptionsByProvider, openRouterModelOptions],
+    [lockedProvider, modelOptionsByProvider, openRouterModelOptions, opencodeModelOptions],
   );
   const phase = derivePhase(activeThread?.session ?? null);
   const isConnecting = phase === "connecting";
@@ -3877,9 +3915,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => ({
       customCodexModels: settings.customCodexModels,
       customCopilotModels: settings.customCopilotModels,
+      customOpencodeModels: settings.customOpencodeModels,
       customKimiModels: settings.customKimiModels,
     }),
-    [settings.customCodexModels, settings.customCopilotModels, settings.customKimiModels],
+    [
+      settings.customCodexModels,
+      settings.customCopilotModels,
+      settings.customOpencodeModels,
+      settings.customKimiModels,
+    ],
   );
 
   const onProviderModelSelect = useCallback(
@@ -4586,6 +4630,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         lockedProvider={lockedProvider}
                         modelOptionsByProvider={modelOptionsByProvider}
                         openRouterModelOptions={openRouterModelOptions}
+                        opencodeModelOptions={opencodeModelOptions}
                         openRouterContextLengthsBySlug={openRouterContextLengthsBySlug}
                         serviceTierSetting={selectedServiceTierSetting}
                         onProviderModelChange={onProviderModelSelectFromPicker}
@@ -6627,10 +6672,7 @@ function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): o
 
 const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
 const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
-const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
-  { id: "gemini", label: "Gemini", icon: Gemini },
-] as const;
+const COMING_SOON_PROVIDER_OPTIONS = [{ id: "gemini", label: "Gemini", icon: Gemini }] as const;
 
 function mergeModelOptions(
   base: ReadonlyArray<{ slug: string; name: string }>,
@@ -6676,6 +6718,7 @@ function getCustomModelOptionsByProvider(
   settings: {
     customCodexModels: readonly string[];
     customCopilotModels: readonly string[];
+    customOpencodeModels: readonly string[];
     customKimiModels: readonly string[];
   },
   configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
@@ -6685,6 +6728,10 @@ function getCustomModelOptionsByProvider(
     copilot: mergeModelOptions(
       getAppModelOptions("copilot", settings.customCopilotModels),
       configuredModelsByProvider.copilot,
+    ),
+    opencode: mergeModelOptions(
+      getAppModelOptions("opencode", settings.customOpencodeModels),
+      configuredModelsByProvider.opencode,
     ),
     kimi: mergeModelOptions(
       getAppModelOptions("kimi", settings.customKimiModels),
@@ -6698,6 +6745,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   openrouter: OpenRouterIcon,
   copilot: GitHubIcon,
   kimi: KimiIcon,
+  opencode: OpenCodeIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };
@@ -6706,6 +6754,7 @@ function getModelOptionsForProviderPicker(
   providerPickerKind: AvailableProviderPickerKind,
   modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
   openRouterModelOptions: ReadonlyArray<{ slug: string; name: string }>,
+  opencodeModelOptions: ReadonlyArray<{ slug: string; name: string }>,
 ): ReadonlyArray<{ slug: string; name: string }> {
   switch (providerPickerKind) {
     case "openrouter":
@@ -6714,6 +6763,8 @@ function getModelOptionsForProviderPicker(
       return modelOptionsByProvider.codex.filter((option) => !isCodexOpenRouterModel(option.slug));
     case "copilot":
       return modelOptionsByProvider.copilot;
+    case "opencode":
+      return mergeModelOptions(modelOptionsByProvider.opencode, opencodeModelOptions);
     case "kimi":
       return modelOptionsByProvider.kimi;
     default:
@@ -7119,6 +7170,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   lockedProvider: ProviderKind | null;
   modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>;
   openRouterModelOptions: ReadonlyArray<{ slug: string; name: string }>;
+  opencodeModelOptions: ReadonlyArray<{ slug: string; name: string }>;
   openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
   serviceTierSetting: AppServiceTier;
   compact?: boolean;
@@ -7133,8 +7185,14 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         props.providerPickerKind,
         props.modelOptionsByProvider,
         props.openRouterModelOptions,
+        props.opencodeModelOptions,
       ),
-    [props.modelOptionsByProvider, props.openRouterModelOptions, props.providerPickerKind],
+    [
+      props.modelOptionsByProvider,
+      props.openRouterModelOptions,
+      props.opencodeModelOptions,
+      props.providerPickerKind,
+    ],
   );
   const selectedModelLabel =
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ??
@@ -7211,6 +7269,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             option.value,
             props.modelOptionsByProvider,
             props.openRouterModelOptions,
+            props.opencodeModelOptions,
           );
           const isDisabledByProviderLock =
             props.lockedProvider !== null && props.lockedProvider !== backingProvider;

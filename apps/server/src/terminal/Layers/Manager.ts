@@ -308,6 +308,38 @@ function normalizedRuntimeEnv(
   return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));
 }
 
+function normalizedLaunchCommand(command: string | undefined): string | null {
+  if (!command) return null;
+  const trimmed = command.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizedLaunchArgs(args: ReadonlyArray<string> | undefined): string[] | null {
+  if (!args || args.length === 0) {
+    return null;
+  }
+  return [...args];
+}
+
+function areLaunchArgsEqual(
+  left: ReadonlyArray<string> | null,
+  right: ReadonlyArray<string> | null,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return left === right;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function formatDirectLaunch(command: string, args: ReadonlyArray<string> | null): string {
+  return [command, ...(args ?? [])].join(" ");
+}
+
 interface TerminalManagerEvents {
   event: [event: TerminalEvent];
 }
@@ -375,6 +407,8 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           threadId: input.threadId,
           terminalId: input.terminalId,
           cwd: input.cwd,
+          launchCommand: normalizedLaunchCommand(input.command),
+          launchArgs: normalizedLaunchArgs(input.args),
           status: "starting",
           pid: null,
           history,
@@ -396,24 +430,35 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       }
 
       const nextRuntimeEnv = normalizedRuntimeEnv(input.env);
+      const nextLaunchCommand = normalizedLaunchCommand(input.command);
+      const nextLaunchArgs = normalizedLaunchArgs(input.args);
       const currentRuntimeEnv = existing.runtimeEnv;
       const targetCols = input.cols ?? existing.cols;
       const targetRows = input.rows ?? existing.rows;
       const runtimeEnvChanged =
         JSON.stringify(currentRuntimeEnv) !== JSON.stringify(nextRuntimeEnv);
+      const launchChanged =
+        existing.launchCommand !== nextLaunchCommand ||
+        !areLaunchArgsEqual(existing.launchArgs, nextLaunchArgs);
 
-      if (existing.cwd !== input.cwd || runtimeEnvChanged) {
+      if (existing.cwd !== input.cwd || runtimeEnvChanged || launchChanged) {
         this.stopProcess(existing);
         existing.cwd = input.cwd;
         existing.runtimeEnv = nextRuntimeEnv;
+        existing.launchCommand = nextLaunchCommand;
+        existing.launchArgs = nextLaunchArgs;
         existing.history = "";
         await this.persistHistory(existing.threadId, existing.terminalId, existing.history);
       } else if (existing.status === "exited" || existing.status === "error") {
         existing.runtimeEnv = nextRuntimeEnv;
+        existing.launchCommand = nextLaunchCommand;
+        existing.launchArgs = nextLaunchArgs;
         existing.history = "";
         await this.persistHistory(existing.threadId, existing.terminalId, existing.history);
       } else if (currentRuntimeEnv !== nextRuntimeEnv) {
         existing.runtimeEnv = nextRuntimeEnv;
+        existing.launchCommand = nextLaunchCommand;
+        existing.launchArgs = nextLaunchArgs;
       }
 
       if (!existing.process) {
@@ -494,6 +539,8 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           threadId: input.threadId,
           terminalId: input.terminalId,
           cwd: input.cwd,
+          launchCommand: normalizedLaunchCommand(input.command),
+          launchArgs: normalizedLaunchArgs(input.args),
           status: "starting",
           pid: null,
           history: "",
@@ -514,6 +561,8 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         this.stopProcess(session);
         session.cwd = input.cwd;
         session.runtimeEnv = normalizedRuntimeEnv(input.env);
+        session.launchCommand = normalizedLaunchCommand(input.command);
+        session.launchArgs = normalizedLaunchArgs(input.args);
       }
 
       const cols = input.cols ?? session.cols;
@@ -586,68 +635,84 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.cwd = input.cwd;
     session.cols = input.cols;
     session.rows = input.rows;
+    session.launchCommand = normalizedLaunchCommand(input.command);
+    session.launchArgs = normalizedLaunchArgs(input.args);
     session.exitCode = null;
     session.exitSignal = null;
     session.hasRunningSubprocess = false;
     session.updatedAt = new Date().toISOString();
 
     let ptyProcess: PtyProcess | null = null;
-    let startedShell: string | null = null;
+    let startedProcessLabel: string | null = null;
     try {
-      const shellCandidates = resolveShellCandidates(this.shellResolver);
       const terminalEnv = createTerminalSpawnEnv(process.env, session.runtimeEnv);
-      let lastSpawnError: unknown = null;
-
-      const spawnWithCandidate = (candidate: ShellCandidate) =>
-        Effect.runPromise(
+      if (session.launchCommand) {
+        ptyProcess = await Effect.runPromise(
           this.ptyAdapter.spawn({
-            shell: candidate.shell,
-            ...(candidate.args ? { args: candidate.args } : {}),
+            shell: session.launchCommand,
+            ...(session.launchArgs ? { args: session.launchArgs } : {}),
             cwd: session.cwd,
             cols: session.cols,
             rows: session.rows,
             env: terminalEnv,
           }),
         );
+        startedProcessLabel = formatDirectLaunch(session.launchCommand, session.launchArgs);
+      } else {
+        const shellCandidates = resolveShellCandidates(this.shellResolver);
+        let lastSpawnError: unknown = null;
 
-      const trySpawn = async (
-        candidates: ShellCandidate[],
-        index = 0,
-      ): Promise<{ process: PtyProcess; shellLabel: string } | null> => {
-        if (index >= candidates.length) {
-          return null;
-        }
-        const candidate = candidates[index];
-        if (!candidate) {
-          return null;
-        }
+        const spawnWithCandidate = (candidate: ShellCandidate) =>
+          Effect.runPromise(
+            this.ptyAdapter.spawn({
+              shell: candidate.shell,
+              ...(candidate.args ? { args: candidate.args } : {}),
+              cwd: session.cwd,
+              cols: session.cols,
+              rows: session.rows,
+              env: terminalEnv,
+            }),
+          );
 
-        try {
-          const process = await spawnWithCandidate(candidate);
-          return { process, shellLabel: formatShellCandidate(candidate) };
-        } catch (error) {
-          lastSpawnError = error;
-          if (!isRetryableShellSpawnError(error)) {
-            throw error;
+        const trySpawn = async (
+          candidates: ShellCandidate[],
+          index = 0,
+        ): Promise<{ process: PtyProcess; shellLabel: string } | null> => {
+          if (index >= candidates.length) {
+            return null;
           }
-          return trySpawn(candidates, index + 1);
+          const candidate = candidates[index];
+          if (!candidate) {
+            return null;
+          }
+
+          try {
+            const process = await spawnWithCandidate(candidate);
+            return { process, shellLabel: formatShellCandidate(candidate) };
+          } catch (error) {
+            lastSpawnError = error;
+            if (!isRetryableShellSpawnError(error)) {
+              throw error;
+            }
+            return trySpawn(candidates, index + 1);
+          }
+        };
+
+        const spawnResult = await trySpawn(shellCandidates);
+        if (spawnResult) {
+          ptyProcess = spawnResult.process;
+          startedProcessLabel = spawnResult.shellLabel;
         }
-      };
 
-      const spawnResult = await trySpawn(shellCandidates);
-      if (spawnResult) {
-        ptyProcess = spawnResult.process;
-        startedShell = spawnResult.shellLabel;
-      }
-
-      if (!ptyProcess) {
-        const detail =
-          lastSpawnError instanceof Error ? lastSpawnError.message : "Terminal start failed";
-        const tried =
-          shellCandidates.length > 0
-            ? ` Tried shells: ${shellCandidates.map((candidate) => formatShellCandidate(candidate)).join(", ")}.`
-            : "";
-        throw new Error(`${detail}.${tried}`.trim());
+        if (!ptyProcess) {
+          const detail =
+            lastSpawnError instanceof Error ? lastSpawnError.message : "Terminal start failed";
+          const tried =
+            shellCandidates.length > 0
+              ? ` Tried shells: ${shellCandidates.map((candidate) => formatShellCandidate(candidate)).join(", ")}.`
+              : "";
+          throw new Error(`${detail}.${tried}`.trim());
+        }
       }
 
       session.process = ptyProcess;
@@ -691,7 +756,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         threadId: session.threadId,
         terminalId: session.terminalId,
         error: message,
-        ...(startedShell ? { shell: startedShell } : {}),
+        ...(startedProcessLabel ? { shell: startedProcessLabel } : {}),
       });
     }
   }

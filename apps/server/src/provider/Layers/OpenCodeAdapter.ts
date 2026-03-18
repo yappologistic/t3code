@@ -1,44 +1,41 @@
 import { type ProviderUserInputAnswers } from "@t3tools/contracts";
 import { Effect, Layer, ServiceMap } from "effect";
 
-import { CopilotAcpManager } from "../../copilotAcpManager.ts";
+import { OpenCodeAcpManager } from "../../opencodeAcpManager.ts";
 import { createAcpEventStream, toAcpRequestError } from "../acpAdapterSupport.ts";
-import { CopilotAdapter, type CopilotAdapterShape } from "../Services/CopilotAdapter.ts";
+import { OpenCodeAdapter, type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 
-const PROVIDER = "copilot" as const;
+const PROVIDER = "opencode" as const;
 
-export interface CopilotAdapterLiveOptions {
-  readonly manager?: CopilotAcpManager;
-  readonly makeManager?: (services?: ServiceMap.ServiceMap<never>) => CopilotAcpManager;
+export interface OpenCodeAdapterLiveOptions {
+  readonly manager?: OpenCodeAcpManager;
+  readonly makeManager?: (services?: ServiceMap.ServiceMap<never>) => OpenCodeAcpManager;
 }
 
-export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
+export const makeOpenCodeAdapterLive = (options?: OpenCodeAdapterLiveOptions) =>
   Layer.effect(
-    CopilotAdapter,
+    OpenCodeAdapter,
     Effect.gen(function* () {
-      const manager = options?.manager ?? options?.makeManager?.() ?? new CopilotAcpManager();
+      const manager = options?.manager ?? options?.makeManager?.() ?? new OpenCodeAcpManager();
       const toRequestError = (threadId: string, method: string, cause: unknown) =>
         toAcpRequestError({
           provider: PROVIDER,
           threadId,
           method,
           cause,
-          unknownSessionNeedle: "unknown copilot session",
+          unknownSessionNeedle: "unknown opencode session",
         });
 
       const streamEvents = yield* createAcpEventStream(manager);
 
-      const startSession: CopilotAdapterShape["startSession"] = (input) =>
+      const startSession: OpenCodeAdapterShape["startSession"] = (input) =>
         Effect.tryPromise({
           try: () =>
             manager.startSession({
               threadId: input.threadId,
-              provider: "copilot",
+              provider: "opencode",
               ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
               ...(input.model !== undefined ? { model: input.model } : {}),
-              ...(input.modelOptions?.copilot?.reasoningEffort !== undefined
-                ? { reasoningEffort: input.modelOptions.copilot.reasoningEffort }
-                : {}),
               ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
               ...(input.providerOptions !== undefined
                 ? { providerOptions: input.providerOptions }
@@ -48,7 +45,7 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
           catch: (cause) => toRequestError(input.threadId, "session/start", cause),
         });
 
-      const sendTurn: CopilotAdapterShape["sendTurn"] = (input) =>
+      const sendTurn: OpenCodeAdapterShape["sendTurn"] = (input) =>
         Effect.tryPromise({
           try: () =>
             manager.sendTurn({
@@ -56,20 +53,17 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
               ...(input.input !== undefined ? { input: input.input } : {}),
               ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
               ...(input.model !== undefined ? { model: input.model } : {}),
-              ...(input.modelOptions?.copilot?.reasoningEffort !== undefined
-                ? { reasoningEffort: input.modelOptions.copilot.reasoningEffort }
-                : {}),
             }),
           catch: (cause) => toRequestError(input.threadId, "session/prompt", cause),
         });
 
-      const interruptTurn: CopilotAdapterShape["interruptTurn"] = (threadId, turnId) =>
+      const interruptTurn: OpenCodeAdapterShape["interruptTurn"] = (threadId, turnId) =>
         Effect.tryPromise({
           try: () => manager.interruptTurn(threadId, turnId),
           catch: (cause) => toRequestError(threadId, "session/cancel", cause),
         });
 
-      const respondToRequest: CopilotAdapterShape["respondToRequest"] = (
+      const respondToRequest: OpenCodeAdapterShape["respondToRequest"] = (
         threadId,
         requestId,
         decision,
@@ -79,7 +73,7 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
           catch: (cause) => toRequestError(threadId, "request/respond", cause),
         });
 
-      const respondToUserInput: CopilotAdapterShape["respondToUserInput"] = (
+      const respondToUserInput: OpenCodeAdapterShape["respondToUserInput"] = (
         threadId,
         _requestId,
         _answers: ProviderUserInputAnswers,
@@ -89,31 +83,31 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
           catch: (cause) => toRequestError(threadId, "user-input/respond", cause),
         });
 
-      const stopSession: CopilotAdapterShape["stopSession"] = (threadId) =>
+      const stopSession: OpenCodeAdapterShape["stopSession"] = (threadId) =>
         Effect.tryPromise({
           try: () => manager.stopSession(threadId),
           catch: (cause) => toRequestError(threadId, "session/stop", cause),
         });
 
-      const listSessions: CopilotAdapterShape["listSessions"] = () =>
+      const listSessions: OpenCodeAdapterShape["listSessions"] = () =>
         Effect.promise(() => manager.listSessions());
 
-      const hasSession: CopilotAdapterShape["hasSession"] = (threadId) =>
+      const hasSession: OpenCodeAdapterShape["hasSession"] = (threadId) =>
         Effect.promise(() => manager.hasSession(threadId));
 
-      const readThread: CopilotAdapterShape["readThread"] = (threadId) =>
+      const readThread: OpenCodeAdapterShape["readThread"] = (threadId) =>
         Effect.tryPromise({
           try: () => manager.readThread(threadId),
           catch: (cause) => toRequestError(threadId, "thread/read", cause),
         });
 
-      const rollbackThread: CopilotAdapterShape["rollbackThread"] = (threadId, numTurns) =>
+      const rollbackThread: OpenCodeAdapterShape["rollbackThread"] = (threadId, numTurns) =>
         Effect.tryPromise({
           try: () => manager.rollbackThread(threadId, numTurns),
           catch: (cause) => toRequestError(threadId, "thread/rollback", cause),
         });
 
-      const stopAll: CopilotAdapterShape["stopAll"] = () =>
+      const stopAll: OpenCodeAdapterShape["stopAll"] = () =>
         Effect.tryPromise({
           try: () => manager.stopAll(),
           catch: (cause) => toRequestError("_global", "provider/stopAll", cause),
@@ -136,6 +130,6 @@ export const makeCopilotAdapterLive = (options?: CopilotAdapterLiveOptions) =>
         rollbackThread,
         stopAll,
         streamEvents,
-      } satisfies CopilotAdapterShape;
+      } satisfies OpenCodeAdapterShape;
     }),
   );
