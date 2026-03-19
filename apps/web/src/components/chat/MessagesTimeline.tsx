@@ -32,7 +32,13 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
-import { computeMessageDurationStart, normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import {
+  computeMessageDurationStart,
+  deriveTimelineWorkEntryVisualState,
+  formatWorkingTimer,
+  normalizeCompactToolLabel,
+  shouldAnimateAssistantResponseAfterTool,
+} from "./MessagesTimeline.logic";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "../../appSettings";
 import { formatTimestamp } from "../../timestampFormat";
@@ -62,6 +68,9 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  emptyStateLabel: string;
+  workingLabel: string;
+  formatWorkingLabel: (duration: string) => string;
 }
 
 export const MessagesTimeline = memo(function MessagesTimeline({
@@ -86,6 +95,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  emptyStateLabel,
+  workingLabel,
+  formatWorkingLabel,
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
@@ -166,10 +178,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         showCompletionDivider:
           timelineEntry.message.role === "assistant" &&
           completionDividerBeforeEntryId === timelineEntry.id,
+        animateAfterTool: shouldAnimateAssistantResponseAfterTool({
+          messageRole: timelineEntry.message.role,
+          previousRowKind: nextRows.at(-1)?.kind ?? null,
+        }),
       });
     }
 
-    if (isWorking) {
+    const hasWorkRows = nextRows.some((row) => row.kind === "work");
+
+    if (isWorking && !hasWorkRows) {
       nextRows.push({
         kind: "working",
         id: "working-indicator-row",
@@ -274,6 +292,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const nonVirtualizedRows = rows.slice(virtualizedRowCount);
+  const activeWorkGroupId = useMemo(() => {
+    if (!isWorking) return null;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index];
+      if (row?.kind === "work") {
+        return row.id;
+      }
+    }
+    return null;
+  }, [isWorking, rows]);
   const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
     Record<string, boolean>
   >({});
@@ -296,6 +324,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const groupId = row.id;
           const groupedEntries = row.groupedEntries;
           const isExpanded = expandedWorkGroups[groupId] ?? false;
+          const isLiveGroup = activeWorkGroupId === groupId;
           const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
           const visibleEntries =
             hasOverflow && !isExpanded
@@ -303,30 +332,69 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               : groupedEntries;
           const hiddenCount = groupedEntries.length - visibleEntries.length;
           const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-          const showHeader = hasOverflow || !onlyToolEntries;
           const groupLabel = onlyToolEntries ? "Tool calls" : "Work log";
+          const liveDuration =
+            isLiveGroup && row.createdAt ? formatWorkingTimer(row.createdAt, nowIso) : null;
+          const groupSummary = isLiveGroup
+            ? liveDuration
+              ? `Live for ${liveDuration}`
+              : "Live now"
+            : onlyToolEntries
+              ? `${groupedEntries.length} recent call${groupedEntries.length === 1 ? "" : "s"}`
+              : `${groupedEntries.length} recent event${groupedEntries.length === 1 ? "" : "s"}`;
 
           return (
-            <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-              {showHeader && (
-                <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
-                    {groupLabel} ({groupedEntries.length})
-                  </p>
+            <div
+              data-work-group-live={isLiveGroup || undefined}
+              className={cn(
+                "relative overflow-hidden rounded-[24px] border px-2.5 py-2 shadow-[0_18px_50px_-36px_--alpha(var(--color-black)/24%)]",
+                isLiveGroup
+                  ? "border-border/65 bg-[linear-gradient(180deg,--alpha(var(--color-white)/5%),--alpha(var(--color-white)/2%)_48%,--alpha(var(--color-black)/0%)_100%)]"
+                  : "border-border/45 bg-card/25",
+              )}
+            >
+              <div className="mb-2 flex items-start justify-between gap-3 px-0.5">
+                <div className="min-w-0 flex items-center gap-2.5">
+                  <ToolCallActivityBadge isLive={isLiveGroup} />
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-medium text-foreground/88">
+                      {groupLabel}
+                    </p>
+                    <p className="truncate text-[10px] text-muted-foreground/58">{groupSummary}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em]",
+                      isLiveGroup
+                        ? "border-border/60 bg-background/75 text-foreground/78"
+                        : "border-border/55 bg-background/55 text-muted-foreground/60",
+                    )}
+                  >
+                    {isLiveGroup ? "Live" : groupedEntries.length}
+                  </span>
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+                      className="app-fade-motion text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 hover:text-foreground/75"
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
                     </button>
                   )}
                 </div>
-              )}
-              <div className="space-y-0.5">
-                {visibleEntries.map((workEntry) => (
-                  <SimpleWorkEntryRow key={`work-row:${workEntry.id}`} workEntry={workEntry} />
+              </div>
+              <div className="space-y-1">
+                {visibleEntries.map((workEntry, index) => (
+                  <SimpleWorkEntryRow
+                    key={`work-row:${workEntry.id}`}
+                    workEntry={workEntry}
+                    isLiveGroup={isLiveGroup}
+                    isLatestVisibleEntry={index === visibleEntries.length - 1}
+                    entryIndex={index}
+                    visibleEntryCount={visibleEntries.length}
+                  />
                 ))}
               </div>
             </div>
@@ -340,7 +408,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
           return (
             <div className="flex justify-end">
-              <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+              <div className="user-message-font group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
                 {userImages.length > 0 && (
                   <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
                     {userImages.map(
@@ -379,7 +447,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   </div>
                 )}
                 {row.message.text && (
-                  <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
+                  <pre className="user-message-font whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
                     {row.message.text}
                   </pre>
                 )}
@@ -423,7 +491,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <div className="min-w-0 px-1 py-0.5">
+              <div
+                data-assistant-response-reveal={row.animateAfterTool || undefined}
+                className={cn(
+                  "min-w-0 px-1 py-0.5",
+                  row.animateAfterTool && "app-assistant-response-motion",
+                )}
+              >
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -511,16 +585,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
       {row.kind === "working" && (
         <div className="py-0.5 pl-1.5">
-          <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-            <span className="inline-flex items-center gap-[3px]">
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/35 px-3 py-1.5 text-[11px] text-muted-foreground/72 shadow-[0_14px_38px_-30px_--alpha(var(--color-black)/24%)]">
+            <span className="inline-flex items-center gap-[4px]">
+              <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/75" />
+              <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/55 [animation-delay:140ms]" />
+              <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/35 [animation-delay:280ms]" />
             </span>
             <span>
               {row.createdAt
-                ? `Working for ${formatWorkingTimer(row.createdAt, nowIso) ?? "0s"}`
-                : "Working..."}
+                ? formatWorkingLabel(formatWorkingTimer(row.createdAt, nowIso) ?? "0s")
+                : workingLabel}
             </span>
           </div>
         </div>
@@ -531,9 +605,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   if (!hasMessages && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
+        <p className="text-sm text-muted-foreground/30">{emptyStateLabel}</p>
       </div>
     );
   }
@@ -542,7 +614,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     <div
       ref={timelineRootRef}
       data-timeline-root="true"
-      className="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
+      className="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden [contain:content]"
     >
       {virtualizedRowCount > 0 && (
         <div className="relative" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
@@ -590,6 +662,7 @@ type TimelineRow =
       message: TimelineMessage;
       durationStart: string;
       showCompletionDivider: boolean;
+      animateAfterTool: boolean;
     }
   | {
       kind: "proposed-plan";
@@ -602,29 +675,6 @@ type TimelineRow =
 function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan): number {
   const estimatedLines = Math.max(1, Math.ceil(proposedPlan.planMarkdown.length / 72));
   return 120 + Math.min(estimatedLines * 22, 880);
-}
-
-function formatWorkingTimer(startIso: string, endIso: string): string | null {
-  const startedAtMs = Date.parse(startIso);
-  const endedAtMs = Date.parse(endIso);
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
-    return null;
-  }
-
-  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000));
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
-  }
-
-  const hours = Math.floor(elapsedSeconds / 3600);
-  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-  const seconds = elapsedSeconds % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
 function formatMessageMeta(
@@ -665,10 +715,10 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
-  if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
-  if (tone === "tool") return "text-muted-foreground/70";
-  if (tone === "thinking") return "text-muted-foreground/50";
-  return "text-muted-foreground/40";
+  if (tone === "error") return "text-rose-400/95";
+  if (tone === "thinking") return "text-foreground/88";
+  if (tone === "info") return "text-foreground/82";
+  return "text-foreground/92";
 }
 
 function workEntryPreview(
@@ -724,48 +774,155 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
+function workEntryContainerClass(visualState: "active" | "recent" | "settled" | "error"): string {
+  switch (visualState) {
+    case "active":
+      return "app-tool-entry-live border-border/70 bg-card/55 shadow-[0_20px_52px_-34px_--alpha(var(--color-black)/38%)]";
+    case "recent":
+      return "border-border/55 bg-card/38 shadow-[0_14px_34px_-30px_--alpha(var(--color-black)/20%)]";
+    case "error":
+      return "border-rose-400/24 bg-rose-500/[0.08] shadow-[0_18px_42px_-32px_--alpha(var(--color-red-500)/45%)]";
+    default:
+      return "border-transparent bg-background/22 opacity-[0.84]";
+  }
+}
+
+function workEntryBadgeClass(visualState: "active" | "recent" | "settled" | "error"): string {
+  switch (visualState) {
+    case "active":
+      return "border-border/65 bg-background/80 text-foreground shadow-[0_12px_28px_-20px_--alpha(var(--color-black)/32%)]";
+    case "recent":
+      return "border-border/60 bg-background/78 text-foreground/88";
+    case "error":
+      return "border-rose-400/20 bg-rose-500/[0.12] text-rose-200";
+    default:
+      return "border-border/45 bg-background/55 text-muted-foreground/78";
+  }
+}
+
+function workEntryPreviewClass(
+  visualState: "active" | "recent" | "settled" | "error",
+  tone: TimelineWorkEntry["tone"],
+): string {
+  if (tone === "error") return "text-rose-200/88";
+  if (visualState === "active") return "text-muted-foreground/82";
+  if (visualState === "recent") return "text-muted-foreground/70";
+  return "text-muted-foreground/58";
+}
+
+const ToolCallActivityBadge = memo(function ToolCallActivityBadge(props: { isLive: boolean }) {
+  return (
+    <span className="flex -space-x-1">
+      {[0, 1, 2].map((index) => (
+        <span
+          key={`tool-call-badge:${index}`}
+          className={cn(
+            "relative flex size-5 items-center justify-center rounded-full border backdrop-blur-sm",
+            props.isLive
+              ? "border-border/65 bg-background/78 shadow-[0_10px_24px_-18px_--alpha(var(--color-black)/30%)]"
+              : "border-border/60 bg-background/85",
+          )}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              props.isLive ? "app-tool-live-dot bg-foreground/78" : "bg-muted-foreground/40",
+            )}
+            style={props.isLive ? { animationDelay: `${index * 140}ms` } : undefined}
+          />
+        </span>
+      ))}
+    </span>
+  );
+});
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
+  isLiveGroup: boolean;
+  isLatestVisibleEntry: boolean;
+  entryIndex: number;
+  visibleEntryCount: number;
 }) {
-  const { workEntry } = props;
+  const { workEntry, isLiveGroup, isLatestVisibleEntry, entryIndex, visibleEntryCount } = props;
   const iconConfig = workToneIcon(workEntry.tone);
   const EntryIcon = workEntryIcon(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const preview = workEntryPreview(workEntry);
-  const displayText = preview ? `${heading} - ${preview}` : heading;
+  const visualState = deriveTimelineWorkEntryVisualState({
+    tone: workEntry.tone,
+    isLiveGroup,
+    isLatestVisibleEntry,
+    entryIndex,
+    visibleEntryCount,
+  });
+  const displayText = preview ? `${heading}: ${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
 
   return (
-    <div className="rounded-lg px-1 py-1">
-      <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
+    <div
+      data-work-entry-visual-state={visualState}
+      className={cn(
+        "app-tool-entry-motion relative overflow-hidden rounded-2xl border px-3 py-2.5 transition-[transform,opacity,border-color,background-color,box-shadow] duration-300 ease-out motion-safe:hover:-translate-y-px",
+        workEntryContainerClass(visualState),
+      )}
+      style={{ animationDelay: `${Math.min(entryIndex, 5) * 85}ms` }}
+    >
+      <div className="relative z-10 flex items-start gap-3">
         <span
-          className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
+          className={cn(
+            "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-2xl border",
+            workEntryBadgeClass(visualState),
+            iconConfig.className,
+          )}
         >
-          <EntryIcon className="size-3" />
+          <EntryIcon className="size-3.5" />
         </span>
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <p
-            className={cn(
-              "truncate text-[11px] leading-5",
-              workToneClass(workEntry.tone),
-              preview ? "text-muted-foreground/70" : "",
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  "truncate text-[11px] font-medium leading-5",
+                  workToneClass(workEntry.tone),
+                )}
+                title={displayText}
+              >
+                {heading}
+              </p>
+              {preview && (
+                <p
+                  className={cn(
+                    "mt-0.5 line-clamp-2 text-[10px] leading-4 break-words",
+                    workEntryPreviewClass(visualState, workEntry.tone),
+                  )}
+                  title={preview}
+                >
+                  {preview}
+                </p>
+              )}
+            </div>
+            {visualState === "active" && (
+              <span className="flex shrink-0 items-center gap-[4px] rounded-full border border-border/60 bg-background/72 px-2 py-1">
+                <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/78" />
+                <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/58 [animation-delay:140ms]" />
+                <span className="app-tool-live-dot h-1.5 w-1.5 rounded-full bg-foreground/36 [animation-delay:280ms]" />
+              </span>
             )}
-            title={displayText}
-          >
-            <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-              {heading}
-            </span>
-            {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
-          </p>
+          </div>
         </div>
       </div>
       {hasChangedFiles && !previewIsChangedFiles && (
-        <div className="mt-1 flex flex-wrap gap-1 pl-6">
+        <div className="relative z-10 mt-2 flex flex-wrap gap-1 pl-11">
           {workEntry.changedFiles?.slice(0, 4).map((filePath) => (
             <span
               key={`${workEntry.id}:${filePath}`}
-              className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
+              className={cn(
+                "rounded-full border px-2 py-0.5 font-mono text-[10px]",
+                visualState === "active"
+                  ? "border-border/55 bg-background/72 text-muted-foreground/82"
+                  : "border-border/55 bg-background/75 text-muted-foreground/75",
+              )}
               title={filePath}
             >
               {filePath}

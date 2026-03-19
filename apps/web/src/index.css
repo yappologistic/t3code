@@ -79,6 +79,55 @@
       background-position: -200% 0;
     }
   }
+
+  @keyframes tool-entry-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes tool-entry-sheen {
+    from {
+      transform: translate3d(-125%, 0, 0);
+    }
+
+    to {
+      transform: translate3d(135%, 0, 0);
+    }
+  }
+
+  @keyframes tool-live-dot {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(0.78);
+    }
+
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes assistant-response-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+      filter: blur(4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
 }
 
 @layer base {
@@ -142,6 +191,40 @@
     transition-duration: var(--motion-duration-fast);
     transition-timing-function: var(--motion-ease-standard);
   }
+
+  .app-tool-entry-motion {
+    animation: tool-entry-rise 360ms var(--motion-ease-emphasized) both;
+  }
+
+  .app-tool-entry-live {
+    isolation: isolate;
+  }
+
+  .app-tool-entry-live::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 18%,
+      rgb(255 255 255 / 0%) 34%,
+      rgb(255 255 255 / 10%) 50%,
+      rgb(255 255 255 / 0%) 66%,
+      transparent 82%
+    );
+    transform: translate3d(-125%, 0, 0);
+    animation: tool-entry-sheen 2600ms linear infinite;
+    mix-blend-mode: screen;
+  }
+
+  .app-tool-live-dot {
+    animation: tool-live-dot 1400ms var(--motion-ease-standard) infinite;
+  }
+
+  .app-assistant-response-motion {
+    animation: assistant-response-reveal 340ms var(--motion-ease-emphasized) both;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -152,7 +235,11 @@
   .app-toast-popup-motion,
   .app-interactive-motion,
   .app-sidebar-motion,
-  .app-fade-motion {
+  .app-fade-motion,
+  .app-tool-entry-motion,
+  .app-tool-entry-live::after,
+  .app-tool-live-dot,
+  .app-assistant-response-motion {
     transition-duration: 0ms !important;
     animation-duration: 0ms !important;
     will-change: auto;
