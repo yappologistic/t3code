@@ -52,7 +52,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
+import {
+  gitBranchesQueryOptions,
+  gitCreateWorktreeMutationOptions,
+  gitRemoveWorktreeMutationOptions,
+} from "~/lib/gitReactQuery";
 import { openRouterFreeModelsQueryOptions } from "~/lib/openRouterReactQuery";
 import {
   projectAgentsFileQueryOptions,
@@ -821,6 +825,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const chatBackgroundImageOpacity = Math.max(0, (100 - chatBackgroundFadePercent) / 100);
   const queryClient = useQueryClient();
   const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ queryClient }));
+  const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const composerDraft = useComposerThreadDraft(threadId);
   const prompt = composerDraft.prompt;
   const composerImages = composerDraft.images;
@@ -869,6 +874,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [sendPhaseByThreadId, setSendPhaseByThreadId] = useState<Record<string, SendPhase>>({});
   const [sendStartedAt, setSendStartedAt] = useState<string | null>(null);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [isInterruptingTurn, setIsInterruptingTurn] = useState(false);
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
@@ -3804,7 +3810,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setComposerTrigger(null);
 
     let createdServerThreadForLocalDraft = false;
+    let createdWorktreeForSend = false;
     let turnStartSucceeded = false;
+    const originalThreadBranch = activeThread.branch;
+    const originalThreadWorktreePath = activeThread.worktreePath;
     let nextThreadBranch = activeThread.branch;
     let nextThreadWorktreePath = activeThread.worktreePath;
     await (async () => {
@@ -3817,6 +3826,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           branch: baseBranchForWorktree,
           newBranch,
         });
+        createdWorktreeForSend = true;
         nextThreadBranch = result.worktree.branch;
         nextThreadWorktreePath = result.worktree.path;
         if (isServerThread) {
@@ -3952,6 +3962,32 @@ export default function ChatView({ threadId }: ChatViewProps) {
           .catch(() => undefined);
       }
       if (
+        createdWorktreeForSend &&
+        !turnStartSucceeded &&
+        nextThreadWorktreePath &&
+        baseBranchForWorktree
+      ) {
+        if (isServerThread) {
+          await api.orchestration
+            .dispatchCommand({
+              type: "thread.meta.update",
+              commandId: newCommandId(),
+              threadId: threadIdForSend,
+              branch: originalThreadBranch,
+              worktreePath: originalThreadWorktreePath,
+            })
+            .catch(() => undefined);
+          setStoreThreadBranch(threadIdForSend, originalThreadBranch, originalThreadWorktreePath);
+        }
+        await removeWorktreeMutation
+          .mutateAsync({
+            cwd: activeProject.cwd,
+            path: nextThreadWorktreePath,
+            force: true,
+          })
+          .catch(() => undefined);
+      }
+      if (
         !turnStartSucceeded &&
         promptRef.current.length === 0 &&
         composerImagesRef.current.length === 0
@@ -3984,13 +4020,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   const onInterrupt = async () => {
     const api = readNativeApi();
-    if (!api || !activeThread) return;
-    await api.orchestration.dispatchCommand({
-      type: "thread.turn.interrupt",
-      commandId: newCommandId(),
-      threadId: activeThread.id,
-      createdAt: new Date().toISOString(),
-    });
+    if (!api || !activeThread || isInterruptingTurn) return;
+    setIsInterruptingTurn(true);
+    try {
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.interrupt",
+        commandId: newCommandId(),
+        threadId: activeThread.id,
+        ...((activeLatestTurn?.turnId ?? activeThread.session?.activeTurnId)
+          ? { turnId: activeLatestTurn?.turnId ?? activeThread.session?.activeTurnId ?? undefined }
+          : {}),
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to stop generation.";
+      setThreadError(activeThread.id, message);
+      toastManager.add({
+        type: "error",
+        title: "Failed to stop generation",
+        description: message,
+      });
+    } finally {
+      setIsInterruptingTurn(false);
+    }
   };
 
   const onRespondToApproval = useCallback(
@@ -5503,8 +5555,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       ) : phase === "running" ? (
                         <button
                           type="button"
-                          className="app-interactive-motion flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 motion-safe:hover:-translate-y-px motion-reduce:hover:scale-100 sm:h-8 sm:w-8"
+                          className="app-interactive-motion flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 disabled:cursor-wait disabled:opacity-70 motion-safe:hover:-translate-y-px motion-reduce:hover:scale-100 sm:h-8 sm:w-8"
                           onClick={() => void onInterrupt()}
+                          disabled={isInterruptingTurn}
                           aria-label={chatCopy.stopGeneration}
                         >
                           <svg
@@ -6260,7 +6313,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
           void onRespondToApproval(requestId, "cancel");
         }}
       >
-        Cancel turn
+        Cancel approval
       </Button>
       <Button
         size="sm"

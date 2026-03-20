@@ -12,6 +12,7 @@
 - Keep provider availability claims in docs and onboarding copy aligned with `apps/web/src/session-logic.ts` and its tests.
 - Keep chat timeline rendering consolidated in `apps/web/src/components/chat/MessagesTimeline.tsx`; do not reintroduce an inline `MessagesTimeline` copy inside `apps/web/src/components/ChatView.tsx`.
 - Keep OpenCode auth UX aligned with the real CLI surface: credentials are managed via `opencode auth login/logout`, while CUT3 only inspects OpenCode state and forwards the shared OpenRouter key to new OpenCode sessions as `OPENROUTER_API_KEY` when configured.
+- Keep approval UX labels precise: approval decision `cancel` only dismisses/cancels the pending approval prompt, not the running turn, so UI copy must never present it as a turn stop/interrupt action.
 - Keep Kimi auth UX aligned with the official Kimi CLI docs: user-facing guidance should mention `kimi login` and the in-shell `/login` path, plus the CUT3 Kimi API key setting, instead of assuming only one auth flow.
 - Keep server-side fallback models aligned with `DEFAULT_MODEL_BY_PROVIDER` in `packages/contracts/src/model.ts`; do not hardcode older Codex defaults in bootstraps, managers, or internal helpers.
 - Do not leave ad-hoc provider `console.log` debugging in runtime managers; provider/account payloads can leak into server logs.

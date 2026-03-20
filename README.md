@@ -22,10 +22,10 @@ Gemini is intentionally shown as coming soon in the provider picker. Claude Code
 ## How to use
 
 > [!WARNING]
-> Install at least one supported provider CLI before starting CUT3. Some providers also need authentication or API keys; OpenCode can still use its default catalog without stored credentials:
+> Install at least one supported provider CLI before starting CUT3. Some providers also need authentication or API keys; OpenCode can start with its built-in free/default catalog, but provider-backed sessions still depend on OpenCode's own auth/config:
 >
 > - [Codex CLI](https://github.com/openai/codex)
-> - [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/use-copilot-agents/coding-agent/using-the-github-copilot-coding-agent-in-the-cli)
+> - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent)
 > - [OpenCode CLI](https://opencode.ai/docs)
 > - [Kimi Code CLI](https://www.kimi.com/code/docs/en/)
 

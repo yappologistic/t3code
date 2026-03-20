@@ -29,7 +29,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           void onRespondToApproval(requestId, "cancel");
         }}
       >
-        Cancel turn
+        Cancel approval
       </Button>
       <Button
         size="sm"
