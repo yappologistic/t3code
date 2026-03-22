@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CopilotAcpManager, readCopilotReasoningEffortSelector } from "./copilotAcpManager";
 
 describe("copilotAcpManager reasoning selector", () => {
-  it("ignores unsupported xhigh options from ACP config metadata", () => {
+  it("keeps xhigh options from ACP config metadata", () => {
     expect(
       readCopilotReasoningEffortSelector([
         {
@@ -12,7 +12,7 @@ describe("copilotAcpManager reasoning selector", () => {
           type: "select",
           title: "Reasoning effort",
           category: "thought_level",
-          currentValue: "high",
+          currentValue: "xhigh",
           options: [
             { title: "Low", value: "low" },
             { title: "Medium", value: "medium" },
@@ -23,8 +23,8 @@ describe("copilotAcpManager reasoning selector", () => {
       ]),
     ).toEqual({
       id: "reasoning_effort",
-      currentValue: "high",
-      options: ["low", "medium", "high"],
+      currentValue: "xhigh",
+      options: ["low", "medium", "high", "xhigh"],
     });
   });
 });

@@ -6429,8 +6429,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           <DialogHeader>
             <DialogTitle>Enter your Kimi API key</DialogTitle>
             <DialogDescription>
-              CUT3 needs a Kimi Code API key to start Kimi CLI sessions for chat. You can generate
-              one from the Kimi Code Console.
+              CUT3 can start Kimi CLI chat with a Kimi Code API key. You can generate one from the
+              Kimi Code Console, or authenticate in the local CLI with <code>kimi login</code> or
+              <code>/login</code> instead.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
@@ -6455,7 +6456,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
               {isElectron
                 ? "The key stays in the desktop session and is persisted in your OS credential store when secure storage is available."
                 : "The key stays only in memory for the current browser session."}{" "}
-              It is only used when starting new Kimi Code sessions.
+              It is only used when starting new Kimi Code sessions. Leave it blank if you prefer to
+              authenticate in the local CLI with <code>kimi login</code> or <code>/login</code>.
             </p>
             {kimiApiKeyError ? <p className="text-xs text-destructive">{kimiApiKeyError}</p> : null}
           </DialogPanel>
@@ -7874,7 +7876,7 @@ function getProviderPickerSectionDescription(provider: AvailableProviderPickerKi
     case "copilot":
       return "GitHub Copilot chat models discovered from your local runtime.";
     case "kimi":
-      return "Kimi Code sessions backed by either your CLI login or a configured Kimi API key.";
+      return "Kimi Code sessions backed by either `kimi login` / `/login` CLI auth or a configured Kimi API key.";
     case "opencode":
       return "OpenCode models discovered from your local OpenCode runtime.";
     default:
@@ -7974,7 +7976,7 @@ function ProviderSetupDialog(props: {
                 message = props.hasKimiApiKey
                   ? "CUT3 will inject the saved Kimi API key into new Kimi Code sessions."
                   : providerStatus?.message?.trim() ||
-                    "If you prefer not to store an API key in CUT3, you can log in through the local Kimi CLI and refresh this panel.";
+                    "If you prefer not to store an API key in CUT3, run `kimi login` or `/login` in the local Kimi CLI and refresh this panel.";
                 action = (
                   <Button size="xs" variant="outline" onClick={props.onOpenKimiKeyDialog}>
                     <PlusIcon className="size-3.5" />

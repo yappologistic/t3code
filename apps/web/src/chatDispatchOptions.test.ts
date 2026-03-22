@@ -21,6 +21,29 @@ describe("buildModelOptionsForSend", () => {
     });
   });
 
+  it("passes Copilot xhigh reasoning through when the probe supports it", () => {
+    expect(
+      buildModelOptionsForSend({
+        provider: "copilot",
+        model: "gpt-5.4",
+        composerEffort: "xhigh",
+        codexFastModeEnabled: false,
+        copilotReasoningProbe: {
+          status: "supported",
+          fetchedAt: "2026-03-01T00:00:00.000Z",
+          model: "gpt-5.4",
+          options: ["low", "medium", "high", "xhigh"],
+          currentValue: "high",
+        },
+        openRouterSupportsReasoningEffort: false,
+      }),
+    ).toEqual({
+      copilot: {
+        reasoningEffort: "xhigh",
+      },
+    });
+  });
+
   it("falls back to the matching Copilot probe value when the draft effort is unsupported", () => {
     expect(
       buildModelOptionsForSend({

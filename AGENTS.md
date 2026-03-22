@@ -14,10 +14,14 @@
 - Keep OpenCode auth UX aligned with the real CLI surface: credentials are managed via `opencode auth login/logout`, while CUT3 only inspects OpenCode state and forwards the shared OpenRouter key to new OpenCode sessions as `OPENROUTER_API_KEY` when configured.
 - Keep approval UX labels precise: approval decision `cancel` only dismisses/cancels the pending approval prompt, not the running turn, so UI copy must never present it as a turn stop/interrupt action.
 - Keep Kimi auth UX aligned with the official Kimi CLI docs: user-facing guidance should mention `kimi login` and the in-shell `/login` path, plus the CUT3 Kimi API key setting, instead of assuming only one auth flow.
+- Keep GitHub Copilot reasoning UX aligned with the real CLI/ACP surface: current Copilot CLI builds expose `xhigh` reasoning for some models, so contracts, probes, and composer docs must not clamp Copilot to only low/medium/high.
+- Keep GitHub Copilot model slugs aligned with live ACP session metadata. Current Gemini slugs use the `-preview` suffix, and stale picker-only entries that never appear in live Copilot/OpenCode model catalogs should be treated as bugs.
+- When retiring built-in provider model slugs from picker catalogs, preserve legacy thread hydration and provider inference for historical snapshots/imports; removing a picker entry must not silently reclassify old provider threads or rewrite their stored model ids.
 - Keep server-side fallback models aligned with `DEFAULT_MODEL_BY_PROVIDER` in `packages/contracts/src/model.ts`; do not hardcode older Codex defaults in bootstraps, managers, or internal helpers.
 - Do not leave ad-hoc provider `console.log` debugging in runtime managers; provider/account payloads can leak into server logs.
 - Keep provider event logging opt-in. Raw provider prompts, tool payloads, approval answers, and runtime output must not be persisted by default; use `CUT3_ENABLE_PROVIDER_EVENT_LOGS=1` only for deliberate local debugging.
 - Keep provider exit failures visible end-to-end. If a runtime emits `session.exited` with a non-graceful reason, orchestration must preserve that reason in `thread.session.lastError` so OpenCode/Copilot/Kimi/Codex crashes do not look like silent clean stops.
+- When testing hot orchestration streams backed by PubSub, avoid `fork + sleep` subscription races. Start the collector with an explicit readiness handshake (for example `Effect.forkScoped` plus `Effect.yieldNow`, or another deterministic subscription barrier) before dispatching commands.
 
 ## Project Snapshot
 

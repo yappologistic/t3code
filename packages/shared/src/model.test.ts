@@ -8,6 +8,8 @@ import {
   getDefaultReasoningEffort,
   getModelOptions,
   getReasoningEffortOptions,
+  isKnownModelSlug,
+  isLegacyModelSlug,
   normalizeModelSlug,
   resolveModelSlug,
 } from "./model";
@@ -17,7 +19,10 @@ describe("normalizeModelSlug", () => {
     expect(normalizeModelSlug("gpt-5-codex")).toBe("gpt-5-codex");
     expect(normalizeModelSlug("5.3")).toBe("gpt-5.3-codex");
     expect(normalizeModelSlug("gpt-5.3")).toBe("gpt-5.3-codex");
-    expect(normalizeModelSlug("gemini-3-pro-preview", "copilot")).toBe("gemini-3-pro");
+    expect(normalizeModelSlug("gemini-3-flash", "copilot")).toBe("gemini-3-flash-preview");
+    expect(normalizeModelSlug("gemini-3-pro", "copilot")).toBe("gemini-3-pro-preview");
+    expect(normalizeModelSlug("gemini-3.1-pro", "copilot")).toBe("gemini-3.1-pro-preview");
+    expect(normalizeModelSlug("gemini-3-pro-preview", "copilot")).toBe("gemini-3-pro-preview");
   });
 
   it("returns null for empty or missing values", () => {
@@ -63,13 +68,22 @@ describe("resolveModelSlug", () => {
     expect(getDefaultModel("copilot")).toBe(DEFAULT_MODEL_BY_PROVIDER.copilot);
     expect(getModelOptions("copilot")).toEqual(MODEL_OPTIONS_BY_PROVIDER.copilot);
     expect(resolveModelSlug("claude-sonnet-4.5", "copilot")).toBe("claude-sonnet-4.5");
-    expect(resolveModelSlug("gemini-3-pro", "copilot")).toBe("gemini-3-pro");
+    expect(resolveModelSlug("gemini-3-pro", "copilot")).toBe("gemini-3-pro-preview");
   });
 
   it("returns provider-specific defaults and catalogs for kimi", () => {
     expect(getDefaultModel("kimi")).toBe(DEFAULT_MODEL_BY_PROVIDER.kimi);
     expect(getModelOptions("kimi")).toEqual(MODEL_OPTIONS_BY_PROVIDER.kimi);
     expect(resolveModelSlug("kimi-for-coding", "kimi")).toBe("kimi-for-coding");
+  });
+});
+
+describe("legacy model helpers", () => {
+  it("keeps retired Copilot slugs available for historical inference only", () => {
+    expect(isKnownModelSlug("goldeneye", "copilot")).toBe(false);
+    expect(isKnownModelSlug("goldeneye", "copilot", { includeLegacy: true })).toBe(true);
+    expect(isLegacyModelSlug("raptor-mini", "copilot")).toBe(true);
+    expect(isLegacyModelSlug("gpt-5.4", "copilot")).toBe(false);
   });
 });
 
@@ -110,6 +124,10 @@ describe("getModelContextWindowInfo", () => {
 describe("getReasoningEffortOptions", () => {
   it("returns codex reasoning options for codex", () => {
     expect(getReasoningEffortOptions("codex")).toEqual(["xhigh", "high", "medium", "low"]);
+  });
+
+  it("returns the live Copilot reasoning options, including xhigh", () => {
+    expect(getReasoningEffortOptions("copilot")).toEqual(["low", "medium", "high", "xhigh"]);
   });
 });
 

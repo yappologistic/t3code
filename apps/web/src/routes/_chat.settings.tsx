@@ -143,14 +143,14 @@ function getSettingsCopy(language: AppLanguage) {
       resetOpencodeOverrides: "بازنشانی بازنویسی ها",
       kimiTitle: "Kimi Code CLI",
       kimiDescription:
-        "این بازنویسی ها روی نشست های جدید Kimi Code اعمال می شوند. با دستور curl -LsSf https://code.kimi.com/install.sh | bash نصب کنید و یک کلید API Kimi Code اضافه کنید تا CUT3 بتواند نشست های Kimi را مستقیم اجرا کند.",
+        "این بازنویسی ها روی نشست های جدید Kimi Code اعمال می شوند. با دستور curl -LsSf https://code.kimi.com/install.sh | bash نصب کنید، سپس با kimi login یا دستور /login در خود CLI وارد شوید؛ یا برای شروع مستقیم نشست ها از همین جا یک کلید API Kimi Code اضافه کنید.",
       kimiBinaryPath: "مسیر باینری Kimi",
       leaveBlankKimi: "برای استفاده از kimi از PATH این کادر را خالی بگذارید.",
       kimiApiKey: "کلید API Kimi",
       kimiApiDescription: (electron: boolean) =>
         electron
-          ? "آن را از Kimi Code Console بسازید. CUT3 آن را در نشست دسکتاپ نگه می دارد و در صورت وجود ذخیره سازی امن، در مخزن اعتبار سیستم عامل ذخیره می کند. فقط هنگام شروع نشست های جدید Kimi CLI استفاده می شود."
-          : "آن را از Kimi Code Console بسازید. CUT3 آن را فقط در حافظه نشست فعلی مرورگر نگه می دارد. فقط هنگام شروع نشست های جدید Kimi CLI استفاده می شود.",
+          ? "اگر می خواهید CUT3 نشست های Kimi را مستقیم شروع کند، این کلید را از Kimi Code Console بسازید. CUT3 آن را در نشست دسکتاپ نگه می دارد و در صورت وجود ذخیره سازی امن، در مخزن اعتبار سیستم عامل ذخیره می کند. اگر ترجیح می دهید از ورود محلی CLI استفاده کنید، این فیلد را خالی بگذارید و با kimi login یا /login وارد شوید."
+          : "اگر می خواهید CUT3 نشست های Kimi را مستقیم شروع کند، این کلید را از Kimi Code Console بسازید. CUT3 آن را فقط در حافظه نشست فعلی مرورگر نگه می دارد. اگر ترجیح می دهید از ورود محلی CLI استفاده کنید، این فیلد را خالی بگذارید و با kimi login یا /login وارد شوید.",
       resetKimiOverrides: "بازنشانی بازنویسی های Kimi",
       modelsTitle: "مدل ها",
       modelsDescription:
@@ -318,14 +318,14 @@ function getSettingsCopy(language: AppLanguage) {
     resetOpencodeOverrides: "Reset overrides",
     kimiTitle: "Kimi Code CLI",
     kimiDescription:
-      "These overrides apply to new Kimi Code sessions. Install with curl -LsSf https://code.kimi.com/install.sh | bash and add a Kimi Code API key to let CUT3 start Kimi sessions directly.",
+      "These overrides apply to new Kimi Code sessions. Install with curl -LsSf https://code.kimi.com/install.sh | bash, then authenticate with `kimi login` or the in-shell `/login` flow, or add a Kimi Code API key here to let CUT3 start sessions directly.",
     kimiBinaryPath: "Kimi binary path",
     leaveBlankKimi: "Leave blank to use kimi from your PATH.",
     kimiApiKey: "Kimi API key",
     kimiApiDescription: (electron: boolean) =>
       electron
-        ? "Generate this from the Kimi Code Console. CUT3 keeps it in the desktop session and persists it in your OS credential store when secure storage is available. It is only used when starting new Kimi CLI sessions."
-        : "Generate this from the Kimi Code Console. CUT3 keeps it only in memory for the current browser session. It is only used when starting new Kimi CLI sessions.",
+        ? "Generate this from the Kimi Code Console if you want CUT3 to start Kimi sessions directly. CUT3 keeps it in the desktop session and persists it in your OS credential store when secure storage is available. Leave this blank if you prefer to authenticate in the local CLI with `kimi login` or `/login`."
+        : "Generate this from the Kimi Code Console if you want CUT3 to start Kimi sessions directly. CUT3 keeps it only in memory for the current browser session. Leave this blank if you prefer to authenticate in the local CLI with `kimi login` or `/login`.",
     resetKimiOverrides: "Reset kimi overrides",
     modelsTitle: "Models",
     modelsDescription:

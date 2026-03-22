@@ -9,7 +9,7 @@ import {
   TurnId,
   type OrchestrationEvent,
 } from "@t3tools/contracts";
-import { Effect, Layer, ManagedRuntime, Queue, Stream } from "effect";
+import { Effect, Fiber, Layer, ManagedRuntime, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
@@ -184,13 +184,11 @@ describe("OrchestrationEngine", () => {
     const eventTypes: string[] = [];
     await system.run(
       Effect.gen(function* () {
-        const eventQueue = yield* Queue.unbounded<OrchestrationEvent>();
-        yield* Effect.forkScoped(
-          Stream.take(engine.streamDomainEvents, 2).pipe(
-            Stream.runForEach((event) => Queue.offer(eventQueue, event).pipe(Effect.asVoid)),
-          ),
+        const eventFiber = yield* Stream.take(engine.streamDomainEvents, 2).pipe(
+          Stream.runCollect,
+          Effect.forkScoped,
         );
-        yield* Effect.sleep("10 millis");
+        yield* Effect.yieldNow;
         yield* engine.dispatch({
           type: "thread.create",
           commandId: CommandId.makeUnsafe("cmd-stream-thread-create"),
@@ -210,8 +208,9 @@ describe("OrchestrationEngine", () => {
           threadId: ThreadId.makeUnsafe("thread-stream"),
           title: "domain-stream-updated",
         });
-        eventTypes.push((yield* Queue.take(eventQueue)).type);
-        eventTypes.push((yield* Queue.take(eventQueue)).type);
+
+        const events = Array.from(yield* Fiber.join(eventFiber));
+        eventTypes.push(...events.map((event) => event.type));
       }).pipe(Effect.scoped),
     );
 

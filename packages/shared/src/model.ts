@@ -1,6 +1,7 @@
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_REASONING_EFFORT_BY_PROVIDER,
+  LEGACY_MODEL_SLUGS_BY_PROVIDER,
   MODEL_CONTEXT_WINDOW_INFO_BY_PROVIDER,
   MODEL_OPTIONS_BY_PROVIDER,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
@@ -19,6 +20,12 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<CatalogProvider, ReadonlySet<ModelSlug>
   copilot: new Set(MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => option.slug)),
   kimi: new Set(MODEL_OPTIONS_BY_PROVIDER.kimi.map((option) => option.slug)),
   opencode: new Set(MODEL_OPTIONS_BY_PROVIDER.opencode.map((option) => option.slug)),
+};
+const LEGACY_MODEL_SLUG_SET_BY_PROVIDER: Record<CatalogProvider, ReadonlySet<ModelSlug>> = {
+  codex: new Set(LEGACY_MODEL_SLUGS_BY_PROVIDER.codex),
+  copilot: new Set(LEGACY_MODEL_SLUGS_BY_PROVIDER.copilot),
+  kimi: new Set(LEGACY_MODEL_SLUGS_BY_PROVIDER.kimi),
+  opencode: new Set(LEGACY_MODEL_SLUGS_BY_PROVIDER.opencode),
 };
 
 export function getModelOptions(provider: ProviderKind = "codex") {
@@ -147,6 +154,30 @@ export function isBuiltInModel(
 ): boolean {
   const normalized = normalizeModelSlug(model, provider);
   return normalized !== null && MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized);
+}
+
+export function isLegacyModelSlug(
+  model: string | null | undefined,
+  provider: ProviderKind = "codex",
+): boolean {
+  const normalized = normalizeModelSlug(model, provider);
+  return normalized !== null && LEGACY_MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized);
+}
+
+export function isKnownModelSlug(
+  model: string | null | undefined,
+  provider: ProviderKind = "codex",
+  options?: { readonly includeLegacy?: boolean },
+): boolean {
+  const normalized = normalizeModelSlug(model, provider);
+  if (normalized === null) {
+    return false;
+  }
+
+  return (
+    MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized) ||
+    (options?.includeLegacy === true && LEGACY_MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized))
+  );
 }
 
 export function isCodexOpenRouterModel(model: string | null | undefined): boolean {

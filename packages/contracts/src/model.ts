@@ -3,7 +3,7 @@ import { ProviderKind } from "./orchestration";
 
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
 export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORT_OPTIONS)[number];
-export const COPILOT_REASONING_EFFORT_OPTIONS = ["low", "medium", "high"] as const;
+export const COPILOT_REASONING_EFFORT_OPTIONS = ["low", "medium", "high", "xhigh"] as const;
 export const COPILOT_REASONING_EFFORT_VALUES = COPILOT_REASONING_EFFORT_OPTIONS;
 export type CopilotReasoningEffort = (typeof COPILOT_REASONING_EFFORT_OPTIONS)[number];
 export const OPENROUTER_FREE_ROUTER_MODEL = "openrouter/free" as const;
@@ -58,13 +58,13 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
     { slug: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
     { slug: "claude-opus-4.6", name: "Claude Opus 4.6" },
-    { slug: "claude-opus-4.6-fast", name: "Claude Opus 4.6 Fast" },
+    { slug: "claude-opus-4.6-fast", name: "Claude Opus 4.6 (fast mode)" },
     { slug: "claude-opus-4.5", name: "Claude Opus 4.5" },
     { slug: "claude-sonnet-4", name: "Claude Sonnet 4" },
     { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
-    { slug: "gemini-3-flash", name: "Gemini 3 Flash" },
-    { slug: "gemini-3-pro", name: "Gemini 3 Pro" },
-    { slug: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+    { slug: "gemini-3-flash-preview", name: "Gemini 3 Flash" },
+    { slug: "gemini-3-pro-preview", name: "Gemini 3 Pro (Preview)" },
+    { slug: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Preview)" },
     { slug: "gpt-5.4", name: "GPT-5.4" },
     { slug: "gpt-5.4-mini", name: "GPT-5.4 mini" },
     { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
@@ -77,13 +77,18 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5-mini", name: "GPT-5 Mini" },
     { slug: "gpt-4.1", name: "GPT-4.1" },
     { slug: "grok-code-fast-1", name: "Grok Code Fast 1" },
-    { slug: "raptor-mini", name: "Raptor mini" },
-    { slug: "goldeneye", name: "Goldeneye" },
   ],
   kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
   opencode: [{ slug: OPENCODE_DEFAULT_MODEL, name: "Default" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
+
+export const LEGACY_MODEL_SLUGS_BY_PROVIDER = {
+  codex: [],
+  copilot: ["goldeneye", "raptor-mini"],
+  kimi: [],
+  opencode: [],
+} as const satisfies Record<ProviderKind, readonly string[]>;
 
 type BuiltInModelSlug = ModelOptionsByProvider[ProviderKind][number]["slug"];
 export type ModelSlug = BuiltInModelSlug | (string & {});
@@ -237,7 +242,9 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
     "gpt-5.3-spark": "gpt-5.3-codex-spark",
   },
   copilot: {
-    "gemini-3-pro-preview": "gemini-3-pro",
+    "gemini-3-flash": "gemini-3-flash-preview",
+    "gemini-3-pro": "gemini-3-pro-preview",
+    "gemini-3.1-pro": "gemini-3.1-pro-preview",
   },
   kimi: {},
   opencode: {},

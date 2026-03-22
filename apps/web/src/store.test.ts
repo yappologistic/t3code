@@ -246,6 +246,25 @@ describe("store read model sync", () => {
     expect(next.threads[0]?.model).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
   });
 
+  it("preserves legacy Copilot threads when older snapshots lack session provider metadata", () => {
+    const initialState: AppState = {
+      projects: [],
+      threads: [],
+      threadsHydrated: true,
+    };
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "goldeneye",
+        session: null,
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.provider).toBe("copilot");
+    expect(next.threads[0]?.model).toBe("goldeneye");
+  });
+
   it("preserves active Kimi session models that are not part of the built-in catalog", () => {
     const initialState = makeState(makeThread());
     const readModel = makeReadModel(

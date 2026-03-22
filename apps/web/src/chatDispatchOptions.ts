@@ -30,9 +30,7 @@ export function buildModelOptionsForDispatch(input: {
 
   if (input.provider === "copilot") {
     const copilotReasoningEffort =
-      input.supportsReasoningEffort && input.selectedEffort && input.selectedEffort !== "xhigh"
-        ? input.selectedEffort
-        : undefined;
+      input.supportsReasoningEffort && input.selectedEffort ? input.selectedEffort : undefined;
     return copilotReasoningEffort
       ? { copilot: { reasoningEffort: copilotReasoningEffort } }
       : undefined;

@@ -7,7 +7,8 @@ import {
   type OrchestrationSessionStatus,
 } from "@t3tools/contracts";
 import {
-  getModelOptions,
+  isKnownModelSlug,
+  isLegacyModelSlug,
   normalizeModelSlug,
   resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
@@ -205,15 +206,6 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
   return "codex";
 }
 
-const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
-const COPILOT_MODEL_SLUGS = new Set<string>(
-  getModelOptions("copilot").map((option) => option.slug),
-);
-const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
-const OPENCODE_MODEL_SLUGS = new Set<string>(
-  getModelOptions("opencode").map((option) => option.slug),
-);
-
 function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
@@ -226,20 +218,16 @@ function inferProviderForThreadModel(input: {
   ) {
     return input.sessionProviderName;
   }
-  const normalizedOpenCode = normalizeModelSlug(input.model, "opencode");
-  if (normalizedOpenCode && OPENCODE_MODEL_SLUGS.has(normalizedOpenCode)) {
+  if (isKnownModelSlug(input.model, "opencode", { includeLegacy: true })) {
     return "opencode";
   }
-  const normalizedKimi = normalizeModelSlug(input.model, "kimi");
-  if (normalizedKimi && KIMI_MODEL_SLUGS.has(normalizedKimi)) {
+  if (isKnownModelSlug(input.model, "kimi", { includeLegacy: true })) {
     return "kimi";
   }
-  const normalizedCopilot = normalizeModelSlug(input.model, "copilot");
-  if (normalizedCopilot && COPILOT_MODEL_SLUGS.has(normalizedCopilot)) {
+  if (isKnownModelSlug(input.model, "copilot", { includeLegacy: true })) {
     return "copilot";
   }
-  const normalizedCodex = normalizeModelSlug(input.model, "codex");
-  if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {
+  if (isKnownModelSlug(input.model, "codex", { includeLegacy: true })) {
     return "codex";
   }
   return "codex";
@@ -265,7 +253,9 @@ function resolveThreadModelForSync(input: {
     resolved === DEFAULT_MODEL_BY_PROVIDER[input.provider] &&
     normalized !== resolved
     ? normalized
-    : resolved;
+    : isLegacyModelSlug(normalized, input.provider)
+      ? normalized
+      : resolved;
 }
 
 function toAttachmentPreviewUrl(rawUrl: string): string {

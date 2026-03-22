@@ -43,6 +43,11 @@ describe("ProviderSessionStartInput", () => {
       cwd: "/tmp/workspace",
       model: "claude-sonnet-4.5",
       runtimeMode: "approval-required",
+      modelOptions: {
+        copilot: {
+          reasoningEffort: "xhigh",
+        },
+      },
       providerOptions: {
         copilot: {
           binaryPath: "/usr/local/bin/copilot",
@@ -52,6 +57,7 @@ describe("ProviderSessionStartInput", () => {
 
     expect(parsed.provider).toBe("copilot");
     expect(parsed.model).toBe("claude-sonnet-4.5");
+    expect(parsed.modelOptions?.copilot?.reasoningEffort).toBe("xhigh");
     expect(parsed.providerOptions?.copilot?.binaryPath).toBe("/usr/local/bin/copilot");
   });
 
@@ -123,17 +129,17 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
   });
 
-  it("rejects unsupported copilot xhigh reasoning values", () => {
-    expect(() =>
-      decodeProviderSendTurnInput({
-        threadId: "thread-1",
-        model: "claude-sonnet-4.6",
-        modelOptions: {
-          copilot: {
-            reasoningEffort: "xhigh",
-          },
+  it("accepts copilot xhigh reasoning values", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      model: "claude-sonnet-4.6",
+      modelOptions: {
+        copilot: {
+          reasoningEffort: "xhigh",
         },
-      }),
-    ).toThrow();
+      },
+    });
+
+    expect(parsed.modelOptions?.copilot?.reasoningEffort).toBe("xhigh");
   });
 });

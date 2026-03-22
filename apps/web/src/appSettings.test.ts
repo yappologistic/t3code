@@ -75,10 +75,12 @@ describe("getAppModelOptions", () => {
 
     expect(options.some((option) => option.slug === "claude-sonnet-4.5")).toBe(true);
     expect(options.some((option) => option.slug === "claude-sonnet-4.6")).toBe(true);
-    expect(options.some((option) => option.slug === "gemini-3-pro")).toBe(true);
+    expect(options.some((option) => option.slug === "gemini-3-pro-preview")).toBe(true);
     expect(options.some((option) => option.slug === "gpt-5.4-mini")).toBe(true);
     expect(options.some((option) => option.slug === "gpt-5.4")).toBe(true);
     expect(options.some((option) => option.slug === "claude-opus-4.6")).toBe(true);
+    expect(options.some((option) => option.slug === "goldeneye")).toBe(false);
+    expect(options.some((option) => option.slug === "raptor-mini")).toBe(false);
     expect(options.at(-1)).toEqual({
       slug: "custom/copilot-model",
       name: "custom/copilot-model",
@@ -169,6 +171,10 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
     expect(resolveAppModelSelection("opencode", [], "")).toBe("opencode/default");
+  });
+
+  it("normalizes older Copilot Gemini slugs to the current preview ids", () => {
+    expect(resolveAppModelSelection("copilot", [], "gemini-3-pro")).toBe("gemini-3-pro-preview");
   });
 });
 describe("getSlashModelOptions", () => {

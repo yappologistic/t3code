@@ -7,7 +7,7 @@
       "command": "node",
       "args": ["scripts/dev-runner.ts", "dev:desktop"],
       "isBackground": true,
-      "group": "build",
+      "group": "build"
     },
     {
       "label": "Desktop Dev Runner",
@@ -15,7 +15,7 @@
       "command": "node",
       "args": ["scripts/dev-runner.ts", "dev:desktop"],
       "isBackground": true,
-      "group": "build",
+      "group": "build"
     },
     {
       "label": "typecheck-temp",
@@ -23,7 +23,7 @@
       "command": "bun",
       "args": ["run", "typecheck"],
       "isBackground": false,
-      "group": "test",
-    },
-  ],
+      "group": "test"
+    }
+  ]
 }

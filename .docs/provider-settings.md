@@ -112,7 +112,7 @@ The composer exposes provider-aware turn controls.
 ### Reasoning effort
 
 - **Codex**: `Low`, `Medium`, `High`, `Extra High`
-- **GitHub Copilot**: provider-supported reasoning values, currently surfaced as `Low`, `Medium`, or `High`
+- **GitHub Copilot**: provider-supported reasoning values from the live ACP session, currently including `Extra High` on recent Copilot CLI builds when the selected model exposes it
 - **OpenCode**: no reasoning-effort picker is shown
 - **Kimi Code**: no reasoning-effort picker is shown
 
