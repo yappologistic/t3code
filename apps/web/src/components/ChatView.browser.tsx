@@ -10,6 +10,7 @@ import {
   type ProviderKind,
   type ServerConfig,
   type ServerOpenCodeState,
+  type ServerProviderStatus,
   type ThreadId,
   type WsWelcomePayload,
   WS_CHANNELS,
@@ -125,13 +126,17 @@ function createBaseServerConfig(): ServerConfig {
   };
 }
 
-function createReadyProviderStatus(provider: ProviderKind) {
+function createReadyProviderStatus(
+  provider: ProviderKind,
+  overrides: Partial<ServerProviderStatus> = {},
+): ServerProviderStatus {
   return {
     provider,
-    status: "ready" as const,
+    status: "ready",
     available: true,
-    authStatus: "authenticated" as const,
+    authStatus: "authenticated",
     checkedAt: NOW_ISO,
+    ...overrides,
   };
 }
 
@@ -1212,6 +1217,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             { provider: "copilot", supported: false, servers: [] },
             { provider: "kimi", supported: false, servers: [] },
             { provider: "opencode", supported: false, servers: [] },
+            { provider: "pi", supported: false, servers: [] },
           ],
         };
       },
@@ -1262,6 +1268,17 @@ describe("ChatView timeline estimator parity (full app)", () => {
           ...nextFixture.serverConfig,
           providers: [createReadyProviderStatus("kimi")],
           mcpServers: [{ provider: "kimi", supported: false, servers: [] }],
+        };
+      },
+    },
+    {
+      provider: "pi" as const,
+      supportsMcp: false,
+      configureFixture: (nextFixture: TestFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [createReadyProviderStatus("pi")],
+          mcpServers: [{ provider: "pi", supported: false, servers: [] }],
         };
       },
     },
@@ -1368,6 +1385,17 @@ describe("ChatView timeline estimator parity (full app)", () => {
           ...nextFixture.serverConfig,
           providers: [createReadyProviderStatus("kimi")],
           mcpServers: [{ provider: "kimi", supported: false, servers: [] }],
+        };
+      },
+      expectedEmptyState: "MCP server browsing is not available for this provider.",
+    },
+    {
+      provider: "pi" as const,
+      configureFixture: (nextFixture: TestFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [createReadyProviderStatus("pi")],
+          mcpServers: [{ provider: "pi", supported: false, servers: [] }],
         };
       },
       expectedEmptyState: "MCP server browsing is not available for this provider.",
