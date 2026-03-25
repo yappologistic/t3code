@@ -6,9 +6,13 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
-    name: Format, Lint, Typecheck, Test, Browser Test, Build
+    name: Linux quality gates
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -58,20 +62,76 @@ jobs:
         run: bun run test
 
       - name: Install browser test runtime
-        run: |
-          cd apps/web
-          bunx playwright install --with-deps chromium
+        run: bun run --cwd apps/web test:browser:install
 
       - name: Browser test
         run: bun run --cwd apps/web test:browser
+
+  desktop_smoke:
+    name: Desktop smoke (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux
+            runner: ubuntu-24.04
+            os: linux
+          - label: macOS
+            runner: macos-14
+            os: macos
+          - label: Windows
+            runner: windows-2022
+            os: windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Cache Bun and Turbo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}-${{ hashFiles('turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Build desktop pipeline
         run: bun run build:desktop
 
       - name: Verify preload bundle output
         run: |
-          test -f apps/desktop/dist-electron/preload.js
-          grep -nE "desktopBridge|getWsUrl|PICK_FOLDER_CHANNEL|wsUrl" apps/desktop/dist-electron/preload.js
+          node -e "const fs = require('node:fs'); const file = 'apps/desktop/dist-electron/preload.js'; const text = fs.readFileSync(file, 'utf8'); if (!/desktopBridge|getWsUrl|PICK_FOLDER_CHANNEL|wsUrl/.test(text)) { throw new Error('Expected preload markers were not found in ' + file); }"
+
+      - name: Ensure Linux virtual display runtime
+        if: matrix.os == 'linux'
+        run: |
+          which xvfb-run >/dev/null || (
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          )
+
+      - name: Desktop smoke (Linux)
+        if: matrix.os == 'linux'
+        run: xvfb-run -a bun run test:desktop-smoke
+
+      - name: Desktop smoke (macOS / Windows)
+        if: matrix.os != 'linux'
+        run: bun run test:desktop-smoke
 
   release_smoke:
     name: Release Smoke

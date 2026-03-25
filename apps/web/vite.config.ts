@@ -3,8 +3,11 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 import pkg from "./package.json" with { type: "json" };
 
+const webRoot = fileURLToPath(new URL(".", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const port = Number(process.env.PORT ?? 5733);
 const sourcemapEnv = process.env.CUT3_WEB_SOURCEMAP?.trim().toLowerCase();
 const devUrlEnv = process.env.VITE_DEV_SERVER_URL?.trim();
@@ -27,6 +30,7 @@ const buildSourcemap =
       : true;
 
 export default defineConfig({
+  root: webRoot,
   plugins: [
     tanstackRouter(),
     react(),
@@ -55,6 +59,9 @@ export default defineConfig({
     host: devServerHost,
     port,
     strictPort: true,
+    fs: {
+      allow: [webRoot, repoRoot],
+    },
     hmr: {
       // Explicit config so Vite's HMR WebSocket connects reliably
       // inside Electron's BrowserWindow. Vite 8 uses console.debug for

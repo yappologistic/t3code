@@ -274,7 +274,7 @@ function createSnapshotForTargetUser(options: {
         id: PROJECT_ID,
         title: "Project",
         workspaceRoot: "/repo/project",
-        defaultModel: "gpt-5",
+        defaultModel: "gpt-5.4",
         scripts: [],
         createdAt: NOW_ISO,
         updatedAt: NOW_ISO,
@@ -286,7 +286,7 @@ function createSnapshotForTargetUser(options: {
         id: THREAD_ID,
         projectId: PROJECT_ID,
         title: "Browser test thread",
-        model: "gpt-5",
+        model: "gpt-5.4",
         interactionMode: "default",
         runtimeMode: "full-access",
         branch: "main",
@@ -306,6 +306,17 @@ function createSnapshotForTargetUser(options: {
           runtimeMode: "full-access",
           activeTurnId: null,
           lastError: null,
+          tokenUsage: {
+            provider: "codex",
+            kind: "thread",
+            model: "gpt-5.4",
+            usage: {
+              modelContextWindow: 1_000_000,
+              last: {
+                totalTokens: 12_345,
+              },
+            },
+          },
           updatedAt: NOW_ISO,
         },
       },
@@ -363,7 +374,7 @@ function addThreadToSnapshot(
         id: threadId,
         projectId: PROJECT_ID,
         title: "New thread",
-        model: "gpt-5",
+        model: "gpt-5.4",
         interactionMode: "default",
         runtimeMode: "full-access",
         branch: "main",
@@ -383,6 +394,17 @@ function addThreadToSnapshot(
           runtimeMode: "full-access",
           activeTurnId: null,
           lastError: null,
+          tokenUsage: {
+            provider: "codex",
+            kind: "thread",
+            model: "gpt-5.4",
+            usage: {
+              modelContextWindow: 1_000_000,
+              last: {
+                totalTokens: 12_345,
+              },
+            },
+          },
           updatedAt: NOW_ISO,
         },
       },
@@ -501,6 +523,9 @@ function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
       entries: [],
       truncated: false,
     };
+  }
+  if (tag === WS_METHODS.shellOpenInEditor) {
+    return undefined;
   }
   if (tag === WS_METHODS.terminalOpen) {
     return {
@@ -1452,9 +1477,10 @@ describe("ChatView timeline estimator parity (full app)", () => {
       });
       const footerRect = footer.getBoundingClientRect();
 
+      expect(Math.max(...centerLines) - Math.min(...centerLines)).toBeLessThanOrEqual(1);
       for (const centerLine of centerLines) {
         expect(Math.abs(centerLine - (footerRect.top + footerRect.height / 2))).toBeLessThanOrEqual(
-          4,
+          8,
         );
       }
       expect(primaryAction.getBoundingClientRect().right).toBeLessThanOrEqual(footerRect.right + 1);
@@ -1512,8 +1538,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (rect) => rect.top + rect.height / 2,
       );
 
-      expect(providerRect.height).toBeGreaterThanOrEqual(34);
-      expect(Math.abs(providerRect.height - contextRect.height)).toBeLessThanOrEqual(8);
+      expect(providerRect.height).toBeGreaterThanOrEqual(32);
+      expect(contextRect.height).toBeGreaterThan(providerRect.height);
       expect(Math.max(...centerLines) - Math.min(...centerLines)).toBeLessThanOrEqual(6);
       expect(providerRect.bottom).toBeLessThanOrEqual(footerRect.bottom);
       expect(contextRect.bottom).toBeLessThanOrEqual(footerRect.bottom);

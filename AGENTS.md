@@ -9,6 +9,7 @@
 - Treat stale docs as a bug. A task is not complete until `README.md`, `CONTRIBUTING.md`, `.docs/*`, `docs/*`, and any task-specific guides touched by the change are accurate.
 - Update `AGENTS.md` too when a task exposes a repeatable mistake, workflow correction, or durable lesson that should guide future work.
 - Keep developer docs aligned with the current `CUT3_*` dev-runner env names. `dev:web` and `dev:server` are expected to share one port offset per `CUT3_STATE_DIR`, so docs should not describe them as independently drifting port selections.
+- Keep `apps/web/vitest.browser.config.ts` explicitly prebundling `vitest/browser` and `vitest-browser-react`; cold-cache browser runs can otherwise fail before tests start because the optimized browser bundle imports raw Vitest browser helpers.
 - Keep provider availability claims in docs and onboarding copy aligned with `apps/web/src/session-logic.ts` and its tests.
 - Keep built-in composer slash command parsing, aliases, and menu suggestions aligned through `apps/web/src/composer-logic.ts`; do not duplicate the command list in multiple places and let them drift.
 - Keep chat timeline rendering consolidated in `apps/web/src/components/chat/MessagesTimeline.tsx`; do not reintroduce an inline `MessagesTimeline` copy inside `apps/web/src/components/ChatView.tsx`.

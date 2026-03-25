@@ -207,10 +207,6 @@ function normalizeProviderKind(providerName: string | null | undefined): Provide
   return null;
 }
 
-function toLegacyProvider(providerName: string | null): ProviderKind {
-  return normalizeProviderKind(providerName) ?? "codex";
-}
-
 function compareActivitiesByOrder(
   left: OrchestrationReadModel["threads"][number]["activities"][number],
   right: OrchestrationReadModel["threads"][number]["activities"][number],

@@ -48,6 +48,7 @@ Practical guidance:
 Recommended local verification before sharing artifacts:
 
 - Run `bun run fmt`, `bun run lint`, `bun run typecheck`, and `bun run test` from the repo root.
+- Install the browser test runtime with `bun run --cwd apps/web test:browser:install`, then run `bun run --cwd apps/web test:browser`.
 - Run `bun run test:desktop-smoke` after the desktop build so Electron launch, bundled backend bootstrap, and the backend ready marker are all rechecked on the target OS.
 - The desktop smoke test is intentionally narrow: it verifies launch-time startup and the backend readiness handshake, not full renderer interaction or installer behavior.
 - Use `apps/desktop/README.md` together with this release guide when debugging desktop startup or packaging issues.
@@ -55,7 +56,7 @@ Recommended local verification before sharing artifacts:
 ## What the workflow does
 
 - Trigger: push tag matching `v*.*.*`, or run the workflow manually with `workflow_dispatch`.
-- Runs quality gates first: lint, typecheck, test.
+- Runs quality gates first: lint, typecheck, test, browser tests, and a Linux desktop build/smoke pass.
 - Builds four artifacts in parallel:
   - macOS `arm64` DMG and ZIP, named `CUT3-macOS-<version>-<arch>.<ext>`
   - macOS `x64` DMG and ZIP, named `CUT3-macOS-<version>-<arch>.<ext>`

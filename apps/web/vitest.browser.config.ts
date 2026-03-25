@@ -4,15 +4,26 @@ import { defineConfig, mergeConfig } from "vitest/config";
 
 import viteConfig from "./vite.config";
 
+const webRoot = fileURLToPath(new URL(".", import.meta.url));
 const srcPath = fileURLToPath(new URL("./src", import.meta.url));
 
 export default mergeConfig(
   viteConfig,
   defineConfig({
+    root: webRoot,
     resolve: {
       alias: {
         "~": srcPath,
       },
+    },
+    optimizeDeps: {
+      include: [
+        "@pierre/diffs",
+        "@pierre/diffs/react",
+        "@pierre/diffs/worker/worker.js",
+        "vitest/browser",
+        "vitest-browser-react",
+      ],
     },
     test: {
       include: [
