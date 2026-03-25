@@ -1,11 +1,13 @@
 import {
   ApprovalRequestId,
+  PROVIDER_REASONING_LEVEL_OPTIONS,
   isToolLifecycleItemType,
   type ModelSlug,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
   type ProviderKind,
+  type ProviderReasoningLevel,
   type ToolLifecycleItemType,
   type UserInputQuestion,
   type TurnId,
@@ -33,6 +35,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "copilot", label: "GitHub Copilot", available: true },
   { value: "kimi", label: "Kimi Code", available: true },
   { value: "opencode", label: "OpenCode", available: true },
+  { value: "pi", label: "Pi", available: true },
   { value: "claudeCode", label: "Claude Code", available: false },
   { value: "cursor", label: "Cursor", available: false },
 ];
@@ -50,6 +53,8 @@ export function getProviderPickerBackingProvider(
       return "kimi";
     case "opencode":
       return "opencode";
+    case "pi":
+      return "pi";
     case "claudeCode":
     case "cursor":
       return null;
@@ -99,6 +104,14 @@ export interface PendingUserInput {
 export interface ConfiguredModelOption {
   slug: string;
   name: string;
+  supportsReasoning?: boolean;
+  supportsImageInput?: boolean;
+  contextWindowTokens?: number;
+}
+
+export interface ConfiguredReasoningState {
+  currentValue: ProviderReasoningLevel | null;
+  options: ReadonlyArray<ProviderReasoningLevel>;
 }
 
 export interface ActivePlanState {
@@ -386,6 +399,44 @@ export function derivePendingUserInputs(
   );
 }
 
+const KNOWN_PROVIDER_REASONING_LEVELS = new Set<ProviderReasoningLevel>(
+  PROVIDER_REASONING_LEVEL_OPTIONS,
+);
+
+function normalizeProviderReasoningLevel(value: unknown): ProviderReasoningLevel | null {
+  return typeof value === "string" &&
+    KNOWN_PROVIDER_REASONING_LEVELS.has(value as ProviderReasoningLevel)
+    ? (value as ProviderReasoningLevel)
+    : null;
+}
+
+function parseConfiguredModelOption(
+  candidate: Record<string, unknown>,
+  provider: ProviderKind,
+): ConfiguredModelOption | null {
+  if (typeof candidate.modelId !== "string" || candidate.modelId.trim().length === 0) {
+    return null;
+  }
+
+  const slug = candidate.modelId.trim();
+  const input = Array.isArray(candidate.input)
+    ? candidate.input.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+  return {
+    slug,
+    name:
+      typeof candidate.name === "string" && candidate.name.trim().length > 0
+        ? candidate.name.trim()
+        : getModelDisplayName(slug, provider),
+    ...(typeof candidate.reasoning === "boolean" ? { supportsReasoning: candidate.reasoning } : {}),
+    ...(input.includes("image") ? { supportsImageInput: true } : {}),
+    ...(typeof candidate.contextWindow === "number"
+      ? { contextWindowTokens: candidate.contextWindow }
+      : {}),
+  };
+}
+
 export function deriveConfiguredModelOptions(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   provider: ProviderKind,
@@ -432,22 +483,12 @@ export function deriveConfiguredModelOptionsFromActivityGroups(
       if (!entry || typeof entry !== "object") {
         continue;
       }
-      const candidate = entry as Record<string, unknown>;
-      if (typeof candidate.modelId !== "string" || candidate.modelId.trim().length === 0) {
+      const parsed = parseConfiguredModelOption(entry as Record<string, unknown>, provider);
+      if (!parsed || seen.has(parsed.slug)) {
         continue;
       }
-      const slug = candidate.modelId.trim();
-      if (seen.has(slug)) {
-        continue;
-      }
-      seen.add(slug);
-      options.push({
-        slug,
-        name:
-          typeof candidate.name === "string" && candidate.name.trim().length > 0
-            ? candidate.name.trim()
-            : getModelDisplayName(slug, provider),
-      });
+      seen.add(parsed.slug);
+      options.push(parsed);
     }
 
     const currentModelId =
@@ -465,6 +506,68 @@ export function deriveConfiguredModelOptionsFromActivityGroups(
   }
 
   return [];
+}
+
+export function deriveConfiguredReasoningState(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  provider: ProviderKind,
+  model: string | null | undefined,
+): ConfiguredReasoningState | null {
+  const normalizedModel =
+    typeof model === "string" && model.trim().length > 0 ? model.trim() : null;
+  if (!normalizedModel) {
+    return null;
+  }
+
+  const ordered = [...activities].toSorted(compareActivitiesByOrder).toReversed();
+  for (const activity of ordered) {
+    if (activity.kind !== "session.configured") {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const payloadProvider = typeof payload?.provider === "string" ? payload.provider : null;
+    if (payloadProvider !== null && payloadProvider !== provider) {
+      continue;
+    }
+
+    const config =
+      payload?.config && typeof payload.config === "object"
+        ? (payload.config as Record<string, unknown>)
+        : null;
+    if (!config) {
+      continue;
+    }
+
+    const currentModelId =
+      typeof config.currentModelId === "string" && config.currentModelId.trim().length > 0
+        ? config.currentModelId.trim()
+        : null;
+    if (currentModelId !== null && currentModelId !== normalizedModel) {
+      continue;
+    }
+
+    const options = Array.isArray(config.availableThinkingLevels)
+      ? config.availableThinkingLevels
+          .map(normalizeProviderReasoningLevel)
+          .filter((value): value is ProviderReasoningLevel => value !== null)
+      : [];
+    const currentValue = normalizeProviderReasoningLevel(config.currentThinkingLevel);
+
+    if (options.length === 0 && currentValue === null) {
+      continue;
+    }
+
+    return {
+      currentValue,
+      options,
+    };
+  }
+
+  return null;
 }
 
 export function deriveActivePlanState(

@@ -47,6 +47,10 @@ The **Providers** section supports local overrides for each provider runtime:
   - Custom binary path
   - Optional API key stored locally and injected into new Kimi CLI sessions
   - Without an API key, authenticate in Kimi Code CLI itself with `kimi login` or by starting `kimi` and running `/login`
+- **Pi**
+  - No separate binary override in CUT3; Pi is embedded through `@mariozechner/pi-coding-agent`
+  - Pi auth and model discovery still come from `~/.pi/agent` (`auth.json`, `models.json`, Pi env vars, or the external `pi` / `/login` flow)
+  - CUT3 intentionally disables Pi AGENTS files, system prompts, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3
 
 Leave a binary field blank to use the provider executable from your `PATH`.
 
@@ -98,10 +102,11 @@ CUT3 supports saved custom model ids for:
 - **GitHub Copilot**
 - **OpenCode** provider/model ids such as `z-ai/glm-4.5` or `minimax/MiniMax-M2.7`
 - **Kimi Code**
+- **Pi** provider/model ids such as `github-copilot/claude-sonnet-4.5` or `openai/gpt-5-mini`
 - Additional Codex model ids you want to save manually
 - Additional OpenRouter `:free` model ids from the current live catalog
 
-OpenCode also advertises runtime-discovered models through ACP. CUT3 merges those live models into the picker after an OpenCode session starts, and keeps a built-in `Default` option under OpenCode so a first session can start without CUT3 guessing a vendor-specific `provider/model` id.
+OpenCode also advertises runtime-discovered models through ACP. CUT3 merges those live models into the picker after an OpenCode session starts, and keeps a built-in `Default` option under OpenCode so a first session can start without CUT3 guessing a vendor-specific `provider/model` id. Pi now exposes authenticated provider/model ids from local `~/.pi/agent` auth/models state directly in the picker and `/model` suggestions before the first Pi turn, while still keeping `pi/default` available as a compatibility fallback for threads or settings that intentionally rely on Pi choosing its own default provider/model.
 
 Saved custom model ids appear in:
 
@@ -118,7 +123,7 @@ The chat composer now exposes a richer model picker instead of only nested provi
 
 - The picker is searchable across provider names, model labels, and raw model slugs.
 - Models are grouped by provider, with OpenRouter kept as its own top-level section.
-- `Connect provider` opens an in-chat setup panel that shows provider health, lets you add or update the shared OpenRouter key and Kimi API key, and reminds you that OpenCode auth still lives in `opencode auth login` / `opencode auth logout`.
+- `Connect provider` opens an in-chat setup panel that shows provider health, lets you add or update the shared OpenRouter key and Kimi API key, reminds you that OpenCode auth still lives in `opencode auth login` / `opencode auth logout`, and shows Pi guidance for the external `pi` / `bunx pi` + `/login` flow plus `~/.pi/agent` auth/config.
 - `Manage models` opens an in-chat model management surface with per-model visibility toggles.
 - Hidden models are removed from both the main picker and `/model` suggestions, but they stay saved locally so you can restore them later with `Show all`.
 
@@ -132,6 +137,7 @@ The composer exposes provider-aware turn controls.
 - **GitHub Copilot**: provider-supported reasoning values from the live ACP session, currently including `Extra High` on recent Copilot CLI builds when the selected model exposes it
 - **OpenCode**: no reasoning-effort picker is shown
 - **Kimi Code**: no reasoning-effort picker is shown
+- **Pi**: reasoning-capable Pi models now expose Pi thinking levels in the composer (`Default`, `off`, `minimal`, `low`, `medium`, `high`, `xhigh`). CUT3 reads Pi's live model reasoning flag from the authenticated Pi catalog, then uses the embedded Pi SDK session to apply and clamp the selected level against the active model's capabilities.
 
 Reasoning choices are scoped by provider. CUT3 still shows a Reasoning badge for OpenRouter models that advertise reasoning support, but it does not expose Codex-style reasoning-effort levels for OpenRouter models because the OpenRouter catalog does not currently describe which effort values are valid per model.
 

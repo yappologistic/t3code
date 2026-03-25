@@ -8,6 +8,7 @@ import {
   checkCodexProviderStatus,
   checkKimiProviderStatus,
   checkOpenCodeProviderStatus,
+  checkPiProviderStatus,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
   readCodexConfigModelProvider,
@@ -88,6 +89,42 @@ function withTempCodexHome(configContent?: string) {
 
     if (configContent !== undefined) {
       yield* fileSystem.writeFileString(path.join(tmpDir, "config.toml"), configContent);
+    }
+
+    return { tmpDir } as const;
+  });
+}
+
+function withTempPiAgentDir(options?: {
+  readonly authJson?: string;
+  readonly modelsJson?: string;
+}) {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-test-pi-agent-" });
+
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+        process.env.PI_CODING_AGENT_DIR = tmpDir;
+        return originalAgentDir;
+      }),
+      (originalAgentDir) =>
+        Effect.sync(() => {
+          if (originalAgentDir !== undefined) {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+          } else {
+            delete process.env.PI_CODING_AGENT_DIR;
+          }
+        }),
+    );
+
+    if (options?.authJson !== undefined) {
+      yield* fileSystem.writeFileString(path.join(tmpDir, "auth.json"), options.authJson);
+    }
+    if (options?.modelsJson !== undefined) {
+      yield* fileSystem.writeFileString(path.join(tmpDir, "models.json"), options.modelsJson);
     }
 
     return { tmpDir } as const;
@@ -345,6 +382,51 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           "OpenCode CLI (`opencode`) is not installed or not on PATH.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn opencode ENOENT"))),
+    );
+  });
+
+  describe("checkPiProviderStatus", () => {
+    it.effect(
+      "returns warning when Pi is embedded but no authenticated models are configured",
+      () =>
+        Effect.gen(function* () {
+          yield* withTempPiAgentDir();
+          const status = yield* checkPiProviderStatus;
+          assert.strictEqual(status.provider, "pi");
+          assert.strictEqual(status.status, "warning");
+          assert.strictEqual(status.available, true);
+          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(
+            status.message,
+            "Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available. Run `pi` (or `bunx pi`) and use `/login`, or populate ~/.pi/agent/auth.json / provider env vars.",
+          );
+        }),
+    );
+
+    it.effect("returns ready when Pi has authenticated models from auth.json", () =>
+      Effect.gen(function* () {
+        yield* withTempPiAgentDir({
+          authJson: JSON.stringify({
+            openai: {
+              type: "api_key",
+              key: "sk-test",
+            },
+          }),
+        });
+        const status = yield* checkPiProviderStatus;
+        assert.strictEqual(status.provider, "pi");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.ok(Array.isArray(status.availableModels));
+        assert.ok((status.availableModels?.length ?? 0) > 0);
+        assert.strictEqual(typeof status.availableModels?.[0]?.supportsReasoning, "boolean");
+        assert.strictEqual(typeof status.availableModels?.[0]?.supportsImageInput, "boolean");
+        assert.match(
+          status.message ?? "",
+          /^Pi is ready with \d+ authenticated models?\. CUT3 reuses ~\/\.pi\/agent auth\/models config while keeping Pi resource discovery disabled by default\.$/,
+        );
+      }),
     );
   });
 

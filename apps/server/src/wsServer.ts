@@ -476,7 +476,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     }
   }
 
-  const providerStatuses = yield* providerHealth.getStatuses;
   const openCodeState = yield* OpenCodeState;
   let mcpServersCache: ReadonlyArray<ServerProviderMcpStatus> | null = null;
   const clearMcpServersCache = () => {
@@ -516,6 +515,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           supported: openCodeRuntimeState.mcpSupported,
           servers: openCodeRuntimeState.mcpSupported ? openCodeRuntimeState.mcpServers : [],
         },
+        { provider: "pi" as const, supported: false, servers: [] },
       ] as const;
       mcpServersCache = mcpServers;
       return mcpServers;
@@ -1099,9 +1099,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Stream.runForEach(keybindingsManager.streamChanges, (event) =>
-    pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
-      issues: event.issues,
-      providers: providerStatuses,
+    Effect.gen(function* () {
+      const providerStatuses = yield* providerHealth.getStatuses;
+      return yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+        issues: event.issues,
+        providers: providerStatuses,
+      });
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
@@ -1810,7 +1813,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,
-          providers: providerStatuses,
+          providers: yield* providerHealth.getStatuses,
           mcpServers: yield* getMcpServers(),
           availableEditors,
         };

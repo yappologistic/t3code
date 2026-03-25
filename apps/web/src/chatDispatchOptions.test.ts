@@ -12,6 +12,7 @@ describe("buildModelOptionsForSend", () => {
         codexFastModeEnabled: true,
         copilotReasoningProbe: null,
         openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: false,
       }),
     ).toEqual({
       codex: {
@@ -36,6 +37,7 @@ describe("buildModelOptionsForSend", () => {
           currentValue: "high",
         },
         openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: false,
       }),
     ).toEqual({
       copilot: {
@@ -59,6 +61,7 @@ describe("buildModelOptionsForSend", () => {
           currentValue: "medium",
         },
         openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: false,
       }),
     ).toEqual({
       copilot: {
@@ -82,7 +85,40 @@ describe("buildModelOptionsForSend", () => {
           currentValue: "low",
         },
         openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: false,
       }),
     ).toBeUndefined();
+  });
+
+  it("preserves Pi defaults when no reasoning level is selected", () => {
+    expect(
+      buildModelOptionsForSend({
+        provider: "pi",
+        model: "openai/gpt-5.4",
+        composerEffort: null,
+        codexFastModeEnabled: false,
+        copilotReasoningProbe: null,
+        openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("sends Pi thinking-level overrides when a reasoning-capable Pi model is selected", () => {
+    expect(
+      buildModelOptionsForSend({
+        provider: "pi",
+        model: "openai/gpt-5.4",
+        composerEffort: "xhigh",
+        codexFastModeEnabled: false,
+        copilotReasoningProbe: null,
+        openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: true,
+      }),
+    ).toEqual({
+      pi: {
+        thinkingLevel: "xhigh",
+      },
+    });
   });
 });

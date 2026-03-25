@@ -1,12 +1,11 @@
 import {
-  DEFAULT_REASONING_EFFORT_BY_PROVIDER,
   ProjectId,
   ProjectSkillName,
-  REASONING_EFFORT_OPTIONS_BY_PROVIDER,
+  PROVIDER_REASONING_LEVEL_OPTIONS,
   ThreadId,
-  type CodexReasoningEffort,
   type ProviderKind,
   type ProviderInteractionMode,
+  type ProviderReasoningLevel,
   type RuntimeMode,
 } from "@t3tools/contracts";
 import { normalizeModelSlug } from "@t3tools/shared/model";
@@ -80,7 +79,7 @@ interface PersistedComposerThreadDraftState {
   model?: string | null;
   runtimeMode?: RuntimeMode | null;
   interactionMode?: ProviderInteractionMode | null;
-  effort?: CodexReasoningEffort | null;
+  effort?: ProviderReasoningLevel | null;
   codexFastMode?: boolean | null;
   serviceTier?: string | null;
 }
@@ -111,7 +110,7 @@ interface ComposerThreadDraftState {
   model: string | null;
   runtimeMode: RuntimeMode | null;
   interactionMode: ProviderInteractionMode | null;
-  effort: CodexReasoningEffort | null;
+  effort: ProviderReasoningLevel | null;
   codexFastMode: boolean;
 }
 
@@ -171,7 +170,7 @@ interface ComposerDraftStoreState {
     threadId: ThreadId,
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
-  setEffort: (threadId: ThreadId, effort: CodexReasoningEffort | null | undefined) => void;
+  setEffort: (threadId: ThreadId, effort: ProviderReasoningLevel | null | undefined) => void;
   setCodexFastMode: (threadId: ThreadId, enabled: boolean | null | undefined) => void;
   addImage: (threadId: ThreadId, image: ComposerImageAttachment) => void;
   addImages: (threadId: ThreadId, images: ComposerImageAttachment[]) => void;
@@ -213,9 +212,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze({
   codexFastMode: false,
 }) as ComposerThreadDraftState;
 
-const REASONING_EFFORT_VALUES = new Set<CodexReasoningEffort>(
-  REASONING_EFFORT_OPTIONS_BY_PROVIDER.codex,
-);
+const REASONING_EFFORT_VALUES = new Set<ProviderReasoningLevel>(PROVIDER_REASONING_LEVEL_OPTIONS);
 
 function createEmptyThreadDraft(): ComposerThreadDraftState {
   return {
@@ -255,7 +252,11 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
 }
 
 function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === "codex" || value === "copilot" || value === "kimi" || value === "opencode"
+  return value === "codex" ||
+    value === "copilot" ||
+    value === "kimi" ||
+    value === "opencode" ||
+    value === "pi"
     ? value
     : null;
 }
@@ -460,8 +461,8 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
     const effortCandidate =
       typeof draftCandidate.effort === "string" ? draftCandidate.effort : null;
     const effort =
-      effortCandidate && REASONING_EFFORT_VALUES.has(effortCandidate as CodexReasoningEffort)
-        ? (effortCandidate as CodexReasoningEffort)
+      effortCandidate && REASONING_EFFORT_VALUES.has(effortCandidate as ProviderReasoningLevel)
+        ? (effortCandidate as ProviderReasoningLevel)
         : null;
     const codexFastMode =
       draftCandidate.codexFastMode === true ||
@@ -1003,12 +1004,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         if (threadId.length === 0) {
           return;
         }
-        const nextEffort =
-          effort &&
-          REASONING_EFFORT_VALUES.has(effort) &&
-          effort !== DEFAULT_REASONING_EFFORT_BY_PROVIDER.codex
-            ? effort
-            : null;
+        const nextEffort = effort && REASONING_EFFORT_VALUES.has(effort) ? effort : null;
         set((state) => {
           const existing = state.draftsByThreadId[threadId];
           if (!existing && nextEffort === null) {

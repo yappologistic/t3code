@@ -34,6 +34,19 @@ export const ServerProviderAuthStatus = Schema.Literals([
 ]);
 export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
+const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
+
+export const ServerProviderModel = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  supportsReasoning: Schema.optional(Schema.Boolean),
+  supportsImageInput: Schema.optional(Schema.Boolean),
+  contextWindowTokens: Schema.optional(NonNegativeNumber),
+});
+export type ServerProviderModel = typeof ServerProviderModel.Type;
+
+const ServerProviderModels = Schema.Array(ServerProviderModel);
+
 export const ServerProviderStatus = Schema.Struct({
   provider: ProviderKind,
   status: ServerProviderStatusState,
@@ -41,6 +54,7 @@ export const ServerProviderStatus = Schema.Struct({
   authStatus: ServerProviderAuthStatus,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  availableModels: Schema.optional(ServerProviderModels),
 });
 export type ServerProviderStatus = typeof ServerProviderStatus.Type;
 
@@ -60,7 +74,6 @@ export const ServerOpenCodeCredential = Schema.Struct({
 export type ServerOpenCodeCredential = typeof ServerOpenCodeCredential.Type;
 
 const ServerOpenCodeCredentials = Schema.Array(ServerOpenCodeCredential);
-const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
 
 export const ServerOpenCodeModel = Schema.Struct({
   slug: TrimmedNonEmptyString,

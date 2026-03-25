@@ -16,6 +16,9 @@
 - Keep OpenCode MCP status parsing aligned with the real `opencode mcp list` / `opencode mcp auth list` output. Disabled, auth-gated, failed, and connected entries should stay distinguishable in CUT3 instead of being collapsed into a generic success/failure view.
 - Keep approval UX labels precise: approval decision `cancel` only dismisses/cancels the pending approval prompt, not the running turn, so UI copy must never present it as a turn stop/interrupt action.
 - Keep Kimi auth UX aligned with the official Kimi CLI docs: user-facing guidance should mention `kimi login` and the in-shell `/login` path, plus the CUT3 Kimi API key setting, instead of assuming only one auth flow.
+- Keep Pi auth and discovery UX aligned with the real Pi surfaces: CUT3 embeds Pi through the Node SDK, but Pi credentials still live in `~/.pi/agent/auth.json` / Pi env vars or the external `pi` `/login` flow, and CUT3 should keep Pi AGENTS files, system prompts, extensions, skills, prompt templates, and themes disabled so CUT3 injects workspace instructions only once.
+- Keep Pi model discovery live in the chat UI: `server.getConfig` / provider refreshes must rerun provider health, and when Pi already exposes authenticated models from local `~/.pi/agent` state, the picker and `/model` suggestions should surface those provider/model ids instead of collapsing back to a static `pi/default` placeholder.
+- Keep Pi reasoning UX aligned with the real Pi SDK surface: CUT3 should trust Pi's live `model.reasoning` catalog flag plus `AgentSession.getAvailableThinkingLevels()` / `setThinkingLevel()` instead of hardcoding Codex-style assumptions, and should preserve Pi defaults until the user explicitly picks a thinking level override.
 - Keep GitHub Copilot reasoning UX aligned with the real CLI/ACP surface: current Copilot CLI builds expose `xhigh` reasoning for some models, so contracts, probes, and composer docs must not clamp Copilot to only low/medium/high.
 - Keep GitHub Copilot model slugs aligned with live ACP session metadata. Current Gemini slugs use the `-preview` suffix, and stale picker-only entries that never appear in live Copilot/OpenCode model catalogs should be treated as bugs.
 - When retiring built-in provider model slugs from picker catalogs, preserve legacy thread hydration and provider inference for historical snapshots/imports; removing a picker entry must not silently reclassify old provider threads or rewrite their stored model ids.
@@ -27,7 +30,7 @@
 
 ## Project Snapshot
 
-CUT3 is a minimal web GUI for using coding agents. It currently supports Codex, GitHub Copilot, OpenCode, and Kimi Code, with a visible Gemini coming-soon entry plus unavailable picker placeholders for Claude Code and Cursor.
+CUT3 is a minimal web GUI for using coding agents. It currently supports Codex, GitHub Copilot, OpenCode, Kimi Code, and the Pi agent harness, with a visible Gemini coming-soon entry plus unavailable picker placeholders for Claude Code and Cursor.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -122,7 +125,7 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/server`: Node.js HTTP/WebSocket server. Serves the React web app, owns orchestration/project/git/terminal APIs, and routes provider sessions for Codex, GitHub Copilot, OpenCode, and Kimi Code.
+- `apps/server`: Node.js HTTP/WebSocket server. Serves the React web app, owns orchestration/project/git/terminal APIs, and routes provider sessions for Codex, GitHub Copilot, OpenCode, Kimi Code, and Pi.
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, composer/settings controls, plan sidebar flows, and client-side state. Connects to the server via WebSocket.
 - `apps/desktop`: Electron shell. Starts a desktop-scoped `t3` backend, loads the shared web app, and exposes native dialogs, menus, and desktop update flows.
 - `packages/contracts`: Shared Effect Schema schemas and TypeScript contracts for provider events, WebSocket protocol, keybindings, and model/session types. Keep this package schema-only — no runtime logic.
@@ -138,6 +141,7 @@ How we use it in this codebase:
 - GitHub Copilot sessions are brokered through ACP-backed runtime management in `apps/server/src/copilotAcpManager.ts`.
 - OpenCode sessions are brokered through ACP-backed runtime management in `apps/server/src/opencodeAcpManager.ts`.
 - Kimi Code sessions are brokered through ACP-backed runtime management in `apps/server/src/kimiAcpManager.ts`, including optional API-key-backed startup.
+- Pi sessions are brokered through the embedded `@mariozechner/pi-coding-agent` Node SDK in `apps/server/src/piSdkManager.ts`, while CUT3 intentionally disables Pi's own resource discovery so repo instructions still come only from CUT3.
 - Cross-provider routing and shared runtime event fan-out are coordinated in `apps/server/src/provider/Layers/ProviderService.ts`.
 - WebSocket request handling and push channels are served from `apps/server/src/wsServer.ts`.
 - The web app consumes orchestration domain events plus terminal/server push channels over WebSocket.
@@ -152,5 +156,6 @@ Docs:
 
 - Open-source Codex repo: https://github.com/openai/codex
 - Codex-Monitor (Tauri, feature-complete, strong reference implementation): https://github.com/Dimillian/CodexMonitor
+- Pi mono repo (`packages/coding-agent`): https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent
 
 Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.

@@ -52,7 +52,7 @@ import { getLatestServerWelcome } from "../wsNativeApi";
 import { SidebarInset } from "~/components/ui/sidebar";
 
 const MODEL_PROVIDER_SETTINGS: Array<{
-  provider: Extract<ProviderKind, "copilot" | "opencode" | "kimi">;
+  provider: Extract<ProviderKind, "copilot" | "opencode" | "kimi" | "pi">;
   title: string;
   description: string;
   placeholder: string;
@@ -78,6 +78,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     description: "Save additional Kimi Code model ids for the picker and `/model` command.",
     placeholder: "your-kimi-model-id",
     example: "kimi-for-coding",
+  },
+  {
+    provider: "pi",
+    title: "Pi",
+    description: "Save additional Pi provider/model ids for the picker and `/model` command.",
+    placeholder: "provider/model-id",
+    example: "github-copilot/claude-sonnet-4.5",
   },
 ] as const;
 
@@ -153,6 +160,9 @@ function getSettingsCopy(language: AppLanguage) {
           ? "اگر می خواهید CUT3 نشست های Kimi را مستقیم شروع کند، این کلید را از Kimi Code Console بسازید. CUT3 آن را در نشست دسکتاپ نگه می دارد و در صورت وجود ذخیره سازی امن، در مخزن اعتبار سیستم عامل ذخیره می کند. اگر ترجیح می دهید از ورود محلی CLI استفاده کنید، این فیلد را خالی بگذارید و با kimi login یا /login وارد شوید."
           : "اگر می خواهید CUT3 نشست های Kimi را مستقیم شروع کند، این کلید را از Kimi Code Console بسازید. CUT3 آن را فقط در حافظه نشست فعلی مرورگر نگه می دارد. اگر ترجیح می دهید از ورود محلی CLI استفاده کنید، این فیلد را خالی بگذارید و با kimi login یا /login وارد شوید.",
       resetKimiOverrides: "بازنشانی بازنویسی های Kimi",
+      piTitle: "Pi agent harness",
+      piDescription:
+        "CUT3، Pi را از طریق SDK نود خودش داخل سرور تعبیه می کند. اعتبارنامه ها و کاتالوگ مدل Pi از ~/.pi/agent خوانده می شوند؛ برای ورود از خود Pi با pi یا bunx pi استفاده کنید و /login را اجرا کنید، یا auth.json / متغیرهای محیطی Pi را پر کنید. CUT3 عمداً AGENTS، افزونه ها، مهارت ها، پرامپت ها و تم های Pi را در این مسیر غیرفعال می کند تا دستورهای فضای کاری فقط از CUT3 بیایند.",
       modelsTitle: "مدل ها",
       modelsDescription:
         "اسلاگ های مدل اضافی را ذخیره کنید تا در انتخابگر مدل گفتگو و پیشنهادهای دستور /model دیده شوند. مدل های رایگان OpenRouter اکنون بخش مستقل خودشان را دارند.",
@@ -211,6 +221,11 @@ function getSettingsCopy(language: AppLanguage) {
         kimi: {
           title: "Kimi Code",
           description: "شناسه های مدل اضافی Kimi Code را برای انتخابگر و دستور /model ذخیره کنید.",
+        },
+        pi: {
+          title: "Pi",
+          description:
+            "شناسه های provider/model اضافی Pi را برای انتخابگر و دستور /model ذخیره کنید.",
         },
       },
       threadsTitle: "رشته ها",
@@ -339,6 +354,9 @@ function getSettingsCopy(language: AppLanguage) {
         ? "Generate this from the Kimi Code Console if you want CUT3 to start Kimi sessions directly. CUT3 keeps it in the desktop session and persists it in your OS credential store when secure storage is available. Leave this blank if you prefer to authenticate in the local CLI with `kimi login` or `/login`."
         : "Generate this from the Kimi Code Console if you want CUT3 to start Kimi sessions directly. CUT3 keeps it only in memory for the current browser session. Leave this blank if you prefer to authenticate in the local CLI with `kimi login` or `/login`.",
     resetKimiOverrides: "Reset kimi overrides",
+    piTitle: "Pi agent harness",
+    piDescription:
+      "CUT3 embeds Pi through its Node SDK. Pi credentials and model discovery come from ~/.pi/agent; authenticate Pi through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate Pi's auth.json / provider environment variables. CUT3 intentionally disables Pi AGENTS files, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3.",
     modelsTitle: "Models",
     modelsDescription:
       "Save additional provider model slugs so they appear in the chat model picker and /model command suggestions. OpenRouter free models now have their own section, while the cards below handle additional provider-specific custom models.",
@@ -396,6 +414,10 @@ function getSettingsCopy(language: AppLanguage) {
       kimi: {
         title: "Kimi Code",
         description: "Save additional Kimi Code model ids for the picker and /model command.",
+      },
+      pi: {
+        title: "Pi",
+        description: "Save additional Pi provider/model ids for the picker and /model command.",
       },
     },
     threadsTitle: "Threads",
@@ -496,6 +518,8 @@ function getCustomModelsForProvider(
       return settings.customOpencodeModels;
     case "kimi":
       return settings.customKimiModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -514,6 +538,8 @@ function getDefaultCustomModelsForProvider(
       return defaults.customOpencodeModels;
     case "kimi":
       return defaults.customKimiModels;
+    case "pi":
+      return defaults.customPiModels;
     default:
       return defaults.customCodexModels;
   }
@@ -529,6 +555,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
       return { customOpencodeModels: models };
     case "kimi":
       return { customKimiModels: models };
+    case "pi":
+      return { customPiModels: models };
     default:
       return { customCodexModels: models };
   }
@@ -561,6 +589,7 @@ function SettingsRouteView() {
     copilot: "",
     opencode: "",
     kimi: "",
+    pi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -1445,6 +1474,13 @@ function SettingsRouteView() {
                     {copy.resetKimiOverrides}
                   </Button>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">{copy.piTitle}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{copy.piDescription}</p>
               </div>
             </section>
 

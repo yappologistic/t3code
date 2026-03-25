@@ -19,6 +19,7 @@ import { CopilotAdapter } from "../Services/CopilotAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
 import { KimiAdapter } from "../Services/KimiAdapter.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
+import { PiAdapter } from "../Services/PiAdapter.ts";
 
 export interface ProviderAdapterRegistryLiveOptions {
   readonly adapters?: ReadonlyArray<ProviderAdapterShape<ProviderAdapterError>>;
@@ -29,7 +30,13 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
     const adapters =
       options?.adapters !== undefined
         ? options.adapters
-        : [yield* CodexAdapter, yield* CopilotAdapter, yield* KimiAdapter, yield* OpenCodeAdapter];
+        : [
+            yield* CodexAdapter,
+            yield* CopilotAdapter,
+            yield* KimiAdapter,
+            yield* OpenCodeAdapter,
+            yield* PiAdapter,
+          ];
     const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));
 
     const getByProvider: ProviderAdapterRegistryShape["getByProvider"] = (provider) => {

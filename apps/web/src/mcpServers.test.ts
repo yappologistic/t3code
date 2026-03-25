@@ -241,6 +241,7 @@ describe("buildComposerMcpServerItems", () => {
     expect(providerSupportsMcp(providerMcpStatuses, "codex")).toBe(true);
     expect(providerSupportsMcp(providerMcpStatuses, "copilot")).toBe(false);
     expect(providerSupportsMcp(providerMcpStatuses, "kimi")).toBe(false);
+    expect(providerSupportsMcp(providerMcpStatuses, "pi")).toBe(false);
   });
 
   it("returns no items when the provider does not support MCP browsing", () => {

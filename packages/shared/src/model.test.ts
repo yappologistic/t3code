@@ -76,6 +76,12 @@ describe("resolveModelSlug", () => {
     expect(getModelOptions("kimi")).toEqual(MODEL_OPTIONS_BY_PROVIDER.kimi);
     expect(resolveModelSlug("kimi-for-coding", "kimi")).toBe("kimi-for-coding");
   });
+
+  it("returns provider-specific defaults and catalogs for pi", () => {
+    expect(getDefaultModel("pi")).toBe(DEFAULT_MODEL_BY_PROVIDER.pi);
+    expect(getModelOptions("pi")).toEqual(MODEL_OPTIONS_BY_PROVIDER.pi);
+    expect(resolveModelSlug("pi/default", "pi")).toBe("pi/default");
+  });
 });
 
 describe("legacy model helpers", () => {
@@ -92,6 +98,7 @@ describe("getModelDisplayName", () => {
     expect(getModelDisplayName("gpt-5.4", "codex")).toBe("GPT-5.4");
     expect(getModelDisplayName("gpt-5-codex", "codex")).toBe("GPT-5 Codex");
     expect(getModelDisplayName("kimi-for-coding", "kimi")).toBe("Kimi for Coding");
+    expect(getModelDisplayName("pi/default", "pi")).toBe("Default");
   });
 
   it("formats raw Kimi ACP ids into readable labels", () => {
@@ -108,6 +115,7 @@ describe("getModelContextWindowInfo", () => {
     expect(getModelContextWindowInfo("gpt-5.4", "codex")?.totalTokens).toBe(1_000_000);
     expect(getModelContextWindowInfo("gpt-5.4", "copilot")?.totalTokens).toBe(1_000_000);
     expect(getModelContextWindowInfo("kimi-for-coding", "kimi")?.totalTokens).toBeUndefined();
+    expect(getModelContextWindowInfo("pi/default", "pi")?.note).toContain("Pi");
   });
 
   it("preserves unknown totals when only a note is documented", () => {
@@ -129,6 +137,17 @@ describe("getReasoningEffortOptions", () => {
   it("returns the live Copilot reasoning options, including xhigh", () => {
     expect(getReasoningEffortOptions("copilot")).toEqual(["low", "medium", "high", "xhigh"]);
   });
+
+  it("returns Pi thinking levels when the selected Pi model supports reasoning", () => {
+    expect(getReasoningEffortOptions("pi")).toEqual([
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
 });
 
 describe("getDefaultReasoningEffort", () => {
@@ -136,5 +155,6 @@ describe("getDefaultReasoningEffort", () => {
     expect(getDefaultReasoningEffort("codex")).toBe("high");
     expect(getDefaultReasoningEffort("kimi")).toBeNull();
     expect(getDefaultReasoningEffort("copilot")).toBe("high");
+    expect(getDefaultReasoningEffort("pi")).toBeNull();
   });
 });

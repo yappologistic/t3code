@@ -4,6 +4,10 @@ import { type ServerProviderStatus } from "@t3tools/contracts";
 
 import {
   findProviderStatus,
+  getDefaultProviderStatusMessage,
+  getProviderDisplayLabel,
+  getProviderStatusModelOptions,
+  getProviderStatusTitle,
   resolveProviderStatusForChat,
   resolveVisibleProviderStatusForChat,
 } from "./providerStatus";
@@ -32,11 +36,61 @@ const PROVIDER_STATUSES: ServerProviderStatus[] = [
     checkedAt: "2026-03-08T00:00:00.000Z",
     message: "Kimi Code CLI (`kimi`) is not installed or not on PATH.",
   },
+  {
+    provider: "pi",
+    status: "warning",
+    available: true,
+    authStatus: "unauthenticated",
+    checkedAt: "2026-03-08T00:00:00.000Z",
+    message: "Pi needs auth.",
+    availableModels: [
+      {
+        slug: "openai/gpt-5.4",
+        name: "GPT-5.4",
+        supportsReasoning: true,
+        supportsImageInput: true,
+        contextWindowTokens: 1_000_000,
+      },
+      { slug: "openai/gpt-5.4", name: "GPT-5.4" },
+      {
+        slug: "github-copilot/claude-sonnet-4.5",
+        name: "Claude Sonnet 4.5",
+        supportsReasoning: true,
+      },
+    ],
+  },
 ];
 
 describe("findProviderStatus", () => {
   it("returns the matching provider status", () => {
     expect(findProviderStatus(PROVIDER_STATUSES, "kimi")).toEqual(PROVIDER_STATUSES[2]);
+  });
+});
+
+describe("provider status labels", () => {
+  it("formats friendly labels and fallback banner copy for pi", () => {
+    expect(getProviderDisplayLabel("pi")).toBe("Pi");
+    expect(getProviderStatusTitle("pi")).toBe("Pi provider status");
+    expect(getDefaultProviderStatusMessage(PROVIDER_STATUSES[3]!)).toBe(
+      "Pi provider has limited availability.",
+    );
+  });
+
+  it("returns de-duplicated provider-status model options", () => {
+    expect(getProviderStatusModelOptions(PROVIDER_STATUSES[3]!)).toEqual([
+      {
+        slug: "openai/gpt-5.4",
+        name: "GPT-5.4",
+        supportsReasoning: true,
+        supportsImageInput: true,
+        contextWindowTokens: 1_000_000,
+      },
+      {
+        slug: "github-copilot/claude-sonnet-4.5",
+        name: "Claude Sonnet 4.5",
+        supportsReasoning: true,
+      },
+    ]);
   });
 });
 
@@ -59,6 +113,16 @@ describe("resolveProviderStatusForChat", () => {
         sessionProvider: "copilot",
       }),
     ).toEqual(PROVIDER_STATUSES[1]);
+  });
+
+  it("recognizes pi as a session provider", () => {
+    expect(
+      resolveProviderStatusForChat({
+        providerStatuses: PROVIDER_STATUSES,
+        selectedProvider: "codex",
+        sessionProvider: "pi",
+      }),
+    ).toEqual(PROVIDER_STATUSES[3]);
   });
 });
 

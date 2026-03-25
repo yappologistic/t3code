@@ -6,6 +6,7 @@ import {
   deriveActivePlanState,
   deriveConfiguredModelOptions,
   deriveConfiguredModelOptionsFromActivityGroups,
+  deriveConfiguredReasoningState,
   deriveLatestModelRerouteNotice,
   getProviderPickerBackingProvider,
   getProviderPickerKindForSelection,
@@ -478,6 +479,49 @@ describe("deriveConfiguredModelOptions", () => {
         name: "Kimi for Coding · Thinking",
       },
     ]);
+  });
+
+  it("preserves Pi model capability metadata and configured reasoning state", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-pi",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "pi",
+          config: {
+            currentModelId: "openai/gpt-5.4",
+            currentThinkingLevel: "high",
+            availableThinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh"],
+            availableModels: [
+              {
+                modelId: "openai/gpt-5.4",
+                name: "GPT-5.4",
+                reasoning: true,
+                input: ["text", "image"],
+                contextWindow: 1_000_000,
+              },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(deriveConfiguredModelOptions(activities, "pi")).toEqual([
+      {
+        slug: "openai/gpt-5.4",
+        name: "GPT-5.4",
+        supportsReasoning: true,
+        supportsImageInput: true,
+        contextWindowTokens: 1_000_000,
+      },
+    ]);
+    expect(deriveConfiguredReasoningState(activities, "pi", "openai/gpt-5.4")).toEqual({
+      currentValue: "high",
+      options: ["off", "minimal", "low", "medium", "high", "xhigh"],
+    });
   });
 });
 
@@ -1123,6 +1167,7 @@ describe("PROVIDER_OPTIONS", () => {
       { value: "copilot", label: "GitHub Copilot", available: true },
       { value: "kimi", label: "Kimi Code", available: true },
       { value: "opencode", label: "OpenCode", available: true },
+      { value: "pi", label: "Pi", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);
@@ -1146,6 +1191,7 @@ describe("getProviderPickerBackingProvider", () => {
     expect(getProviderPickerBackingProvider("copilot")).toBe("copilot");
     expect(getProviderPickerBackingProvider("kimi")).toBe("kimi");
     expect(getProviderPickerBackingProvider("opencode")).toBe("opencode");
+    expect(getProviderPickerBackingProvider("pi")).toBe("pi");
     expect(getProviderPickerBackingProvider("claudeCode")).toBeNull();
   });
 });
@@ -1156,5 +1202,6 @@ describe("getProviderPickerKindForSelection", () => {
     expect(getProviderPickerKindForSelection("codex", "gpt-5")).toBe("codex");
     expect(getProviderPickerKindForSelection("copilot", "claude-sonnet-4.6")).toBe("copilot");
     expect(getProviderPickerKindForSelection("opencode", "opencode/default")).toBe("opencode");
+    expect(getProviderPickerKindForSelection("pi", "pi/default")).toBe("pi");
   });
 });

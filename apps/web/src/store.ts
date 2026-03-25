@@ -199,7 +199,8 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
     providerName === "codex" ||
     providerName === "copilot" ||
     providerName === "kimi" ||
-    providerName === "opencode"
+    providerName === "opencode" ||
+    providerName === "pi"
   ) {
     return providerName;
   }
@@ -214,9 +215,13 @@ function inferProviderForThreadModel(input: {
     input.sessionProviderName === "codex" ||
     input.sessionProviderName === "copilot" ||
     input.sessionProviderName === "kimi" ||
-    input.sessionProviderName === "opencode"
+    input.sessionProviderName === "opencode" ||
+    input.sessionProviderName === "pi"
   ) {
     return input.sessionProviderName;
+  }
+  if (isKnownModelSlug(input.model, "pi", { includeLegacy: true })) {
+    return "pi";
   }
   if (isKnownModelSlug(input.model, "opencode", { includeLegacy: true })) {
     return "opencode";

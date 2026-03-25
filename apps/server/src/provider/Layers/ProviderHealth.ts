@@ -1,8 +1,9 @@
 /**
- * ProviderHealthLive - Startup-time provider health checks.
+ * ProviderHealthLive - On-demand provider health checks.
  *
- * Performs one-time provider readiness probes when the server starts and
- * keeps the resulting snapshot in memory for `server.getConfig`.
+ * Runs provider readiness probes whenever CUT3 asks for a fresh snapshot,
+ * so auth/model changes made outside CUT3 can appear without restarting the
+ * server.
  *
  * Uses effect's ChildProcessSpawner to run CLI probes natively.
  *
@@ -14,7 +15,7 @@ import type {
   ServerProviderStatus,
   ServerProviderStatusState,
 } from "@t3tools/contracts";
-import { Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
+import { Effect, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
@@ -24,12 +25,14 @@ import {
 } from "../codexCliVersion";
 import { parseOpenCodeAuthListOutput } from "./OpenCodeState";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
+import { createPiHarnessCatalogSnapshot } from "../../piHarness.ts";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const COPILOT_PROVIDER = "copilot" as const;
 const KIMI_PROVIDER = "kimi" as const;
 const OPENCODE_PROVIDER = "opencode" as const;
+const PI_PROVIDER = "pi" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -678,23 +681,94 @@ export const checkOpenCodeProviderStatus: Effect.Effect<
   };
 });
 
+export const checkPiProviderStatus: Effect.Effect<ServerProviderStatus, never> = Effect.sync(() => {
+  const checkedAt = new Date().toISOString();
+
+  try {
+    const snapshot = createPiHarnessCatalogSnapshot();
+    const issueMessages = [snapshot.modelRegistryError, ...snapshot.authErrors].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    );
+
+    if (snapshot.availableModels.length > 0) {
+      return {
+        provider: PI_PROVIDER,
+        status: issueMessages.length > 0 ? ("warning" as const) : ("ready" as const),
+        available: true,
+        authStatus: "authenticated" as const,
+        checkedAt,
+        message:
+          issueMessages.length > 0
+            ? `Pi is ready with ${snapshot.availableModels.length} authenticated model${snapshot.availableModels.length === 1 ? "" : "s"}, but local Pi config reported an issue: ${issueMessages[0]}.`
+            : `Pi is ready with ${snapshot.availableModels.length} authenticated model${snapshot.availableModels.length === 1 ? "" : "s"}. CUT3 reuses ~/.pi/agent auth/models config while keeping Pi resource discovery disabled by default.`,
+        availableModels: snapshot.availableModels.map((model) => {
+          const availableModel = {
+            slug: model.slug,
+            name: model.name,
+            supportsReasoning: model.reasoning,
+            supportsImageInput: model.supportsImageInput,
+          } as {
+            slug: string;
+            name: string;
+            supportsReasoning: boolean;
+            supportsImageInput: boolean;
+            contextWindowTokens?: number;
+          };
+          if (typeof model.contextWindowTokens === "number") {
+            availableModel.contextWindowTokens = model.contextWindowTokens;
+          }
+          return availableModel;
+        }),
+      };
+    }
+
+    return {
+      provider: PI_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unauthenticated" as const,
+      checkedAt,
+      message:
+        issueMessages.length > 0
+          ? `Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available. Local Pi config also reported: ${issueMessages[0]}. Run \`pi\` (or \`bunx pi\`) and use \`/login\`, or populate ~/.pi/agent/auth.json / provider env vars.`
+          : "Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available. Run `pi` (or `bunx pi`) and use `/login`, or populate ~/.pi/agent/auth.json / provider env vars.",
+    };
+  } catch (error) {
+    return {
+      provider: PI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: `Failed to inspect Pi setup: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
-    const providerStatusesFiber = yield* Effect.all(
-      [
-        checkCodexProviderStatus,
-        checkCopilotProviderStatus,
-        checkKimiProviderStatus,
-        checkOpenCodeProviderStatus,
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(Effect.forkScoped);
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
 
     return {
-      getStatuses: Fiber.join(providerStatusesFiber),
+      getStatuses: Effect.all(
+        [
+          checkCodexProviderStatus,
+          checkCopilotProviderStatus,
+          checkKimiProviderStatus,
+          checkOpenCodeProviderStatus,
+          checkPiProviderStatus,
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      ),
     } satisfies ProviderHealthShape;
   }),
 );

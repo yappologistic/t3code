@@ -1,6 +1,8 @@
 import type {
   CodexReasoningEffort,
+  CopilotReasoningEffort,
   ProviderKind,
+  ProviderReasoningLevel,
   ServerCopilotReasoningProbe,
 } from "@t3tools/contracts";
 import {
@@ -9,18 +11,32 @@ import {
   isCodexOpenRouterModel,
 } from "@t3tools/shared/model";
 
+function isCodexReasoningEffort(
+  value: ProviderReasoningLevel | null,
+): value is CodexReasoningEffort {
+  return value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
+function isCopilotReasoningEffort(
+  value: ProviderReasoningLevel | null,
+): value is CopilotReasoningEffort {
+  return value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
 export function buildModelOptionsForDispatch(input: {
   readonly provider: ProviderKind;
   readonly supportsReasoningEffort: boolean;
-  readonly selectedEffort: CodexReasoningEffort | null;
+  readonly selectedEffort: ProviderReasoningLevel | null;
   readonly selectedCodexSupportsFastMode: boolean;
   readonly selectedCodexFastModeEnabled: boolean;
 }) {
   if (input.provider === "codex") {
+    const reasoningEffort =
+      input.supportsReasoningEffort && isCodexReasoningEffort(input.selectedEffort)
+        ? input.selectedEffort
+        : undefined;
     const codexOptions = {
-      ...(input.supportsReasoningEffort && input.selectedEffort
-        ? { reasoningEffort: input.selectedEffort }
-        : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       ...(input.selectedCodexSupportsFastMode && input.selectedCodexFastModeEnabled
         ? { fastMode: true }
         : {}),
@@ -29,11 +45,17 @@ export function buildModelOptionsForDispatch(input: {
   }
 
   if (input.provider === "copilot") {
-    const copilotReasoningEffort =
+    const reasoningEffort =
+      input.supportsReasoningEffort && isCopilotReasoningEffort(input.selectedEffort)
+        ? input.selectedEffort
+        : undefined;
+    return reasoningEffort ? { copilot: { reasoningEffort } } : undefined;
+  }
+
+  if (input.provider === "pi") {
+    const thinkingLevel =
       input.supportsReasoningEffort && input.selectedEffort ? input.selectedEffort : undefined;
-    return copilotReasoningEffort
-      ? { copilot: { reasoningEffort: copilotReasoningEffort } }
-      : undefined;
+    return thinkingLevel ? { pi: { thinkingLevel } } : undefined;
   }
 
   return undefined;
@@ -44,7 +66,8 @@ function resolveReasoningOptionsForSend(input: {
   readonly model: string;
   readonly copilotReasoningProbe: ServerCopilotReasoningProbe | null | undefined;
   readonly openRouterSupportsReasoningEffort: boolean;
-}): ReadonlyArray<CodexReasoningEffort> {
+  readonly piSupportsReasoning: boolean;
+}): ReadonlyArray<ProviderReasoningLevel> {
   if (input.provider === "copilot") {
     if (
       input.copilotReasoningProbe?.status === "supported" &&
@@ -59,15 +82,19 @@ function resolveReasoningOptionsForSend(input: {
     return input.openRouterSupportsReasoningEffort ? getReasoningEffortOptions("codex") : [];
   }
 
+  if (input.provider === "pi") {
+    return input.piSupportsReasoning ? getReasoningEffortOptions("pi") : [];
+  }
+
   return getReasoningEffortOptions(input.provider);
 }
 
 function resolveSelectedEffortForSend(input: {
   readonly provider: ProviderKind;
-  readonly composerEffort: CodexReasoningEffort | null | undefined;
-  readonly reasoningOptions: ReadonlyArray<CodexReasoningEffort>;
+  readonly composerEffort: ProviderReasoningLevel | null | undefined;
+  readonly reasoningOptions: ReadonlyArray<ProviderReasoningLevel>;
   readonly copilotReasoningProbe: ServerCopilotReasoningProbe | null | undefined;
-}): CodexReasoningEffort | null {
+}): ProviderReasoningLevel | null {
   if (input.reasoningOptions.length === 0) {
     return null;
   }
@@ -88,22 +115,24 @@ function resolveSelectedEffortForSend(input: {
     }
   }
 
-  return input.reasoningOptions[0] ?? null;
+  return input.provider === "pi" ? null : (input.reasoningOptions[0] ?? null);
 }
 
 export function buildModelOptionsForSend(input: {
   readonly provider: ProviderKind;
   readonly model: string;
-  readonly composerEffort: CodexReasoningEffort | null | undefined;
+  readonly composerEffort: ProviderReasoningLevel | null | undefined;
   readonly codexFastModeEnabled: boolean;
   readonly copilotReasoningProbe: ServerCopilotReasoningProbe | null | undefined;
   readonly openRouterSupportsReasoningEffort: boolean;
+  readonly piSupportsReasoning: boolean;
 }) {
   const reasoningOptions = resolveReasoningOptionsForSend({
     provider: input.provider,
     model: input.model,
     copilotReasoningProbe: input.copilotReasoningProbe,
     openRouterSupportsReasoningEffort: input.openRouterSupportsReasoningEffort,
+    piSupportsReasoning: input.piSupportsReasoning,
   });
   const selectedEffort = resolveSelectedEffortForSend({
     provider: input.provider,

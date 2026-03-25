@@ -23,6 +23,7 @@ import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeKimiAdapterLive } from "./provider/Layers/KimiAdapter";
 import { makeOpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
+import { makePiAdapterLive } from "./provider/Layers/PiAdapter";
 import { OpenCodeStateLive } from "./provider/Layers/OpenCodeState";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
@@ -83,11 +84,13 @@ export function makeServerProviderLayer(): Layer.Layer<
     const copilotAdapterLayer = makeCopilotAdapterLive();
     const kimiAdapterLayer = makeKimiAdapterLive();
     const opencodeAdapterLayer = makeOpenCodeAdapterLive();
+    const piAdapterLayer = makePiAdapterLive();
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(copilotAdapterLayer),
       Layer.provide(kimiAdapterLayer),
       Layer.provide(opencodeAdapterLayer),
+      Layer.provide(piAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(

@@ -114,6 +114,21 @@ describe("getAppModelOptions", () => {
     });
   });
 
+  it("supports pi model catalogs and custom provider/model entries", () => {
+    const options = getAppModelOptions("pi", ["github-copilot/claude-sonnet-4.5"]);
+
+    expect(options[0]).toEqual({
+      slug: "pi/default",
+      name: "Default",
+      isCustom: false,
+    });
+    expect(options.at(-1)).toEqual({
+      slug: "github-copilot/claude-sonnet-4.5",
+      name: "github-copilot/claude-sonnet-4.5",
+      isCustom: true,
+    });
+  });
+
   it("formats friendly labels for kimi custom models with qualifiers", () => {
     const options = getAppModelOptions("kimi", ["moonshot/v1,k2,preview"]);
 
@@ -171,6 +186,7 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
     expect(resolveAppModelSelection("opencode", [], "")).toBe("opencode/default");
+    expect(resolveAppModelSelection("pi", [], "")).toBe("pi/default");
   });
 
   it("normalizes older Copilot Gemini slugs to the current preview ids", () => {
@@ -213,6 +229,7 @@ describe("supportsCustomModels", () => {
     expect(supportsCustomModels("copilot")).toBe(true);
     expect(supportsCustomModels("kimi")).toBe(true);
     expect(supportsCustomModels("opencode")).toBe(true);
+    expect(supportsCustomModels("pi")).toBe(true);
   });
 });
 

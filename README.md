@@ -4,7 +4,7 @@
   <img src="./CUT3.png" alt="CUT3" width="144" />
 </p>
 
-CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub Copilot, OpenCode, and Kimi Code. The picker also shows Gemini as coming soon, while Claude Code and Cursor remain unavailable placeholders.
+CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub Copilot, OpenCode, Kimi Code, and the Pi agent harness. The picker also shows Gemini as coming soon, while Claude Code and Cursor remain unavailable placeholders.
 
 ## Screenshot
 
@@ -16,18 +16,20 @@ CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub
 - GitHub Copilot
 - OpenCode
 - Kimi Code
+- Pi
 
 Gemini is intentionally shown as coming soon in the provider picker. Claude Code and Cursor are also visible there as unavailable placeholders. None of those three are wired up for sessions yet.
 
 ## How to use
 
 > [!WARNING]
-> Install at least one supported provider CLI before starting CUT3. Some providers also need authentication or API keys; OpenCode can start with its built-in free/default catalog, but provider-backed sessions still depend on OpenCode's own auth/config:
+> Install at least one supported provider runtime before starting CUT3. Codex, GitHub Copilot, OpenCode, and Kimi Code still depend on their native CLIs plus whatever auth or API keys they require. Pi is embedded directly in CUT3, but it still needs Pi auth/config under `~/.pi/agent` (or the equivalent Pi environment variables) before Pi-backed sessions can start:
 >
 > - [Codex CLI](https://github.com/openai/codex)
 > - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent)
 > - [OpenCode CLI](https://opencode.ai/docs)
 > - [Kimi Code CLI](https://www.kimi.com/code/docs/en/)
+> - [Pi agent harness](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 
 ```bash
 bun run start
@@ -47,7 +49,7 @@ If this fork does not currently publish desktop releases, build one locally with
 
 Published CUT3 builds are listed on the [CUT3 Releases page](https://github.com/yappologistic/t3code/releases).
 
-Once the app is running, choose Codex, GitHub Copilot, OpenCode, or Kimi Code from the provider picker before starting a session.
+Once the app is running, choose Codex, GitHub Copilot, OpenCode, Kimi Code, or Pi from the provider picker before starting a session.
 
 ## Workspace instructions and slash commands
 
@@ -103,14 +105,14 @@ Open Settings in the app to configure provider-specific behavior on the current 
 
 - **Appearance**: choose the base light/dark/system mode, switch to integrated presets like Lilac, and configure a custom chat background image with adjustable fade and blur.
 - **Language**: switch the settings experience and shared app shell between English and Persian. Persian also flips document direction and locale-aware time/date formatting in the web UI.
-- **Provider overrides**: set custom binary paths for Codex, Copilot, OpenCode, or Kimi, plus an optional Codex home path, a shared OpenRouter API key, and a Kimi API key. OpenCode account authentication still happens outside CUT3 through `opencode auth login` and `opencode auth logout`, while MCP server auth/debug remains server-specific through commands like `opencode mcp auth <server>` and `opencode mcp debug <server>`. The OpenCode settings panel inspects the resolved OpenCode config paths plus `opencode auth list`, `opencode mcp list`, and `opencode mcp auth list` so CUT3 can show current credentials, provider-specific MCP status (including disabled and auth-gated entries), and copyable recovery commands. Kimi CLI authentication can use either `kimi login` or the in-shell `/login` flow when you are not using an API key, and new OpenCode sessions now inherit that shared OpenRouter key as `OPENROUTER_API_KEY` when the OpenCode provider config expects it.
+- **Provider overrides**: set custom binary paths for Codex, Copilot, OpenCode, or Kimi, plus an optional Codex home path, a shared OpenRouter API key, and a Kimi API key. Pi is embedded through CUT3's Node dependency instead of a separate binary override; CUT3 reads Pi auth/models config from `~/.pi/agent`, keeps Pi AGENTS files, system prompts, extensions, skills, prompt templates, and themes disabled so workspace instructions still come only from CUT3, and now surfaces authenticated Pi provider/model ids directly in the picker and `/model` suggestions instead of only showing a static `pi/default` placeholder. OpenCode account authentication still happens outside CUT3 through `opencode auth login` and `opencode auth logout`, while MCP server auth/debug remains server-specific through commands like `opencode mcp auth <server>` and `opencode mcp debug <server>`. The OpenCode settings panel inspects the resolved OpenCode config paths plus `opencode auth list`, `opencode mcp list`, and `opencode mcp auth list` so CUT3 can show current credentials, provider-specific MCP status (including disabled and auth-gated entries), and copyable recovery commands. Kimi CLI authentication can use either `kimi login` or the in-shell `/login` flow when you are not using an API key, and new OpenCode sessions now inherit that shared OpenRouter key as `OPENROUTER_API_KEY` when the OpenCode provider config expects it.
 - **OpenRouter free models**: review the current OpenRouter entries that are explicitly free-locked and compatible with CUT3's native tool-calling path (`tools` plus `tool_choice`), keep the built-in `openrouter/free` router handy, and pin any listed model into the picker.
-- **Custom model slugs**: save extra model ids for GitHub Copilot, OpenCode, Kimi, custom Codex models, or current OpenRouter `:free` slugs so they appear in the model picker and `/model` suggestions.
+- **Custom model slugs**: save extra model ids for GitHub Copilot, OpenCode, Kimi, Pi provider/model ids such as `github-copilot/claude-sonnet-4.5`, custom Codex models, or current OpenRouter `:free` slugs so they appear in the model picker and `/model` suggestions.
 - **Picker controls**: the chat composer now uses a searchable grouped model picker with direct `Connect provider` and `Manage models` actions.
 - **Model visibility**: hide or restore discovered and saved models without deleting them; hidden models are removed from both the picker and `/model` suggestions until you show them again.
 - **Thread defaults**: choose whether new draft threads start in `Local` or `New worktree`, and set thread sharing to `Manual`, `Auto` (create a share link after a new server-backed thread settles), or `Disabled` for new links.
 - **Codex service tier**: choose `Automatic`, `Fast`, or `Flex` as the default service tier for new Codex turns.
-- **Per-turn controls**: the composer exposes provider-aware reasoning controls, and Codex also supports a per-turn `Fast Mode` toggle.
+- **Per-turn controls**: the composer exposes provider-aware reasoning controls where CUT3 has a provider-specific contract today. Codex and GitHub Copilot expose provider-specific reasoning levels, Codex also supports a per-turn `Fast Mode` toggle, and Pi now surfaces its live model reasoning capability plus Pi thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`) for reasoning-capable Pi models while still preserving Pi defaults until you choose an override.
 - **Response visibility**: choose whether assistant messages stream token-by-token and whether tool/work-log entries stay visible in the main timeline.
 - **Permission policies**: save persistent app-wide or project-scoped approval rules with `allow`, `ask`, or `deny` actions, request-kind filters, request-type/detail matching, and Build/Plan/Review presets.
 
@@ -125,9 +127,9 @@ The chat toolbar exposes two additional execution controls:
 - **Runtime mode**: choose `Full access` for direct execution or `Supervised` for in-app command/file approvals.
 - **Interaction mode**: switch between normal `Chat` turns and `Plan` turns for plan-first collaboration.
 
-Runtime mode sets the default sandbox and approval posture for new sessions. Persistent permission policies from Settings can still auto-allow, ask, or deny specific requests on top of that default when a provider raises an approval.
+Runtime mode sets the default sandbox and approval posture for new sessions. Persistent permission policies from Settings can still auto-allow, ask, or deny specific requests on top of that default when a provider raises an approval. Pi is the main exception to CUT3's usual external-runtime sandbox story: `Supervised` still gates Pi tools through the same approval UX, but Pi itself is embedded through CUT3's Node SDK rather than a separate OS sandbox.
 
-When a plan is active, CUT3 can keep it open in a sidebar and export it by copying, downloading markdown, or saving it into the workspace.
+When a plan is active, CUT3 can keep it open in a sidebar and export it by copying, downloading markdown, or saving it into the workspace. For Pi, CUT3 drives that mode by sending explicit plan-first instructions and switching Pi onto a read-only tool set for the turn.
 
 Threads also expose collaboration and history controls directly in the chat surface. Use the thread actions menu or the composer slash commands (`/share`, `/unshare`, `/compact`, `/undo`, `/redo`, `/export`, `/details`) to manage the current thread. Shared snapshots open in a dedicated read-only route that can import the snapshot into another local project. Use `Undo` and `Redo` in the thread header to move through recent restore snapshots, use `Fork thread here` on individual messages to branch from that point, and use the diff panel to fork from a completed checkpoint. When a provider emits task lifecycle events, CUT3 shows a compact task panel above the timeline.
 

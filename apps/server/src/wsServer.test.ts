@@ -1004,6 +1004,75 @@ describe("WebSocket Server", () => {
     expectAvailableEditors((response.result as { availableEditors: unknown }).availableEditors);
   });
 
+  it("reruns provider health checks for each server.getConfig request", async () => {
+    const stateDir = makeTempDir("cut3-state-get-config-provider-refresh-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    fs.writeFileSync(keybindingsPath, "[]", "utf8");
+
+    const providerStatusesByCall: Array<ReadonlyArray<ServerProviderStatus>> = [
+      [
+        {
+          provider: "pi",
+          status: "warning",
+          available: true,
+          authStatus: "unauthenticated",
+          checkedAt: "2026-03-24T00:00:00.000Z",
+          message: "Pi needs auth.",
+        },
+      ],
+      [
+        {
+          provider: "pi",
+          status: "ready",
+          available: true,
+          authStatus: "authenticated",
+          checkedAt: "2026-03-24T00:00:05.000Z",
+          message: "Pi is ready.",
+          availableModels: [
+            {
+              slug: "openai/gpt-5.4",
+              name: "GPT-5.4",
+              supportsReasoning: true,
+              supportsImageInput: true,
+              contextWindowTokens: 1_000_000,
+            },
+          ],
+        },
+      ],
+    ];
+    let providerHealthCallCount = 0;
+
+    server = await createTestServer({
+      cwd: "/my/workspace",
+      stateDir,
+      providerHealth: {
+        getStatuses: Effect.sync(() => {
+          const index = Math.min(providerHealthCallCount, providerStatusesByCall.length - 1);
+          providerHealthCallCount += 1;
+          return providerStatusesByCall[index]!;
+        }),
+      },
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const firstResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(firstResponse.error).toBeUndefined();
+    expect(
+      (firstResponse.result as { providers: ReadonlyArray<ServerProviderStatus> }).providers,
+    ).toEqual(providerStatusesByCall[0]);
+
+    const secondResponse = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(secondResponse.error).toBeUndefined();
+    expect(
+      (secondResponse.result as { providers: ReadonlyArray<ServerProviderStatus> }).providers,
+    ).toEqual(providerStatusesByCall[1]);
+    expect(providerHealthCallCount).toBe(2);
+  });
+
   it("reports MCP support by provider in server.getConfig", async () => {
     const stateDir = makeTempDir("cut3-state-get-config-mcp-support-");
     const keybindingsPath = path.join(stateDir, "keybindings.json");
@@ -1037,6 +1106,11 @@ describe("WebSocket Server", () => {
         },
         {
           provider: "opencode",
+          supported: false,
+          servers: [],
+        },
+        {
+          provider: "pi",
           supported: false,
           servers: [],
         },

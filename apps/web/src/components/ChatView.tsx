@@ -4,7 +4,6 @@ import {
   EDITORS,
   type EditorId,
   type KeybindingCommand,
-  type CodexReasoningEffort,
   type MessageId,
   type ProjectCommandTemplate,
   type ProjectId,
@@ -23,6 +22,7 @@ import {
   type ServerProviderMcpStatus,
   type ServerProviderStatus,
   type ProviderKind,
+  type ProviderReasoningLevel,
   type ThreadForkSource,
   type ThreadId,
   type ThreadShareSummary,
@@ -119,6 +119,7 @@ import {
 } from "../composer-logic";
 import {
   deriveConfiguredModelOptions,
+  deriveConfiguredReasoningState,
   deriveLatestModelRerouteNotice,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -148,7 +149,13 @@ import {
   setPendingUserInputCustomAnswer,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
-import { findProviderStatus, resolveVisibleProviderStatusForChat } from "../providerStatus";
+import {
+  findProviderStatus,
+  getDefaultProviderStatusMessage,
+  getProviderStatusModelOptions,
+  getProviderStatusTitle,
+  resolveVisibleProviderStatusForChat,
+} from "../providerStatus";
 import { useStore } from "../store";
 import {
   buildPlanImplementationThreadTitle,
@@ -340,6 +347,21 @@ const EMPTY_PROJECT_SKILL_ISSUES: ProjectSkillIssue[] = [];
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PROVIDER_MCP_STATUSES: ServerProviderMcpStatus[] = [];
+type PickerModelOption = {
+  slug: string;
+  name: string;
+  isCustom?: boolean;
+  supportsReasoning?: boolean;
+  supportsImageInput?: boolean;
+  contextWindowTokens?: number;
+};
+const EMPTY_PROVIDER_STATUS_MODEL_OPTIONS_BY_PROVIDER = {
+  codex: [],
+  copilot: [],
+  kimi: [],
+  opencode: [],
+  pi: [],
+} as const satisfies Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
@@ -403,6 +425,8 @@ function buildProviderOptionsForDispatch(input: {
             },
           }
         : undefined;
+    case "pi":
+      return undefined;
     default:
       return undefined;
   }
@@ -421,6 +445,8 @@ function getCustomModelsForProvider(
       return settings.customOpencodeModels;
     case "kimi":
       return settings.customKimiModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -431,11 +457,16 @@ type ProviderCustomModelSettings = {
   readonly customCopilotModels: readonly string[];
   readonly customOpencodeModels: readonly string[];
   readonly customKimiModels: readonly string[];
+  readonly customPiModels: readonly string[];
 };
 
 type ProviderHiddenModelSettings = Pick<
   AppSettings,
-  "hiddenCodexModels" | "hiddenCopilotModels" | "hiddenOpencodeModels" | "hiddenKimiModels"
+  | "hiddenCodexModels"
+  | "hiddenCopilotModels"
+  | "hiddenOpencodeModels"
+  | "hiddenKimiModels"
+  | "hiddenPiModels"
 >;
 
 function getHiddenModelsForProvider(
@@ -451,6 +482,8 @@ function getHiddenModelsForProvider(
       return settings.hiddenOpencodeModels;
     case "kimi":
       return settings.hiddenKimiModels;
+    case "pi":
+      return settings.hiddenPiModels;
     default:
       return settings.hiddenCodexModels;
   }
@@ -469,15 +502,17 @@ function patchHiddenModels(
       return { hiddenOpencodeModels: [...hiddenModels] };
     case "kimi":
       return { hiddenKimiModels: [...hiddenModels] };
+    case "pi":
+      return { hiddenPiModels: [...hiddenModels] };
     default:
       return { hiddenCodexModels: [...hiddenModels] };
   }
 }
 
 function filterHiddenModelOptions(
-  options: ReadonlyArray<{ slug: string; name: string }>,
+  options: ReadonlyArray<PickerModelOption>,
   hiddenModels: readonly string[],
-): ReadonlyArray<{ slug: string; name: string }> {
+): ReadonlyArray<PickerModelOption> {
   if (hiddenModels.length === 0) {
     return options;
   }
@@ -1240,18 +1275,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
+  const [providerStatusModelOptionsByProvider, setProviderStatusModelOptionsByProvider] = useState<
+    Record<ProviderKind, ReadonlyArray<PickerModelOption>>
+  >(EMPTY_PROVIDER_STATUS_MODEL_OPTIONS_BY_PROVIDER);
   const providerHiddenModelSettings = useMemo<ProviderHiddenModelSettings>(
     () => ({
       hiddenCodexModels: settings.hiddenCodexModels,
       hiddenCopilotModels: settings.hiddenCopilotModels,
       hiddenOpencodeModels: settings.hiddenOpencodeModels,
       hiddenKimiModels: settings.hiddenKimiModels,
+      hiddenPiModels: settings.hiddenPiModels,
     }),
     [
       settings.hiddenCodexModels,
       settings.hiddenCopilotModels,
       settings.hiddenKimiModels,
       settings.hiddenOpencodeModels,
+      settings.hiddenPiModels,
     ],
   );
   const configuredModelOptionsByProvider = useMemo(
@@ -1266,12 +1306,32 @@ export default function ChatView({ threadId }: ChatViewProps) {
         "opencode",
       ),
       kimi: deriveConfiguredModelOptions(activeThread?.activities ?? EMPTY_ACTIVITIES, "kimi"),
+      pi: deriveConfiguredModelOptions(activeThread?.activities ?? EMPTY_ACTIVITIES, "pi"),
     }),
     [activeThread?.activities],
   );
+  const hasLivePiStatusCatalog = providerStatusModelOptionsByProvider.pi.length > 0;
+  const hasActivePiSessionCatalog =
+    sessionProvider === "pi" &&
+    activeThread?.session !== null &&
+    configuredModelOptionsByProvider.pi.length > 0;
+  const shouldHidePiDefaultFallback = hasLivePiStatusCatalog || hasActivePiSessionCatalog;
   const allModelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
-    [configuredModelOptionsByProvider, settings],
+    () =>
+      getCustomModelOptionsByProvider(
+        settings,
+        configuredModelOptionsByProvider,
+        providerStatusModelOptionsByProvider,
+        {
+          hidePiDefaultFallback: shouldHidePiDefaultFallback,
+        },
+      ),
+    [
+      configuredModelOptionsByProvider,
+      providerStatusModelOptionsByProvider,
+      settings,
+      shouldHidePiDefaultFallback,
+    ],
   );
   const visibleModelOptionsByProvider = useMemo(
     () => ({
@@ -1291,9 +1351,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
         allModelOptionsByProvider.kimi,
         providerHiddenModelSettings.hiddenKimiModels,
       ),
+      pi: filterHiddenModelOptions(
+        allModelOptionsByProvider.pi,
+        providerHiddenModelSettings.hiddenPiModels,
+      ),
     }),
     [allModelOptionsByProvider, providerHiddenModelSettings],
   );
+  const visibleAuthenticatedPiModelCount = useMemo(() => {
+    const authenticatedPiModelOptions = hasLivePiStatusCatalog
+      ? providerStatusModelOptionsByProvider.pi
+      : hasActivePiSessionCatalog
+        ? configuredModelOptionsByProvider.pi
+        : [];
+    return filterHiddenModelOptions(
+      authenticatedPiModelOptions,
+      providerHiddenModelSettings.hiddenPiModels,
+    ).length;
+  }, [
+    configuredModelOptionsByProvider.pi,
+    hasActivePiSessionCatalog,
+    hasLivePiStatusCatalog,
+    providerHiddenModelSettings.hiddenPiModels,
+    providerStatusModelOptionsByProvider.pi,
+  ]);
   const openRouterCatalogQuery = useQuery(openRouterFreeModelsQueryOptions());
   const hasLiveOpenRouterCatalog = openRouterCatalogQuery.data?.status === "available";
   const openRouterModels = useMemo(
@@ -1306,10 +1387,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const openRouterPickerOptions = useMemo(
     () =>
-      openRouterModels.filter(isCut3CompatibleOpenRouterModelOption).map(({ slug, name }) => ({
-        slug,
-        name,
-      })),
+      openRouterModels.filter(isCut3CompatibleOpenRouterModelOption).map((model) => {
+        const option: PickerModelOption = {
+          slug: model.slug,
+          name: model.name,
+          supportsReasoning: model.supportsReasoning,
+          supportsImageInput: model.supportsImages,
+        };
+        if (model.contextLength !== null) {
+          option.contextWindowTokens = model.contextLength;
+        }
+        return option;
+      }),
     [openRouterModels],
   );
   const openRouterContextLengthsBySlug = useMemo(
@@ -1319,6 +1408,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const openRouterModelOptions = useMemo(
     () =>
       mergeModelOptions(
+        openRouterPickerOptions,
         allModelOptionsByProvider.codex.filter((option) => {
           if (
             !isCodexOpenRouterModel(option.slug) ||
@@ -1331,7 +1421,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }
           return supportsOpenRouterNativeToolCalling(openRouterModelsBySlug.get(option.slug));
         }),
-        openRouterPickerOptions,
       ),
     [
       allModelOptionsByProvider.codex,
@@ -1362,6 +1451,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return openCodeStateQuery.data.models.map((model) => ({
       slug: model.slug,
       name: `${model.providerId}/${model.modelId}`,
+      ...(typeof model.contextWindowTokens === "number"
+        ? { contextWindowTokens: model.contextWindowTokens }
+        : {}),
     }));
   }, [openCodeStateQuery.data]);
   const visibleOpencodeModelOptions = useMemo(
@@ -1411,6 +1503,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedOpenRouterModel = selectedModelUsesOpenRouter
     ? (openRouterModelsBySlug.get(selectedModel) ?? null)
     : null;
+  const selectedPiModelOption = useMemo(
+    () =>
+      selectedProvider === "pi"
+        ? findModelOptionBySlug(allModelOptionsByProvider.pi, selectedModel)
+        : null,
+    [allModelOptionsByProvider.pi, selectedModel, selectedProvider],
+  );
+  const selectedPiConfiguredReasoningState = useMemo(
+    () =>
+      selectedProvider === "pi"
+        ? deriveConfiguredReasoningState(
+            activeThread?.activities ?? EMPTY_ACTIVITIES,
+            "pi",
+            selectedModel,
+          )
+        : null,
+    [activeThread?.activities, selectedModel, selectedProvider],
+  );
   const selectedCodexSupportsFastMode =
     selectedProvider === "codex" && !selectedModelUsesOpenRouter;
   const copilotReasoningProbeQuery = useQuery(
@@ -1433,23 +1543,40 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "copilot" && copilotReasoningProbeQuery.data?.status === "supported"
       ? (copilotReasoningProbeQuery.data.currentValue ?? null)
       : null;
-  const reasoningOptions = useMemo(
-    () =>
-      selectedProvider === "copilot"
-        ? (probedCopilotReasoningOptions ?? [])
-        : selectedModelUsesOpenRouter
-          ? supportsOpenRouterReasoningEffortControl(selectedOpenRouterModel) &&
-            selectedOpenRouterModel?.supportsReasoning
-            ? getReasoningEffortOptions("codex")
-            : []
-          : getReasoningEffortOptions(selectedProvider),
-    [
-      probedCopilotReasoningOptions,
-      selectedOpenRouterModel,
-      selectedModelUsesOpenRouter,
-      selectedProvider,
-    ],
-  );
+  const reasoningOptions = useMemo(() => {
+    if (selectedProvider === "copilot") {
+      return probedCopilotReasoningOptions ?? [];
+    }
+
+    if (selectedProvider === "pi") {
+      if (
+        selectedPiConfiguredReasoningState &&
+        selectedPiConfiguredReasoningState.options.length > 0
+      ) {
+        return selectedPiConfiguredReasoningState.options;
+      }
+      return selectedPiModelOption?.supportsReasoning ? getReasoningEffortOptions("pi") : [];
+    }
+
+    if (selectedModelUsesOpenRouter) {
+      return supportsOpenRouterReasoningEffortControl(selectedOpenRouterModel) &&
+        selectedOpenRouterModel?.supportsReasoning
+        ? getReasoningEffortOptions("codex")
+        : [];
+    }
+
+    return getReasoningEffortOptions(selectedProvider);
+  }, [
+    probedCopilotReasoningOptions,
+    selectedOpenRouterModel,
+    selectedModelUsesOpenRouter,
+    selectedPiConfiguredReasoningState,
+    selectedPiModelOption?.supportsReasoning,
+    selectedProvider,
+  ]);
+  const allowDefaultReasoningSelection =
+    selectedProvider === "pi" &&
+    (selectedPiConfiguredReasoningState?.currentValue ?? null) === null;
   const supportsReasoningEffort = reasoningOptions.length > 0;
   const selectedEffort = useMemo(() => {
     if (reasoningOptions.length === 0) {
@@ -1457,7 +1584,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     const defaultEffort = getDefaultReasoningEffort(selectedProvider);
-    const preferredEfforts = [composerDraft.effort ?? null, copilotProbedEffort, defaultEffort];
+    const preferredEfforts = [
+      composerDraft.effort ?? null,
+      copilotProbedEffort,
+      selectedPiConfiguredReasoningState?.currentValue ?? null,
+      defaultEffort,
+    ];
 
     for (const effort of preferredEfforts) {
       if (effort && reasoningOptions.includes(effort)) {
@@ -1465,23 +1597,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
     }
 
-    return reasoningOptions[0] ?? null;
-  }, [composerDraft.effort, copilotProbedEffort, reasoningOptions, selectedProvider]);
+    return selectedProvider === "pi" ? null : (reasoningOptions[0] ?? null);
+  }, [
+    composerDraft.effort,
+    copilotProbedEffort,
+    reasoningOptions,
+    selectedPiConfiguredReasoningState?.currentValue,
+    selectedProvider,
+  ]);
   const selectedCodexFastModeEnabled =
     selectedProvider === "codex" ? composerDraft.codexFastMode : false;
+  const selectedEffortForDispatch =
+    selectedProvider === "pi" ? (composerDraft.effort ?? null) : selectedEffort;
   const selectedModelOptionsForDispatch = useMemo(
     () =>
       buildModelOptionsForDispatch({
         provider: selectedProvider,
         supportsReasoningEffort,
-        selectedEffort,
+        selectedEffort: selectedEffortForDispatch,
         selectedCodexSupportsFastMode,
         selectedCodexFastModeEnabled,
       }),
     [
       selectedCodexFastModeEnabled,
       selectedCodexSupportsFastMode,
-      selectedEffort,
+      selectedEffortForDispatch,
       selectedProvider,
       supportsReasoningEffort,
     ],
@@ -1735,6 +1875,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
     visibleOpenRouterModelOptions,
     visibleOpencodeModelOptions,
   ]);
+  const selectedModelLabelOverride = useMemo(() => {
+    if (
+      selectedProvider !== "pi" ||
+      selectedModel !== DEFAULT_MODEL_BY_PROVIDER.pi ||
+      visibleAuthenticatedPiModelCount === 0
+    ) {
+      return undefined;
+    }
+    return chatCopy.authenticatedModels(visibleAuthenticatedPiModelCount);
+  }, [chatCopy, selectedModel, selectedProvider, visibleAuthenticatedPiModelCount]);
   const searchableModelOptions = useMemo(
     () =>
       AVAILABLE_PROVIDER_OPTIONS.filter(
@@ -1769,7 +1919,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerHiddenModelSettings.hiddenCodexModels.length > 0 ||
       providerHiddenModelSettings.hiddenCopilotModels.length > 0 ||
       providerHiddenModelSettings.hiddenOpencodeModels.length > 0 ||
-      providerHiddenModelSettings.hiddenKimiModels.length > 0,
+      providerHiddenModelSettings.hiddenKimiModels.length > 0 ||
+      providerHiddenModelSettings.hiddenPiModels.length > 0,
     [providerHiddenModelSettings],
   );
   const phase = derivePhase(activeThread?.session ?? null);
@@ -2261,6 +2412,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const effectivePathQuery = pathTriggerQuery.length > 0 ? debouncedPathQuery : "";
   const branchesQuery = useQuery(gitBranchesQueryOptions(gitCwd));
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const providerStatuses = serverConfigQuery.data?.providers ?? EMPTY_PROVIDER_STATUSES;
+  const resolvedProviderStatusModelOptionsByProvider = useMemo(
+    () => ({
+      codex: getProviderStatusModelOptions(findProviderStatus(providerStatuses, "codex")),
+      copilot: getProviderStatusModelOptions(findProviderStatus(providerStatuses, "copilot")),
+      opencode: getProviderStatusModelOptions(findProviderStatus(providerStatuses, "opencode")),
+      kimi: getProviderStatusModelOptions(findProviderStatus(providerStatuses, "kimi")),
+      pi: getProviderStatusModelOptions(findProviderStatus(providerStatuses, "pi")),
+    }),
+    [providerStatuses],
+  );
+  useEffect(() => {
+    setProviderStatusModelOptionsByProvider(resolvedProviderStatusModelOptionsByProvider);
+  }, [resolvedProviderStatusModelOptionsByProvider]);
   const agentsFileQuery = useQuery(
     projectAgentsFileQueryOptions({
       cwd: activeWorkspaceCwd,
@@ -2407,7 +2572,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       });
     }
 
-    return (["codex", "copilot", "kimi", "opencode"] as const)
+    return (["codex", "copilot", "kimi", "opencode", "pi"] as const)
       .map((provider) => mergedStatuses.get(provider))
       .filter((status): status is ServerProviderMcpStatus => status != null);
   }, [openCodeStateQuery.data, serverConfigQuery.data?.mcpServers]);
@@ -2416,7 +2581,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return provider === "codex" ||
       provider === "copilot" ||
       provider === "kimi" ||
-      provider === "opencode"
+      provider === "opencode" ||
+      provider === "pi"
       ? provider
       : selectedProvider;
   }, [activeThread?.provider, activeThread?.session?.provider, selectedProvider]);
@@ -2657,7 +2823,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
-  const providerStatuses = serverConfigQuery.data?.providers ?? EMPTY_PROVIDER_STATUSES;
   const activeProviderStatus = useMemo(() => {
     return resolveVisibleProviderStatusForChat({
       providerStatuses,
@@ -4325,6 +4490,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerForSend === "codex" && isCodexOpenRouterModel(modelForSend)
         ? (openRouterModelsBySlug.get(modelForSend) ?? null)
         : null;
+    const sendPiModelOption =
+      providerForSend === "pi"
+        ? findModelOptionBySlug(allModelOptionsByProvider.pi, modelForSend)
+        : null;
     const modelOptionsForCurrentSend = buildModelOptionsForSend({
       provider: providerForSend,
       model: modelForSend,
@@ -4335,6 +4504,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         sendOpenRouterModel !== null &&
         supportsOpenRouterReasoningEffortControl(sendOpenRouterModel) &&
         sendOpenRouterModel.supportsReasoning,
+      piSupportsReasoning: sendPiModelOption?.supportsReasoning === true,
     });
     const providerOptionsForCurrentSend = buildProviderOptionsForDispatch({
       provider: providerForSend,
@@ -5173,12 +5343,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
       customCopilotModels: settings.customCopilotModels,
       customOpencodeModels: settings.customOpencodeModels,
       customKimiModels: settings.customKimiModels,
+      customPiModels: settings.customPiModels,
     }),
     [
       settings.customCodexModels,
       settings.customCopilotModels,
       settings.customOpencodeModels,
       settings.customKimiModels,
+      settings.customPiModels,
     ],
   );
   const onModelVisibilityChange = useCallback(
@@ -5201,6 +5373,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       hiddenCopilotModels: [],
       hiddenOpencodeModels: [],
       hiddenKimiModels: [],
+      hiddenPiModels: [],
     });
   }, [updateSettings]);
   const openProviderSetupDialog = useCallback(() => {
@@ -5303,7 +5476,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [onProviderModelSelect],
   );
   const onEffortSelect = useCallback(
-    (effort: CodexReasoningEffort) => {
+    (effort: ProviderReasoningLevel | null) => {
       setComposerDraftEffort(threadId, effort);
       scheduleComposerFocus();
     },
@@ -6084,6 +6257,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         provider={selectedProvider}
                         providerPickerKind={selectedProviderPickerKind}
                         model={selectedModelForPickerWithCustomFallback}
+                        {...(selectedModelLabelOverride
+                          ? { modelLabelOverride: selectedModelLabelOverride }
+                          : {})}
                         lockedProvider={lockedProvider}
                         allModelOptionsByProvider={allModelOptionsByProvider}
                         visibleModelOptionsByProvider={visibleModelOptionsByProvider}
@@ -6126,6 +6302,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           selectedCodexFastModeEnabled={selectedCodexFastModeEnabled}
                           showCodexFastModeControls={selectedCodexSupportsFastMode}
                           reasoningOptions={reasoningOptions}
+                          allowDefaultReasoningSelection={allowDefaultReasoningSelection}
                           onEffortSelect={onEffortSelect}
                           onCodexFastModeChange={onCodexFastModeChange}
                           onToggleInteractionMode={toggleInteractionMode}
@@ -6134,13 +6311,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         />
                       ) : (
                         <>
-                          {supportsReasoningEffort && selectedEffort != null ? (
+                          {supportsReasoningEffort ? (
                             <>
                               <Separator
                                 orientation="vertical"
                                 className="mx-1 hidden h-4.5 self-center sm:block"
                               />
-                              {selectedProvider === "codex" ? (
+                              {selectedProvider === "codex" && selectedEffort !== null ? (
                                 <CodexTraitsPicker
                                   effort={selectedEffort}
                                   fastModeEnabled={selectedCodexFastModeEnabled}
@@ -6155,6 +6332,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   defaultReasoningEffort={getDefaultReasoningEffort(
                                     selectedProvider,
                                   )}
+                                  allowDefaultSelection={allowDefaultReasoningSelection}
                                   options={reasoningOptions}
                                   onEffortChange={onEffortSelect}
                                 />
@@ -7216,18 +7394,13 @@ const ProviderHealthBanner = memo(function ProviderHealthBanner({
     return null;
   }
 
-  const defaultMessage =
-    status.status === "error"
-      ? `${status.provider} provider is unavailable.`
-      : `${status.provider} provider has limited availability.`;
+  const defaultMessage = getDefaultProviderStatusMessage(status);
 
   return (
     <div className="pt-3 mx-auto max-w-3xl">
       <Alert variant={status.status === "error" ? "error" : "warning"}>
         <CircleAlertIcon />
-        <AlertTitle>
-          {status.provider === "codex" ? "Codex provider status" : `${status.provider} status`}
-        </AlertTitle>
+        <AlertTitle>{getProviderStatusTitle(status.provider)}</AlertTitle>
         <AlertDescription className="line-clamp-3" title={status.message ?? defaultMessage}>
           {status.message ?? defaultMessage}
         </AlertDescription>
@@ -7560,18 +7733,31 @@ const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option
 const COMING_SOON_PROVIDER_OPTIONS = [{ id: "gemini", label: "Gemini", icon: Gemini }] as const;
 
 function mergeModelOptions(
-  base: ReadonlyArray<{ slug: string; name: string }>,
-  extra: ReadonlyArray<{ slug: string; name: string }>,
-): Array<{ slug: string; name: string }> {
-  const merged: Array<{ slug: string; name: string }> = [];
-  const seen = new Set<string>();
+  base: ReadonlyArray<PickerModelOption>,
+  extra: ReadonlyArray<PickerModelOption>,
+): Array<PickerModelOption> {
+  const merged: Array<PickerModelOption> = [];
+  const indexBySlug = new Map<string, number>();
 
   for (const option of [...base, ...extra]) {
-    if (seen.has(option.slug)) {
+    const existingIndex = indexBySlug.get(option.slug);
+    if (existingIndex === undefined) {
+      indexBySlug.set(option.slug, merged.length);
+      merged.push(option);
       continue;
     }
-    seen.add(option.slug);
-    merged.push(option);
+
+    const existing = merged[existingIndex]!;
+    const supportsReasoning = existing.supportsReasoning ?? option.supportsReasoning;
+    const supportsImageInput = existing.supportsImageInput ?? option.supportsImageInput;
+    const contextWindowTokens = existing.contextWindowTokens ?? option.contextWindowTokens;
+    merged[existingIndex] = {
+      ...option,
+      ...existing,
+      ...(supportsReasoning !== undefined ? { supportsReasoning } : {}),
+      ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
+      ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
+    };
   }
 
   return merged;
@@ -7579,7 +7765,7 @@ function mergeModelOptions(
 
 function getModelOptionContextLabel(
   provider: ProviderKind,
-  modelOption: { slug: string; name: string },
+  modelOption: PickerModelOption,
   openRouterContextLengthsBySlug?: ReadonlyMap<string, number | null>,
   opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>,
 ): string {
@@ -7589,11 +7775,13 @@ function getModelOptionContextLabel(
   const contextLabel =
     opencodeContextLength !== null
       ? formatCompactTokenCount(opencodeContextLength)
-      : contextInfo?.totalTokens !== undefined
-        ? formatCompactTokenCount(contextInfo.totalTokens)
-        : catalogContextLength !== null
-          ? formatCompactTokenCount(catalogContextLength)
-          : "Unknown";
+      : typeof modelOption.contextWindowTokens === "number"
+        ? formatCompactTokenCount(modelOption.contextWindowTokens)
+        : contextInfo?.totalTokens !== undefined
+          ? formatCompactTokenCount(contextInfo.totalTokens)
+          : catalogContextLength !== null
+            ? formatCompactTokenCount(catalogContextLength)
+            : "Unknown";
 
   if (provider !== "copilot") {
     return contextLabel;
@@ -7609,23 +7797,47 @@ function getCustomModelOptionsByProvider(
     customCopilotModels: readonly string[];
     customOpencodeModels: readonly string[];
     customKimiModels: readonly string[];
+    customPiModels: readonly string[];
   },
-  configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
-): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>,
+  providerStatusModelsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>,
+  options?: {
+    hidePiDefaultFallback?: boolean;
+  },
+): Record<ProviderKind, ReadonlyArray<PickerModelOption>> {
+  const discoveredPiModels = mergeModelOptions(
+    providerStatusModelsByProvider.pi,
+    configuredModelsByProvider.pi,
+  );
+  const piOptions = mergeModelOptions(
+    discoveredPiModels,
+    getAppModelOptions("pi", settings.customPiModels),
+  );
+
   return {
-    codex: getAppModelOptions("codex", settings.customCodexModels),
+    codex: mergeModelOptions(
+      providerStatusModelsByProvider.codex,
+      getAppModelOptions("codex", settings.customCodexModels),
+    ),
     copilot: mergeModelOptions(
+      mergeModelOptions(providerStatusModelsByProvider.copilot, configuredModelsByProvider.copilot),
       getAppModelOptions("copilot", settings.customCopilotModels),
-      configuredModelsByProvider.copilot,
     ),
     opencode: mergeModelOptions(
+      mergeModelOptions(
+        providerStatusModelsByProvider.opencode,
+        configuredModelsByProvider.opencode,
+      ),
       getAppModelOptions("opencode", settings.customOpencodeModels),
-      configuredModelsByProvider.opencode,
     ),
     kimi: mergeModelOptions(
+      mergeModelOptions(providerStatusModelsByProvider.kimi, configuredModelsByProvider.kimi),
       getAppModelOptions("kimi", settings.customKimiModels),
-      configuredModelsByProvider.kimi,
     ),
+    pi:
+      options?.hidePiDefaultFallback === true
+        ? piOptions.filter((option) => option.slug !== DEFAULT_MODEL_BY_PROVIDER.pi)
+        : piOptions,
   };
 }
 
@@ -7635,16 +7847,17 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   copilot: GitHubIcon,
   kimi: KimiIcon,
   opencode: OpenCodeIcon,
+  pi: BotIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };
 
 function getModelOptionsForProviderPicker(
   providerPickerKind: AvailableProviderPickerKind,
-  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
-  openRouterModelOptions: ReadonlyArray<{ slug: string; name: string }>,
-  opencodeModelOptions: ReadonlyArray<{ slug: string; name: string }>,
-): ReadonlyArray<{ slug: string; name: string }> {
+  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>,
+  openRouterModelOptions: ReadonlyArray<PickerModelOption>,
+  opencodeModelOptions: ReadonlyArray<PickerModelOption>,
+): ReadonlyArray<PickerModelOption> {
   switch (providerPickerKind) {
     case "openrouter":
       return openRouterModelOptions;
@@ -7656,15 +7869,28 @@ function getModelOptionsForProviderPicker(
       return mergeModelOptions(modelOptionsByProvider.opencode, opencodeModelOptions);
     case "kimi":
       return modelOptionsByProvider.kimi;
+    case "pi":
+      return modelOptionsByProvider.pi;
     default:
       return modelOptionsByProvider.codex;
   }
 }
 
+function findModelOptionBySlug(
+  options: ReadonlyArray<PickerModelOption>,
+  slug: string | null | undefined,
+): PickerModelOption | null {
+  const normalizedSlug = typeof slug === "string" && slug.trim().length > 0 ? slug.trim() : null;
+  if (!normalizedSlug) {
+    return null;
+  }
+  return options.find((option) => option.slug === normalizedSlug) ?? null;
+}
+
 function resolveModelForProviderPicker(
   provider: ProviderKind,
   value: string,
-  options: ReadonlyArray<{ slug: string; name: string }>,
+  options: ReadonlyArray<PickerModelOption>,
 ): ModelSlug | null {
   const trimmedValue = value.trim();
   if (!trimmedValue) {
@@ -7731,7 +7957,10 @@ function getChatSurfaceCopy(language: AppLanguage) {
       mode: "حالت",
       access: "دسترسی",
       comingSoon: "به زودی",
+      authenticatedModels: (count: number) => `${count} مدل احراز شده${count === 1 ? "" : ""}`,
+      defaultChoice: "پیش فرض",
       defaultSuffix: " (پیش فرض)",
+      minimal: "حداقلی",
       low: "کم",
       medium: "متوسط",
       high: "زیاد",
@@ -7764,7 +7993,10 @@ function getChatSurfaceCopy(language: AppLanguage) {
     mode: "Mode",
     access: "Access",
     comingSoon: "Coming soon",
+    authenticatedModels: (count: number) => `${count} authenticated model${count === 1 ? "" : "s"}`,
+    defaultChoice: "Default",
     defaultSuffix: " (default)",
+    minimal: "Minimal",
     low: "Low",
     medium: "Medium",
     high: "High",
@@ -8167,12 +8399,14 @@ function getProviderPickerSectionDescription(provider: AvailableProviderPickerKi
       return "Kimi Code sessions backed by either `kimi login` / `/login` CLI auth or a configured Kimi API key.";
     case "opencode":
       return "OpenCode models discovered from your local OpenCode runtime.";
+    case "pi":
+      return "Pi agent harness sessions discovered from your local Pi auth/config using provider/model ids.";
     default:
       return "Available models.";
   }
 }
 
-function ProviderSetupDialog(props: {
+export function ProviderSetupDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   language: AppLanguage;
@@ -8294,6 +8528,31 @@ function ProviderSetupDialog(props: {
                     : "Native Codex models use your existing local Codex authentication.";
               }
 
+              if (option.value === "pi") {
+                badge =
+                  providerStatus?.available === false
+                    ? { label: "Unavailable", variant: "error" }
+                    : providerStatus?.authStatus === "authenticated"
+                      ? providerStatus.status === "warning"
+                        ? { label: "Check setup", variant: "warning" }
+                        : { label: "Ready", variant: "success" }
+                      : { label: "Needs auth", variant: "warning" };
+                description =
+                  providerStatus?.authStatus === "authenticated"
+                    ? providerStatus.status === "warning"
+                      ? "Pi is authenticated, but the local Pi config still needs attention."
+                      : "Pi is ready using your local ~/.pi/agent auth/models config."
+                    : "Authenticate Pi outside CUT3, then refresh this panel.";
+                message = providerStatus?.message?.trim() || null;
+                footer = (
+                  <p className="text-xs text-muted-foreground">
+                    CUT3 embeds Pi through its Node SDK, but intentionally disables Pi AGENTS,
+                    system prompts, extensions, skills, prompt templates, and themes here so CUT3
+                    remains the only source of workspace instructions for Pi threads.
+                  </p>
+                );
+              }
+
               if (option.value === "opencode") {
                 badge =
                   props.openCodeState?.status === "available"
@@ -8398,9 +8657,9 @@ function ManageModelsDialog(props: {
   language: AppLanguage;
   selectedProvider: ProviderKind;
   selectedProviderPickerKind: AvailableProviderPickerKind;
-  allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>;
-  openRouterModelOptions: ReadonlyArray<{ slug: string; name: string }>;
-  opencodeModelOptions: ReadonlyArray<{ slug: string; name: string }>;
+  allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
+  openRouterModelOptions: ReadonlyArray<PickerModelOption>;
+  opencodeModelOptions: ReadonlyArray<PickerModelOption>;
   hiddenModelsByProvider: ProviderHiddenModelSettings;
   openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
   opencodeContextLengthsBySlug: ReadonlyMap<string, number | null>;
@@ -8414,7 +8673,8 @@ function ManageModelsDialog(props: {
     props.hiddenModelsByProvider.hiddenCodexModels.length +
     props.hiddenModelsByProvider.hiddenCopilotModels.length +
     props.hiddenModelsByProvider.hiddenOpencodeModels.length +
-    props.hiddenModelsByProvider.hiddenKimiModels.length;
+    props.hiddenModelsByProvider.hiddenKimiModels.length +
+    props.hiddenModelsByProvider.hiddenPiModels.length;
 
   useEffect(() => {
     if (!props.open) {
@@ -8620,6 +8880,16 @@ function ManageModelsDialog(props: {
                                     Fast
                                   </Badge>
                                 ) : null}
+                                {modelOption.supportsReasoning ? (
+                                  <Badge variant="outline" size="sm">
+                                    Reasoning
+                                  </Badge>
+                                ) : null}
+                                {modelOption.supportsImageInput ? (
+                                  <Badge variant="outline" size="sm">
+                                    Vision
+                                  </Badge>
+                                ) : null}
                               </div>
                               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                 {displayParts.usesScopedLayout ? (
@@ -8678,24 +8948,22 @@ function ManageModelsDialog(props: {
   );
 }
 
-const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   activeThread: Thread | null;
   provider: ProviderKind;
   providerPickerKind: AvailableProviderPickerKind;
   language: AppLanguage;
   model: ModelSlug;
   lockedProvider: ProviderKind | null;
-  allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>;
-  visibleModelOptionsByProvider: Record<
-    ProviderKind,
-    ReadonlyArray<{ slug: string; name: string }>
-  >;
-  openRouterModelOptions: ReadonlyArray<{ slug: string; name: string }>;
-  opencodeModelOptions: ReadonlyArray<{ slug: string; name: string }>;
+  allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
+  visibleModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
+  openRouterModelOptions: ReadonlyArray<PickerModelOption>;
+  opencodeModelOptions: ReadonlyArray<PickerModelOption>;
   openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
   opencodeContextLengthsBySlug: ReadonlyMap<string, number | null>;
   serviceTierSetting: AppServiceTier;
   hasHiddenModels: boolean;
+  modelLabelOverride?: string;
   compact?: boolean;
   disabled?: boolean;
   onOpenProviderSetup: () => void;
@@ -8723,6 +8991,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     ],
   );
   const selectedModelLabel =
+    props.modelLabelOverride ??
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ??
     getModelDisplayName(props.model, props.provider);
   const selectedProviderLabel =
@@ -8740,7 +9009,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     (
       providerPickerKind: AvailableProviderPickerKind,
       value: string,
-      options: ReadonlyArray<{ slug: string; name: string }>,
+      options: ReadonlyArray<PickerModelOption>,
       isDisabledByProviderLock: boolean,
     ) => {
       if (disabled || isDisabledByProviderLock || !value) {
@@ -9042,6 +9311,16 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                                     Fast
                                   </Badge>
                                 ) : null}
+                                {modelOption.supportsReasoning ? (
+                                  <Badge variant="outline" size="sm">
+                                    Reasoning
+                                  </Badge>
+                                ) : null}
+                                {modelOption.supportsImageInput ? (
+                                  <Badge variant="outline" size="sm">
+                                    Vision
+                                  </Badge>
+                                ) : null}
                               </div>
                               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                 {displayParts.usesScopedLayout ? (
@@ -9129,12 +9408,13 @@ const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(pr
   interactionMode: ProviderInteractionMode;
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
-  selectedEffort: CodexReasoningEffort | null;
+  selectedEffort: ProviderReasoningLevel | null;
   selectedProvider: ProviderKind;
   selectedCodexFastModeEnabled: boolean;
   showCodexFastModeControls: boolean;
-  reasoningOptions: ReadonlyArray<CodexReasoningEffort>;
-  onEffortSelect: (effort: CodexReasoningEffort) => void;
+  reasoningOptions: ReadonlyArray<ProviderReasoningLevel>;
+  allowDefaultReasoningSelection: boolean;
+  onEffortSelect: (effort: ProviderReasoningLevel | null) => void;
   onCodexFastModeChange: (enabled: boolean) => void;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
@@ -9146,7 +9426,9 @@ const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(pr
   const chatCopy = getChatSurfaceCopy(language);
   const planCopy = getPlanUiCopy(language);
   const defaultReasoningEffort = getDefaultReasoningEffort(props.selectedProvider);
-  const reasoningLabelByOption: Record<CodexReasoningEffort, string> = {
+  const reasoningLabelByOption: Record<ProviderReasoningLevel, string> = {
+    off: chatCopy.off,
+    minimal: chatCopy.minimal,
     low: chatCopy.low,
     medium: chatCopy.medium,
     high: chatCopy.high,
@@ -9168,21 +9450,28 @@ const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(pr
         <EllipsisIcon aria-hidden="true" className="size-4" />
       </MenuTrigger>
       <MenuPopup align="start">
-        {props.selectedEffort != null ? (
+        {props.reasoningOptions.length > 0 ? (
           <>
             <MenuGroup>
               <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
                 {chatCopy.reasoning}
               </div>
               <MenuRadioGroup
-                value={props.selectedEffort}
+                value={props.selectedEffort ?? "__default__"}
                 onValueChange={(value) => {
                   if (!value) return;
+                  if (value === "__default__") {
+                    props.onEffortSelect(null);
+                    return;
+                  }
                   const nextEffort = props.reasoningOptions.find((option) => option === value);
                   if (!nextEffort) return;
                   props.onEffortSelect(nextEffort);
                 }}
               >
+                {props.allowDefaultReasoningSelection ? (
+                  <MenuRadioItem value="__default__">{chatCopy.defaultChoice}</MenuRadioItem>
+                ) : null}
                 {props.reasoningOptions.map((effort) => (
                   <MenuRadioItem key={effort} value={effort}>
                     {reasoningLabelByOption[effort]}
@@ -9259,11 +9548,12 @@ const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(pr
 });
 
 const ReasoningTraitsPicker = memo(function ReasoningTraitsPicker(props: {
-  effort: CodexReasoningEffort;
-  defaultReasoningEffort: CodexReasoningEffort | null;
+  effort: ProviderReasoningLevel | null;
+  defaultReasoningEffort: ProviderReasoningLevel | null;
+  allowDefaultSelection: boolean;
   fastModeEnabled?: boolean;
-  options: ReadonlyArray<CodexReasoningEffort>;
-  onEffortChange: (effort: CodexReasoningEffort) => void;
+  options: ReadonlyArray<ProviderReasoningLevel>;
+  onEffortChange: (effort: ProviderReasoningLevel | null) => void;
   onFastModeChange?: (enabled: boolean) => void;
 }) {
   const {
@@ -9271,14 +9561,16 @@ const ReasoningTraitsPicker = memo(function ReasoningTraitsPicker(props: {
   } = useAppSettings();
   const chatCopy = getChatSurfaceCopy(language);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const reasoningLabelByOption: Record<CodexReasoningEffort, string> = {
+  const reasoningLabelByOption: Record<ProviderReasoningLevel, string> = {
+    off: chatCopy.off,
+    minimal: chatCopy.minimal,
     low: chatCopy.low,
     medium: chatCopy.medium,
     high: chatCopy.high,
     xhigh: chatCopy.extraHigh,
   };
   const triggerLabel = [
-    reasoningLabelByOption[props.effort],
+    props.effort ? reasoningLabelByOption[props.effort] : chatCopy.defaultChoice,
     ...(props.fastModeEnabled ? ["Fast"] : []),
   ]
     .filter(Boolean)
@@ -9309,14 +9601,21 @@ const ReasoningTraitsPicker = memo(function ReasoningTraitsPicker(props: {
             {chatCopy.reasoning}
           </div>
           <MenuRadioGroup
-            value={props.effort}
+            value={props.effort ?? "__default__"}
             onValueChange={(value) => {
               if (!value) return;
+              if (value === "__default__") {
+                props.onEffortChange(null);
+                return;
+              }
               const nextEffort = props.options.find((option) => option === value);
               if (!nextEffort) return;
               props.onEffortChange(nextEffort);
             }}
           >
+            {props.allowDefaultSelection ? (
+              <MenuRadioItem value="__default__">{chatCopy.defaultChoice}</MenuRadioItem>
+            ) : null}
             {props.options.map((effort) => (
               <MenuRadioItem key={effort} value={effort}>
                 {reasoningLabelByOption[effort]}
@@ -9350,16 +9649,18 @@ const ReasoningTraitsPicker = memo(function ReasoningTraitsPicker(props: {
 });
 
 const CodexTraitsPicker = memo(function CodexTraitsPicker(props: {
-  effort: CodexReasoningEffort;
+  effort: ProviderReasoningLevel;
   fastModeEnabled: boolean;
   showFastModeControls: boolean;
-  options: ReadonlyArray<CodexReasoningEffort>;
-  onEffortChange: (effort: CodexReasoningEffort) => void;
+  options: ReadonlyArray<ProviderReasoningLevel>;
+  onEffortChange: (effort: ProviderReasoningLevel) => void;
   onFastModeChange: (enabled: boolean) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const defaultReasoningEffort = getDefaultReasoningEffort("codex");
-  const reasoningLabelByOption: Record<CodexReasoningEffort, string> = {
+  const reasoningLabelByOption: Record<ProviderReasoningLevel, string> = {
+    off: "off",
+    minimal: "Minimal",
     low: "Low",
     medium: "Medium",
     high: "High",

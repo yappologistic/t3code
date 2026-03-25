@@ -64,6 +64,7 @@ const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>([
   "copilot",
   "kimi",
   "opencode",
+  "pi",
 ]);
 const AppearanceThemeConfigSchema = Schema.Struct({
   accent: Schema.String.check(Schema.isMaxLength(32)),
@@ -90,6 +91,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
   kimi: new Set(getModelOptions("kimi").map((option) => option.slug)),
   opencode: new Set(getModelOptions("opencode").map((option) => option.slug)),
+  pi: new Set(getModelOptions("pi").map((option) => option.slug)),
 };
 
 const AppSettingsSchema = Schema.Struct({
@@ -179,6 +181,9 @@ const AppSettingsSchema = Schema.Struct({
   customKimiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
+  customPiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
   hiddenCodexModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
@@ -189,6 +194,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   hiddenKimiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  hiddenPiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   approvalRules: Schema.Array(ApprovalRuleSchema).pipe(
@@ -326,10 +334,12 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customOpencodeModels: normalizeCustomModelSlugs(settings.customOpencodeModels, "opencode"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
+    customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
     hiddenCodexModels: normalizeModelVisibilitySlugs(settings.hiddenCodexModels, "codex"),
     hiddenCopilotModels: normalizeModelVisibilitySlugs(settings.hiddenCopilotModels, "copilot"),
     hiddenOpencodeModels: normalizeModelVisibilitySlugs(settings.hiddenOpencodeModels, "opencode"),
     hiddenKimiModels: normalizeModelVisibilitySlugs(settings.hiddenKimiModels, "kimi"),
+    hiddenPiModels: normalizeModelVisibilitySlugs(settings.hiddenPiModels, "pi"),
     approvalRules: normalizeApprovalRules(settings.approvalRules),
   };
 }

@@ -1,13 +1,25 @@
 import { Schema } from "effect";
 import { ProviderKind } from "./orchestration";
 
+export const PROVIDER_REASONING_LEVEL_OPTIONS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+export type ProviderReasoningLevel = (typeof PROVIDER_REASONING_LEVEL_OPTIONS)[number];
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
 export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORT_OPTIONS)[number];
 export const COPILOT_REASONING_EFFORT_OPTIONS = ["low", "medium", "high", "xhigh"] as const;
 export const COPILOT_REASONING_EFFORT_VALUES = COPILOT_REASONING_EFFORT_OPTIONS;
 export type CopilotReasoningEffort = (typeof COPILOT_REASONING_EFFORT_OPTIONS)[number];
+export const PI_THINKING_LEVEL_OPTIONS = PROVIDER_REASONING_LEVEL_OPTIONS;
+export type PiThinkingLevel = (typeof PI_THINKING_LEVEL_OPTIONS)[number];
 export const OPENROUTER_FREE_ROUTER_MODEL = "openrouter/free" as const;
 export const OPENCODE_DEFAULT_MODEL = "opencode/default" as const;
+export const PI_DEFAULT_MODEL = "pi/default" as const;
 
 export const CodexModelOptions = Schema.Struct({
   reasoningEffort: Schema.optional(Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS)),
@@ -20,9 +32,15 @@ export const CopilotModelOptions = Schema.Struct({
 });
 export type CopilotModelOptions = typeof CopilotModelOptions.Type;
 
+export const PiModelOptions = Schema.Struct({
+  thinkingLevel: Schema.optional(Schema.Literals(PI_THINKING_LEVEL_OPTIONS)),
+});
+export type PiModelOptions = typeof PiModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   copilot: Schema.optional(CopilotModelOptions),
+  pi: Schema.optional(PiModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
@@ -80,6 +98,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
   ],
   kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
   opencode: [{ slug: OPENCODE_DEFAULT_MODEL, name: "Default" }],
+  pi: [{ slug: PI_DEFAULT_MODEL, name: "Default" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -88,6 +107,7 @@ export const LEGACY_MODEL_SLUGS_BY_PROVIDER = {
   copilot: ["goldeneye", "raptor-mini"],
   kimi: [],
   opencode: [],
+  pi: [],
 } as const satisfies Record<ProviderKind, readonly string[]>;
 
 type BuiltInModelSlug = ModelOptionsByProvider[ProviderKind][number]["slug"];
@@ -98,6 +118,7 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   copilot: "claude-sonnet-4.5",
   kimi: "kimi-for-coding",
   opencode: OPENCODE_DEFAULT_MODEL,
+  pi: PI_DEFAULT_MODEL,
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_CONTEXT_WINDOW_INFO_BY_PROVIDER = {
@@ -231,6 +252,12 @@ export const MODEL_CONTEXT_WINDOW_INFO_BY_PROVIDER = {
       note: "CUT3 leaves model selection to OpenCode's own provider/config defaults until the session advertises a concrete model list.",
     },
   },
+  pi: {
+    [PI_DEFAULT_MODEL]: {
+      source: "provider-config",
+      note: "CUT3 lets Pi choose its configured default provider/model until the active Pi session advertises a concrete authenticated model list.",
+    },
+  },
 } as const satisfies Record<ProviderKind, Record<string, ModelContextWindowInfo>>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -248,6 +275,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
   },
   kimi: {},
   opencode: {},
+  pi: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
@@ -255,11 +283,13 @@ export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   copilot: COPILOT_REASONING_EFFORT_OPTIONS,
   kimi: [],
   opencode: [],
-} as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
+  pi: PI_THINKING_LEVEL_OPTIONS,
+} as const satisfies Record<ProviderKind, readonly ProviderReasoningLevel[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   copilot: "high",
   kimi: null,
   opencode: null,
-} as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;
+  pi: null,
+} as const satisfies Record<ProviderKind, ProviderReasoningLevel | null>;

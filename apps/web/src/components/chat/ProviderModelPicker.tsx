@@ -8,7 +8,7 @@ import {
   type ProviderPickerKind,
   PROVIDER_OPTIONS,
 } from "../../session-logic";
-import { ChevronDownIcon } from "lucide-react";
+import { BotIcon, ChevronDownIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Menu,
@@ -59,6 +59,8 @@ function getModelOptionsForProviderPicker(
       return modelOptionsByProvider.kimi;
     case "opencode":
       return modelOptionsByProvider.opencode;
+    case "pi":
+      return modelOptionsByProvider.pi;
     default:
       return modelOptionsByProvider.codex;
   }
@@ -103,6 +105,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   copilot: GitHubIcon,
   kimi: KimiIcon,
   opencode: OpenCodeIcon,
+  pi: BotIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

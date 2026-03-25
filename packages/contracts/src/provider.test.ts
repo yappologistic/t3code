@@ -101,6 +101,26 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.opencode?.openRouterApiKey).toBe("sk-or-test");
   });
 
+  it("accepts pi-compatible payloads without provider-specific overrides", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "pi",
+      cwd: "/tmp/workspace",
+      model: "pi/default",
+      runtimeMode: "approval-required",
+      modelOptions: {
+        pi: {
+          thinkingLevel: "minimal",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("pi");
+    expect(parsed.model).toBe("pi/default");
+    expect(parsed.modelOptions?.pi?.thinkingLevel).toBe("minimal");
+    expect(parsed.providerOptions).toBeUndefined();
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({
@@ -141,5 +161,19 @@ describe("ProviderSendTurnInput", () => {
     });
 
     expect(parsed.modelOptions?.copilot?.reasoningEffort).toBe("xhigh");
+  });
+
+  it("accepts Pi thinking-level overrides", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      model: "openai/gpt-5.4",
+      modelOptions: {
+        pi: {
+          thinkingLevel: "xhigh",
+        },
+      },
+    });
+
+    expect(parsed.modelOptions?.pi?.thinkingLevel).toBe("xhigh");
   });
 });

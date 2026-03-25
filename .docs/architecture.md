@@ -19,13 +19,13 @@ CUT3 ships as a shared web app plus an optional Electron desktop shell, backed b
 │ project/git/terminal APIs, ProviderService       │
 └──────────────┬───────────────────────────────────┘
             │ provider adapters / managers
-    ┌────────┬──────────┬──────────┬──────────┐
-    │        │          │          │          │
-┌─▼─────┐ ┌▼───────┐ ┌▼────────┐ ┌▼────────┐
-│ Codex │ │Copilot │ │OpenCode │ │ Kimi    │
-│ app-  │ │ ACP    │ │ ACP     │ │ ACP     │
-│ server│ │ runtime│ │ runtime │ │ runtime │
-└───────┘ └────────┘ └──────────┘ └─────────┘
+    ┌────────┬──────────┬──────────┬──────────┬────────┐
+    │        │          │          │          │        │
+┌─▼─────┐ ┌▼───────┐ ┌▼────────┐ ┌▼────────┐ ┌▼─────┐
+│ Codex │ │Copilot │ │OpenCode │ │ Kimi    │ │ Pi   │
+│ app-  │ │ ACP    │ │ ACP     │ │ ACP     │ │ SDK  │
+│ server│ │ runtime│ │ runtime │ │ runtime │ │runtime│
+└───────┘ └────────┘ └──────────┘ └─────────┘ └──────┘
 ```
 
 - `apps/web` is the shared client surface for browser and desktop usage.
@@ -33,3 +33,4 @@ CUT3 ships as a shared web app plus an optional Electron desktop shell, backed b
 - `apps/server` serves the built UI, validates WebSocket requests, owns orchestration, and routes provider-native work through the provider layer.
 - Codex uses `codex app-server` over JSON-RPC stdio.
 - GitHub Copilot, OpenCode, and Kimi Code use ACP-backed runtime managers.
+- Pi uses the embedded `@mariozechner/pi-coding-agent` Node SDK while CUT3 keeps Pi resource discovery disabled.

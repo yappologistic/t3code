@@ -287,6 +287,29 @@ describe("store read model sync", () => {
     expect(next.threads[0]?.model).toBe("kimi-k2-thinking");
   });
 
+  it("preserves active Pi session models that are not part of the built-in CUT3 catalog", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "github-copilot/claude-sonnet-4.5",
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          status: "ready",
+          providerName: "pi",
+          runtimeMode: DEFAULT_RUNTIME_MODE,
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-02-27T00:00:01.000Z",
+        },
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.provider).toBe("pi");
+    expect(next.threads[0]?.model).toBe("github-copilot/claude-sonnet-4.5");
+  });
+
   it("preserves the existing thread provider when the live session disappears", () => {
     const initialState = makeState(
       makeThread({
