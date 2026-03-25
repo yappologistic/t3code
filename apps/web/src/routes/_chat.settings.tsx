@@ -162,7 +162,7 @@ function getSettingsCopy(language: AppLanguage) {
       resetKimiOverrides: "بازنشانی بازنویسی های Kimi",
       piTitle: "Pi agent harness",
       piDescription:
-        "CUT3، Pi را از طریق SDK نود خودش داخل سرور تعبیه می کند. اعتبارنامه ها و کاتالوگ مدل Pi از ~/.pi/agent خوانده می شوند؛ برای ورود از خود Pi با pi یا bunx pi استفاده کنید و /login را اجرا کنید، یا auth.json / متغیرهای محیطی Pi را پر کنید. CUT3 عمداً AGENTS، افزونه ها، مهارت ها، پرامپت ها و تم های Pi را در این مسیر غیرفعال می کند تا دستورهای فضای کاری فقط از CUT3 بیایند.",
+        "CUT3، Pi را از طریق SDK نود خودش داخل سرور تعبیه می کند. اعتبارنامه ها و کاتالوگ مدل Pi از ~/.pi/agent خوانده می شوند؛ برای ورود از خود Pi با pi یا bunx pi استفاده کنید و /login را اجرا کنید، یا auth.json / متغیرهای محیطی Pi را پر کنید. CUT3 عمداً پکیج ها، AGENTS، system promptها، افزونه ها، مهارت ها، پرامپت ها و تم های Pi را در این مسیر غیرفعال می کند تا دستورهای فضای کاری فقط از CUT3 بیایند.",
       modelsTitle: "مدل ها",
       modelsDescription:
         "اسلاگ های مدل اضافی را ذخیره کنید تا در انتخابگر مدل گفتگو و پیشنهادهای دستور /model دیده شوند. مدل های رایگان OpenRouter اکنون بخش مستقل خودشان را دارند.",
@@ -356,7 +356,7 @@ function getSettingsCopy(language: AppLanguage) {
     resetKimiOverrides: "Reset kimi overrides",
     piTitle: "Pi agent harness",
     piDescription:
-      "CUT3 embeds Pi through its Node SDK. Pi credentials and model discovery come from ~/.pi/agent; authenticate Pi through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate Pi's auth.json / provider environment variables. CUT3 intentionally disables Pi AGENTS files, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3.",
+      "CUT3 embeds Pi through its Node SDK. Pi credentials and model discovery come from ~/.pi/agent; authenticate Pi through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate Pi's auth.json / provider environment variables. CUT3 intentionally disables Pi packages, AGENTS files, system prompts, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3.",
     modelsTitle: "Models",
     modelsDescription:
       "Save additional provider model slugs so they appear in the chat model picker and /model command suggestions. OpenRouter free models now have their own section, while the cards below handle additional provider-specific custom models.",

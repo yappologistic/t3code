@@ -194,7 +194,7 @@ function toLegacySessionStatus(
   }
 }
 
-function toLegacyProvider(providerName: string | null): ProviderKind {
+function normalizeProviderKind(providerName: string | null | undefined): ProviderKind | null {
   if (
     providerName === "codex" ||
     providerName === "copilot" ||
@@ -204,21 +204,94 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
   ) {
     return providerName;
   }
-  return "codex";
+  return null;
+}
+
+function toLegacyProvider(providerName: string | null): ProviderKind {
+  return normalizeProviderKind(providerName) ?? "codex";
+}
+
+function compareActivitiesByOrder(
+  left: OrchestrationReadModel["threads"][number]["activities"][number],
+  right: OrchestrationReadModel["threads"][number]["activities"][number],
+): number {
+  if (left.sequence !== undefined && right.sequence !== undefined) {
+    if (left.sequence !== right.sequence) {
+      return left.sequence - right.sequence;
+    }
+  } else if (left.sequence !== undefined) {
+    return 1;
+  } else if (right.sequence !== undefined) {
+    return -1;
+  }
+
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+}
+
+function inferProviderFromConfiguredActivities(input: {
+  readonly model: string;
+  readonly activities: ReadonlyArray<
+    OrchestrationReadModel["threads"][number]["activities"][number]
+  >;
+}): ProviderKind | null {
+  const normalizedModel = input.model.trim();
+  if (!normalizedModel) {
+    return null;
+  }
+
+  const ordered = [...input.activities].toSorted(compareActivitiesByOrder).toReversed();
+  for (const activity of ordered) {
+    if (activity.kind !== "session.configured") {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const provider =
+      normalizeProviderKind(typeof payload?.provider === "string" ? payload.provider : null) ??
+      null;
+    if (!provider) {
+      continue;
+    }
+
+    const config =
+      payload?.config && typeof payload.config === "object"
+        ? (payload.config as Record<string, unknown>)
+        : null;
+    const currentModelId =
+      typeof config?.currentModelId === "string" && config.currentModelId.trim().length > 0
+        ? config.currentModelId.trim()
+        : null;
+    if (currentModelId && currentModelId !== normalizedModel) {
+      continue;
+    }
+
+    return provider;
+  }
+
+  return null;
 }
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
+  readonly activities: ReadonlyArray<
+    OrchestrationReadModel["threads"][number]["activities"][number]
+  >;
 }): ProviderKind {
-  if (
-    input.sessionProviderName === "codex" ||
-    input.sessionProviderName === "copilot" ||
-    input.sessionProviderName === "kimi" ||
-    input.sessionProviderName === "opencode" ||
-    input.sessionProviderName === "pi"
-  ) {
-    return input.sessionProviderName;
+  const sessionProvider = normalizeProviderKind(input.sessionProviderName);
+  if (sessionProvider) {
+    return sessionProvider;
+  }
+
+  const activityProvider = inferProviderFromConfiguredActivities({
+    model: input.model,
+    activities: input.activities,
+  });
+  if (activityProvider) {
+    return activityProvider;
   }
   if (isKnownModelSlug(input.model, "pi", { includeLegacy: true })) {
     return "pi";
@@ -238,6 +311,17 @@ function inferProviderForThreadModel(input: {
   return "codex";
 }
 
+function looksLikeProviderScopedCustomModel(model: string | null | undefined): boolean {
+  if (typeof model !== "string") {
+    return false;
+  }
+  const trimmed = model.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return trimmed.includes("/") || trimmed.includes(",");
+}
+
 function resolveThreadModelForSync(input: {
   readonly model: string;
   readonly provider: ProviderKind;
@@ -254,9 +338,13 @@ function resolveThreadModelForSync(input: {
   }
 
   const resolved = resolveModelSlugForProvider(input.provider, normalized);
-  return input.preserveUnknownCustomModel &&
+  const shouldPreserveUnknownCustomModel =
     resolved === DEFAULT_MODEL_BY_PROVIDER[input.provider] &&
-    normalized !== resolved
+    normalized !== resolved &&
+    (input.preserveUnknownCustomModel ||
+      (input.sessionProviderName === null && looksLikeProviderScopedCustomModel(normalized)));
+
+  return shouldPreserveUnknownCustomModel
     ? normalized
     : isLegacyModelSlug(normalized, input.provider)
       ? normalized
@@ -289,10 +377,13 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
       const inferredProvider = inferProviderForThreadModel({
         model: thread.model,
         sessionProviderName: thread.session?.providerName ?? null,
+        activities: thread.activities,
       });
-      const provider =
-        thread.session?.providerName !== null && thread.session?.providerName !== undefined
-          ? toLegacyProvider(thread.session.providerName)
+      const liveSessionProvider = normalizeProviderKind(thread.session?.providerName ?? null);
+      const provider = liveSessionProvider
+        ? liveSessionProvider
+        : thread.session
+          ? inferredProvider
           : (existing?.provider ?? inferredProvider);
       const normalizedThreadModel = normalizeModelSlug(thread.model, provider);
       const normalizedExistingModel = normalizeModelSlug(existing?.model, provider);
@@ -315,7 +406,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         interactionMode: thread.interactionMode,
         session: thread.session
           ? {
-              provider: toLegacyProvider(thread.session.providerName),
+              provider: normalizeProviderKind(thread.session.providerName) ?? provider,
               status: toLegacySessionStatus(thread.session.status),
               orchestrationStatus: thread.session.status,
               activeTurnId: thread.session.activeTurnId ?? undefined,

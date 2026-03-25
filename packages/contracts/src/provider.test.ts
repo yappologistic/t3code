@@ -121,6 +121,19 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions).toBeUndefined();
   });
 
+  it("accepts authenticated Pi provider/model ids in session-start payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "pi",
+      cwd: "/tmp/workspace",
+      model: "github-copilot/claude-sonnet-4.5",
+      runtimeMode: "approval-required",
+    });
+
+    expect(parsed.provider).toBe("pi");
+    expect(parsed.model).toBe("github-copilot/claude-sonnet-4.5");
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({

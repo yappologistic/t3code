@@ -46,6 +46,7 @@ import type {
 import {
   buildPiModelSlug,
   createLockedPiResourceLoader,
+  createLockedPiSettingsManager,
   extractAssistantTextFromPiSessionEvent,
   extractProposedPlanMarkdown,
   getPiToolTitle,
@@ -325,7 +326,10 @@ function normalizePiPromptInput(input: {
 async function createPiSessionWithSdk(input: PiSessionFactoryInput): Promise<PiCreatedSession> {
   const authStorage = AuthStorage.create(path.join(input.agentDir, "auth.json"));
   const modelRegistry = new ModelRegistry(authStorage, path.join(input.agentDir, "models.json"));
-  const settingsManager = SettingsManager.create(input.cwd, input.agentDir);
+  const settingsManager = createLockedPiSettingsManager({
+    cwd: input.cwd,
+    agentDir: input.agentDir,
+  });
   const sessionManager = input.sessionFile
     ? SessionManager.open(input.sessionFile, input.sessionDir)
     : SessionManager.create(input.cwd, input.sessionDir);
@@ -370,6 +374,7 @@ async function createPiSessionWithSdk(input: PiSessionFactoryInput): Promise<PiC
 export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
   private readonly sessions = new Map<ThreadId, PiSessionContext>();
   private readonly startingSessions = new Map<ThreadId, PiSessionContext>();
+  private readonly startingThreadIds = new Set<ThreadId>();
   private readonly now: () => string;
   private readonly stateDir: string;
   private readonly agentDir: string;
@@ -417,10 +422,13 @@ export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
 
   private requireSession(threadId: ThreadId): PiSessionContext {
     const context = this.sessions.get(threadId) ?? this.startingSessions.get(threadId);
-    if (!context) {
-      throw new Error(`Unknown Pi thread '${threadId}'.`);
+    if (context) {
+      return context;
     }
-    return context;
+    if (this.startingThreadIds.has(threadId)) {
+      throw new Error(`Pi thread '${threadId}' is still starting.`);
+    }
+    throw new Error(`Unknown Pi thread '${threadId}'.`);
   }
 
   private buildSessionConfiguredPayload(context: PiSessionContext) {
@@ -1022,31 +1030,32 @@ export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
 
     const resolvedCwd = normalizeString(input.cwd) ?? process.cwd();
     const previousContext = this.sessions.get(input.threadId);
-    const existingStarting = this.startingSessions.get(input.threadId);
-    if (existingStarting) {
+    if (this.startingThreadIds.has(input.threadId)) {
       throw new Error(`Pi already has a session starting for thread '${input.threadId}'.`);
     }
+    this.startingThreadIds.add(input.threadId);
 
     const sessionFile =
       isRecord(input.resumeCursor) && typeof input.resumeCursor.sessionFile === "string"
         ? normalizeString(input.resumeCursor.sessionFile)
         : undefined;
 
-    const context = await this.createContext({
-      threadId: input.threadId,
-      cwd: resolvedCwd,
-      agentDir: this.agentDir,
-      sessionDir: this.sessionDir,
-      ...(sessionFile ? { sessionFile } : {}),
-      ...(normalizeString(input.model) && input.model !== PI_DEFAULT_MODEL
-        ? { model: input.model }
-        : {}),
-      runtimeMode: input.runtimeMode,
-    });
-    this.applyThinkingLevel(context, input.modelOptions?.pi?.thinkingLevel);
-
-    this.startingSessions.set(input.threadId, context);
+    let context: PiSessionContext | null = null;
     try {
+      context = await this.createContext({
+        threadId: input.threadId,
+        cwd: resolvedCwd,
+        agentDir: this.agentDir,
+        sessionDir: this.sessionDir,
+        ...(sessionFile ? { sessionFile } : {}),
+        ...(normalizeString(input.model) && input.model !== PI_DEFAULT_MODEL
+          ? { model: input.model }
+          : {}),
+        runtimeMode: input.runtimeMode,
+      });
+      this.applyThinkingLevel(context, input.modelOptions?.pi?.thinkingLevel);
+
+      this.startingSessions.set(input.threadId, context);
       this.sessions.set(input.threadId, context);
       this.startingSessions.delete(input.threadId);
       this.emitSessionStarted(context);
@@ -1059,12 +1068,16 @@ export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
       return context.sessionRecord;
     } catch (error) {
       this.startingSessions.delete(input.threadId);
-      this.sessions.delete(input.threadId);
-      if (previousContext) {
+      if (context && this.sessions.get(input.threadId) === context) {
+        this.sessions.delete(input.threadId);
+      }
+      if (previousContext && this.sessions.get(input.threadId) === undefined) {
         this.sessions.set(input.threadId, previousContext);
       }
-      context.session.dispose();
+      context?.session.dispose();
       throw error;
+    } finally {
+      this.startingThreadIds.delete(input.threadId);
     }
   }
 
@@ -1164,11 +1177,16 @@ export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
     } satisfies ProviderTurnStartResult;
   }
 
-  async interruptTurn(threadId: ThreadId, _turnId?: TurnId): Promise<void> {
+  async interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void> {
     const context = this.requireSession(threadId);
-    if (context.currentTurn) {
-      context.currentTurn.interrupted = true;
+    const currentTurn = context.currentTurn;
+    if (!currentTurn) {
+      return;
     }
+    if (turnId && currentTurn.turnId !== turnId) {
+      return;
+    }
+    currentTurn.interrupted = true;
     await context.session.abort();
   }
 
@@ -1243,8 +1261,12 @@ export class PiSdkManager extends EventEmitter<PiSdkManagerEvents> {
       activeTurnId: undefined,
     });
 
-    this.sessions.delete(context.sessionRecord.threadId);
-    this.startingSessions.delete(context.sessionRecord.threadId);
+    if (this.sessions.get(context.sessionRecord.threadId) === context) {
+      this.sessions.delete(context.sessionRecord.threadId);
+    }
+    if (this.startingSessions.get(context.sessionRecord.threadId) === context) {
+      this.startingSessions.delete(context.sessionRecord.threadId);
+    }
 
     if (input.emitExit) {
       this.emitRuntimeEvent({

@@ -21,7 +21,7 @@ export const PI_FULL_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "fin
 export const PI_PLAN_TOOL_NAMES = ["read", "bash", "grep", "find", "ls"] as const;
 
 export const PI_PROVIDER_SETUP_MESSAGE =
-  "CUT3 embeds Pi through the Pi Node SDK. Authenticate Pi outside CUT3 through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate ~/.pi/agent/auth.json / provider env vars. CUT3 intentionally disables Pi extensions, prompt templates, skills, themes, AGENTS, and custom system-prompt discovery so CUT3 remains the only source of workspace instructions here.";
+  "CUT3 embeds Pi through the Pi Node SDK. Authenticate Pi outside CUT3 through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate ~/.pi/agent/auth.json / provider env vars. CUT3 intentionally disables Pi packages, extensions, prompt templates, skills, themes, AGENTS, and custom system-prompt discovery so CUT3 remains the only source of workspace instructions here.";
 
 export const PI_PLAN_MODE_PROMPT_PREFIX = `<collaboration_mode name="plan">
 You are in CUT3 plan mode.
@@ -55,6 +55,48 @@ export interface PiHarnessCatalogSnapshot {
 function normalizeString(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+type PiSettingsSnapshot = ReturnType<SettingsManager["getGlobalSettings"]>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePiSettings(
+  base: PiSettingsSnapshot,
+  override: PiSettingsSnapshot,
+): PiSettingsSnapshot {
+  const next: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) {
+      continue;
+    }
+    const current = next[key];
+    next[key] = isRecord(current) && isRecord(value) ? mergePiSettings(current, value) : value;
+  }
+  return next as PiSettingsSnapshot;
+}
+
+export function createLockedPiSettingsManager(input?: {
+  readonly cwd?: string;
+  readonly agentDir?: string;
+}): SettingsManager {
+  const fileSettingsManager = SettingsManager.create(input?.cwd, input?.agentDir);
+  const mergedSettings = mergePiSettings(
+    fileSettingsManager.getGlobalSettings(),
+    fileSettingsManager.getProjectSettings(),
+  );
+
+  return SettingsManager.inMemory({
+    ...mergedSettings,
+    packages: [],
+    extensions: [],
+    skills: [],
+    prompts: [],
+    themes: [],
+    enableSkillCommands: false,
+  });
 }
 
 export function buildPiModelSlug(input: {

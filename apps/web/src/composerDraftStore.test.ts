@@ -1,7 +1,9 @@
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createJSONStorage } from "zustand/middleware";
 
 import {
+  COMPOSER_DRAFT_STORAGE_KEY,
   type ComposerImageAttachment,
   createDebouncedStorage,
   useComposerDraftStore,
@@ -412,6 +414,79 @@ describe("composerDraftStore setProvider", () => {
     store.setProvider(threadId, null);
 
     expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
+  });
+});
+
+describe("composerDraftStore setEffort", () => {
+  const threadId = ThreadId.makeUnsafe("thread-effort");
+  let persistedStorage: ReturnType<typeof createMockStorage>;
+
+  beforeEach(() => {
+    persistedStorage = createMockStorage();
+    useComposerDraftStore.persist.setOptions({
+      storage: createJSONStorage(() => persistedStorage),
+    });
+    useComposerDraftStore.setState({
+      draftsByThreadId: {},
+      draftThreadsByThreadId: {},
+      projectDraftThreadIdByProjectId: {},
+    });
+  });
+
+  afterEach(() => {
+    useComposerDraftStore.persist.setOptions({
+      storage: createJSONStorage(() => createMockStorage()),
+    });
+  });
+
+  it("stores which provider selected the current reasoning override", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setEffort(threadId, "high", "pi");
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+      effort: "high",
+      effortProvider: "pi",
+    });
+  });
+
+  it("clears the provider marker when the reasoning override is reset", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setEffort(threadId, "high", "pi");
+    store.setEffort(threadId, null, "pi");
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
+  });
+
+  it("backfills legacy Pi effort drafts on rehydrate", async () => {
+    persistedStorage.setItem(
+      COMPOSER_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          draftsByThreadId: {
+            [threadId]: {
+              prompt: "",
+              attachments: [],
+              provider: "pi",
+              model: "openai/gpt-5.4",
+              effort: "high",
+            },
+          },
+          draftThreadsByThreadId: {},
+          projectDraftThreadIdByProjectId: {},
+        },
+        version: 1,
+      }),
+    );
+
+    await useComposerDraftStore.persist.rehydrate();
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+      provider: "pi",
+      effort: "high",
+      effortProvider: "pi",
+    });
   });
 });
 

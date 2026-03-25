@@ -11,7 +11,7 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { ApprovalRequestId, ThreadId, type PiThinkingLevel } from "@t3tools/contracts";
+import { ApprovalRequestId, ThreadId, TurnId, type PiThinkingLevel } from "@t3tools/contracts";
 
 import { PiSdkManager } from "./piSdkManager.ts";
 
@@ -438,5 +438,170 @@ describe("PiSdkManager", () => {
       expect(events.some((event) => event.type === "item.completed")).toBe(true);
       expect(events.some((event) => event.type === "turn.completed")).toBe(true);
     });
+  });
+
+  it("keeps the replacement Pi session registered after disposing the previous one", async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cut3-pi-manager-replace-"));
+    const deps = createSessionDependencies(cwd);
+    const firstSession = new FakeAgentSession(deps.model);
+    const secondSession = new FakeAgentSession(deps.model);
+    secondSession.prompt.mockImplementation(async () => {
+      secondSession.emit({ type: "agent_start" } as AgentSessionEvent);
+      secondSession.emit({
+        type: "message_end",
+        message: createAssistantMessage("replacement session reply"),
+      } as AgentSessionEvent);
+    });
+
+    const createdSessions = [firstSession, secondSession];
+    const manager = new PiSdkManager({
+      stateDir: cwd,
+      createSession: async () => {
+        const session = createdSessions.shift();
+        if (!session) {
+          throw new Error("No fake Pi session available for replacement test.");
+        }
+        return {
+          session: session as unknown as AgentSession,
+          sessionManager: deps.sessionManager,
+          settingsManager: deps.settingsManager,
+          modelRegistry: deps.modelRegistry,
+          authStorage: deps.authStorage,
+        };
+      },
+    });
+
+    const threadId = ThreadId.makeUnsafe("thread-pi-replace");
+    await manager.startSession({
+      threadId,
+      provider: "pi",
+      cwd,
+      runtimeMode: "approval-required",
+    });
+    await manager.startSession({
+      threadId,
+      provider: "pi",
+      cwd,
+      runtimeMode: "approval-required",
+    });
+
+    expect(await manager.hasSession(threadId)).toBe(true);
+    await expect(
+      manager.sendTurn({
+        threadId,
+        input: "use the replacement session",
+      }),
+    ).resolves.toMatchObject({ threadId });
+    await flushMicrotasks();
+
+    expect(firstSession.dispose).toHaveBeenCalledTimes(1);
+    expect(secondSession.prompt).toHaveBeenCalledTimes(1);
+    expect((await manager.listSessions()).map((session) => session.threadId)).toEqual([threadId]);
+  });
+
+  it("blocks duplicate Pi session starts before createContext resolves", async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cut3-pi-manager-starting-"));
+    const deps = createSessionDependencies(cwd);
+    const fakeSession = new FakeAgentSession(deps.model);
+
+    let resolveCreateSession: (() => void) | undefined;
+    const createSessionPromise = new Promise<{
+      session: AgentSession;
+      sessionManager: SessionManager;
+      settingsManager: SettingsManager;
+      modelRegistry: ModelRegistry;
+      authStorage: AuthStorage;
+    }>((resolve) => {
+      resolveCreateSession = () => {
+        resolve({
+          session: fakeSession as unknown as AgentSession,
+          sessionManager: deps.sessionManager,
+          settingsManager: deps.settingsManager,
+          modelRegistry: deps.modelRegistry,
+          authStorage: deps.authStorage,
+        });
+      };
+    });
+
+    const manager = new PiSdkManager({
+      stateDir: cwd,
+      createSession: async () => createSessionPromise,
+    });
+
+    const threadId = ThreadId.makeUnsafe("thread-pi-starting");
+    const firstStartPromise = manager.startSession({
+      threadId,
+      provider: "pi",
+      cwd,
+      runtimeMode: "approval-required",
+    });
+    await flushMicrotasks();
+
+    await expect(
+      manager.startSession({
+        threadId,
+        provider: "pi",
+        cwd,
+        runtimeMode: "approval-required",
+      }),
+    ).rejects.toThrow("Pi already has a session starting");
+
+    resolveCreateSession?.();
+    await firstStartPromise;
+    expect(await manager.hasSession(threadId)).toBe(true);
+  });
+
+  it("ignores stale interrupt requests that target an older Pi turn id", async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cut3-pi-manager-interrupt-"));
+    const deps = createSessionDependencies(cwd);
+    const fakeSession = new FakeAgentSession(deps.model);
+    let finishPrompt: (() => void) | undefined;
+
+    fakeSession.prompt.mockImplementation(
+      async () =>
+        new Promise<void>((resolve) => {
+          finishPrompt = () => {
+            fakeSession.emit({
+              type: "message_end",
+              message: createAssistantMessage("done"),
+            } as AgentSessionEvent);
+            resolve();
+          };
+          fakeSession.emit({ type: "agent_start" } as AgentSessionEvent);
+        }),
+    );
+
+    const manager = new PiSdkManager({
+      stateDir: cwd,
+      createSession: async () => ({
+        session: fakeSession as unknown as AgentSession,
+        sessionManager: deps.sessionManager,
+        settingsManager: deps.settingsManager,
+        modelRegistry: deps.modelRegistry,
+        authStorage: deps.authStorage,
+      }),
+    });
+
+    const threadId = ThreadId.makeUnsafe("thread-pi-interrupt");
+    await manager.startSession({
+      threadId,
+      provider: "pi",
+      cwd,
+      runtimeMode: "approval-required",
+    });
+
+    const turn = await manager.sendTurn({
+      threadId,
+      input: "long running turn",
+    });
+
+    await manager.interruptTurn(threadId, TurnId.makeUnsafe("pi-turn-stale"));
+    expect(fakeSession.abort).not.toHaveBeenCalled();
+
+    finishPrompt?.();
+    await flushMicrotasks();
+
+    expect(turn.turnId).toBeDefined();
+    expect(fakeSession.abort).not.toHaveBeenCalled();
   });
 });

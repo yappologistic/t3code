@@ -50,7 +50,7 @@ The **Providers** section supports local overrides for each provider runtime:
 - **Pi**
   - No separate binary override in CUT3; Pi is embedded through `@mariozechner/pi-coding-agent`
   - Pi auth and model discovery still come from `~/.pi/agent` (`auth.json`, `models.json`, Pi env vars, or the external `pi` / `/login` flow)
-  - CUT3 intentionally disables Pi AGENTS files, system prompts, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3
+  - CUT3 intentionally disables Pi packages, AGENTS files, system prompts, extensions, skills, prompt templates, and themes on this path so workspace instructions still come only from CUT3
 
 Leave a binary field blank to use the provider executable from your `PATH`.
 

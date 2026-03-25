@@ -100,7 +100,7 @@ import {
 } from "~/lib/openRouterModels";
 import { getModelPickerOptionDisplayParts } from "~/lib/modelPickerOptionDisplay";
 import { buildComposerMcpServerItems, providerSupportsMcp } from "../mcpServers";
-import { buildModelOptionsForDispatch, buildModelOptionsForSend } from "../chatDispatchOptions";
+import { buildModelOptionsForSend } from "../chatDispatchOptions";
 
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
@@ -307,7 +307,10 @@ import {
   canOpenThreadShareDialog,
   shouldAutoCreateThreadShare,
 } from "~/lib/threadShareMode";
-import { LastInvokedScriptByProjectSchema } from "./ChatView.logic";
+import {
+  LastInvokedScriptByProjectSchema,
+  resolveComposerEffortForProvider,
+} from "./ChatView.logic";
 import {
   expandProjectCommandTemplate,
   resolveProjectCommandTemplate,
@@ -1578,6 +1581,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "pi" &&
     (selectedPiConfiguredReasoningState?.currentValue ?? null) === null;
   const supportsReasoningEffort = reasoningOptions.length > 0;
+  const selectedDraftEffort = useMemo(
+    () =>
+      resolveComposerEffortForProvider({
+        provider: selectedProvider,
+        effort: composerDraft.effort ?? null,
+        effortProvider: composerDraft.effortProvider ?? null,
+      }),
+    [composerDraft.effort, composerDraft.effortProvider, selectedProvider],
+  );
   const selectedEffort = useMemo(() => {
     if (reasoningOptions.length === 0) {
       return null;
@@ -1585,7 +1597,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     const defaultEffort = getDefaultReasoningEffort(selectedProvider);
     const preferredEfforts = [
-      composerDraft.effort ?? null,
+      selectedDraftEffort,
       copilotProbedEffort,
       selectedPiConfiguredReasoningState?.currentValue ?? null,
       defaultEffort,
@@ -1599,31 +1611,38 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     return selectedProvider === "pi" ? null : (reasoningOptions[0] ?? null);
   }, [
-    composerDraft.effort,
     copilotProbedEffort,
     reasoningOptions,
+    selectedDraftEffort,
     selectedPiConfiguredReasoningState?.currentValue,
     selectedProvider,
   ]);
   const selectedCodexFastModeEnabled =
     selectedProvider === "codex" ? composerDraft.codexFastMode : false;
-  const selectedEffortForDispatch =
-    selectedProvider === "pi" ? (composerDraft.effort ?? null) : selectedEffort;
   const selectedModelOptionsForDispatch = useMemo(
     () =>
-      buildModelOptionsForDispatch({
+      buildModelOptionsForSend({
         provider: selectedProvider,
-        supportsReasoningEffort,
-        selectedEffort: selectedEffortForDispatch,
-        selectedCodexSupportsFastMode,
-        selectedCodexFastModeEnabled,
+        model: selectedModel,
+        composerEffort: selectedDraftEffort,
+        codexFastModeEnabled: selectedCodexFastModeEnabled,
+        copilotReasoningProbe: copilotReasoningProbeQuery.data,
+        openRouterSupportsReasoningEffort:
+          selectedOpenRouterModel !== null &&
+          supportsOpenRouterReasoningEffortControl(selectedOpenRouterModel) &&
+          selectedOpenRouterModel.supportsReasoning,
+        piSupportsReasoning: selectedPiModelOption?.supportsReasoning === true,
+        piReasoningOptions: selectedPiConfiguredReasoningState?.options ?? null,
       }),
     [
+      copilotReasoningProbeQuery.data,
       selectedCodexFastModeEnabled,
-      selectedCodexSupportsFastMode,
-      selectedEffortForDispatch,
+      selectedDraftEffort,
+      selectedModel,
+      selectedOpenRouterModel,
+      selectedPiConfiguredReasoningState?.options,
+      selectedPiModelOption?.supportsReasoning,
       selectedProvider,
-      supportsReasoningEffort,
     ],
   );
   const providerOptionsForDispatch = useMemo(
@@ -1644,7 +1663,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setComposerDraftRuntimeMode(nextThreadId, forkThreadDraftSettings.runtimeMode);
       setComposerDraftInteractionMode(nextThreadId, forkThreadDraftSettings.interactionMode);
       setComposerDraftSelectedSkills(nextThreadId, selectedSkillNames);
-      setComposerDraftEffort(nextThreadId, selectedEffort);
+      setComposerDraftEffort(
+        nextThreadId,
+        forkThreadDraftSettings.provider === "pi" ? selectedDraftEffort : selectedEffort,
+        forkThreadDraftSettings.provider,
+      );
       setComposerDraftCodexFastMode(
         nextThreadId,
         forkThreadDraftSettings.provider === "codex" ? composerDraft.codexFastMode : false,
@@ -1652,6 +1675,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [
       composerDraft.codexFastMode,
+      selectedDraftEffort,
       selectedSkillNames,
       selectedEffort,
       setComposerDraftCodexFastMode,
@@ -4494,10 +4518,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerForSend === "pi"
         ? findModelOptionBySlug(allModelOptionsByProvider.pi, modelForSend)
         : null;
+    const sendPiConfiguredReasoningState =
+      providerForSend === "pi"
+        ? deriveConfiguredReasoningState(
+            activeThread?.activities ?? EMPTY_ACTIVITIES,
+            "pi",
+            modelForSend,
+          )
+        : null;
+    const composerEffortForSend = resolveComposerEffortForProvider({
+      provider: providerForSend,
+      effort: composerDraft.effort ?? null,
+      effortProvider: composerDraft.effortProvider ?? null,
+    });
     const modelOptionsForCurrentSend = buildModelOptionsForSend({
       provider: providerForSend,
       model: modelForSend,
-      composerEffort: composerDraft.effort ?? null,
+      composerEffort: composerEffortForSend,
       codexFastModeEnabled: composerDraft.codexFastMode,
       copilotReasoningProbe: copilotReasoningProbeQuery.data,
       openRouterSupportsReasoningEffort:
@@ -4505,6 +4542,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         supportsOpenRouterReasoningEffortControl(sendOpenRouterModel) &&
         sendOpenRouterModel.supportsReasoning,
       piSupportsReasoning: sendPiModelOption?.supportsReasoning === true,
+      piReasoningOptions: sendPiConfiguredReasoningState?.options ?? null,
     });
     const providerOptionsForCurrentSend = buildProviderOptionsForDispatch({
       provider: providerForSend,
@@ -5477,10 +5515,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const onEffortSelect = useCallback(
     (effort: ProviderReasoningLevel | null) => {
-      setComposerDraftEffort(threadId, effort);
+      setComposerDraftEffort(threadId, effort, selectedProvider);
       scheduleComposerFocus();
     },
-    [scheduleComposerFocus, setComposerDraftEffort, threadId],
+    [scheduleComposerFocus, selectedProvider, setComposerDraftEffort, threadId],
   );
   const onCodexFastModeChange = useCallback(
     (enabled: boolean) => {
@@ -8546,9 +8584,9 @@ export function ProviderSetupDialog(props: {
                 message = providerStatus?.message?.trim() || null;
                 footer = (
                   <p className="text-xs text-muted-foreground">
-                    CUT3 embeds Pi through its Node SDK, but intentionally disables Pi AGENTS,
-                    system prompts, extensions, skills, prompt templates, and themes here so CUT3
-                    remains the only source of workspace instructions for Pi threads.
+                    CUT3 embeds Pi through its Node SDK, but intentionally disables Pi packages,
+                    AGENTS, system prompts, extensions, skills, prompt templates, and themes here so
+                    CUT3 remains the only source of workspace instructions for Pi threads.
                   </p>
                 );
               }

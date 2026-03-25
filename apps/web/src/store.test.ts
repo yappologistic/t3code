@@ -1,5 +1,6 @@
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  EventId,
   MessageId,
   ProjectId,
   ThreadId,
@@ -109,6 +110,26 @@ function makeReadModelProject(
     scripts: [],
     ...overrides,
   };
+}
+
+function makeSessionConfiguredActivity(input: {
+  provider: "pi" | "copilot" | "codex" | "kimi" | "opencode";
+  model: string;
+}): OrchestrationReadModel["threads"][number]["activities"][number] {
+  return {
+    id: EventId.makeUnsafe(`event-${input.provider}-${input.model}`),
+    tone: "info",
+    kind: "session.configured",
+    summary: "Session configured",
+    payload: {
+      provider: input.provider,
+      config: {
+        currentModelId: input.model,
+      },
+    },
+    turnId: null,
+    createdAt: "2026-02-27T00:00:00.000Z",
+  } satisfies OrchestrationReadModel["threads"][number]["activities"][number];
 }
 
 describe("store pure functions", () => {
@@ -246,6 +267,49 @@ describe("store read model sync", () => {
     expect(next.threads[0]?.model).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
   });
 
+  it("preserves provider-scoped custom model ids from older snapshots without session metadata", () => {
+    const initialState: AppState = {
+      projects: [],
+      threads: [],
+      threadsHydrated: true,
+    };
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "github-copilot/claude-sonnet-4.5",
+        session: null,
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.model).toBe("github-copilot/claude-sonnet-4.5");
+  });
+
+  it("infers Pi provider from session.configured history when live session metadata is missing", () => {
+    const initialState: AppState = {
+      projects: [],
+      threads: [],
+      threadsHydrated: true,
+    };
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "github-copilot/claude-sonnet-4.5",
+        session: null,
+        activities: [
+          makeSessionConfiguredActivity({
+            provider: "pi",
+            model: "github-copilot/claude-sonnet-4.5",
+          }),
+        ],
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.provider).toBe("pi");
+    expect(next.threads[0]?.model).toBe("github-copilot/claude-sonnet-4.5");
+  });
+
   it("preserves legacy Copilot threads when older snapshots lack session provider metadata", () => {
     const initialState: AppState = {
       projects: [],
@@ -308,6 +372,35 @@ describe("store read model sync", () => {
 
     expect(next.threads[0]?.provider).toBe("pi");
     expect(next.threads[0]?.model).toBe("github-copilot/claude-sonnet-4.5");
+  });
+
+  it("keeps session provider metadata aligned with inferred Pi threads when the live provider name is missing", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "github-copilot/claude-sonnet-4.5",
+        activities: [
+          makeSessionConfiguredActivity({
+            provider: "pi",
+            model: "github-copilot/claude-sonnet-4.5",
+          }),
+        ],
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          status: "ready",
+          providerName: null,
+          runtimeMode: DEFAULT_RUNTIME_MODE,
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-02-27T00:00:01.000Z",
+        },
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.provider).toBe("pi");
+    expect(next.threads[0]?.session?.provider).toBe("pi");
   });
 
   it("preserves the existing thread provider when the live session disappears", () => {

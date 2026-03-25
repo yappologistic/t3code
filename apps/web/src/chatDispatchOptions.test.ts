@@ -121,4 +121,19 @@ describe("buildModelOptionsForSend", () => {
       },
     });
   });
+
+  it("does not send Pi thinking levels that are outside the configured session options", () => {
+    expect(
+      buildModelOptionsForSend({
+        provider: "pi",
+        model: "openai/gpt-5.4",
+        composerEffort: "xhigh",
+        codexFastModeEnabled: false,
+        copilotReasoningProbe: null,
+        openRouterSupportsReasoningEffort: false,
+        piSupportsReasoning: true,
+        piReasoningOptions: ["off", "minimal", "low", "medium", "high"],
+      }),
+    ).toBeUndefined();
+  });
 });

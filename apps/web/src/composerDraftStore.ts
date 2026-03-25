@@ -80,6 +80,7 @@ interface PersistedComposerThreadDraftState {
   runtimeMode?: RuntimeMode | null;
   interactionMode?: ProviderInteractionMode | null;
   effort?: ProviderReasoningLevel | null;
+  effortProvider?: ProviderKind | null;
   codexFastMode?: boolean | null;
   serviceTier?: string | null;
 }
@@ -111,6 +112,7 @@ interface ComposerThreadDraftState {
   runtimeMode: RuntimeMode | null;
   interactionMode: ProviderInteractionMode | null;
   effort: ProviderReasoningLevel | null;
+  effortProvider: ProviderKind | null;
   codexFastMode: boolean;
 }
 
@@ -170,7 +172,11 @@ interface ComposerDraftStoreState {
     threadId: ThreadId,
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
-  setEffort: (threadId: ThreadId, effort: ProviderReasoningLevel | null | undefined) => void;
+  setEffort: (
+    threadId: ThreadId,
+    effort: ProviderReasoningLevel | null | undefined,
+    provider?: ProviderKind | null | undefined,
+  ) => void;
   setCodexFastMode: (threadId: ThreadId, enabled: boolean | null | undefined) => void;
   addImage: (threadId: ThreadId, image: ComposerImageAttachment) => void;
   addImages: (threadId: ThreadId, images: ComposerImageAttachment[]) => void;
@@ -209,6 +215,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze({
   runtimeMode: null,
   interactionMode: null,
   effort: null,
+  effortProvider: null,
   codexFastMode: false,
 }) as ComposerThreadDraftState;
 
@@ -226,6 +233,7 @@ function createEmptyThreadDraft(): ComposerThreadDraftState {
     runtimeMode: null,
     interactionMode: null,
     effort: null,
+    effortProvider: null,
     codexFastMode: false,
   };
 }
@@ -247,6 +255,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.runtimeMode === null &&
     draft.interactionMode === null &&
     draft.effort === null &&
+    draft.effortProvider === null &&
     draft.codexFastMode === false
   );
 }
@@ -464,6 +473,8 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
       effortCandidate && REASONING_EFFORT_VALUES.has(effortCandidate as ProviderReasoningLevel)
         ? (effortCandidate as ProviderReasoningLevel)
         : null;
+    const effortProvider =
+      normalizeProviderKind(draftCandidate.effortProvider) ?? (effort ? provider : null);
     const codexFastMode =
       draftCandidate.codexFastMode === true ||
       (typeof draftCandidate.serviceTier === "string" && draftCandidate.serviceTier === "fast");
@@ -489,6 +500,7 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
       ...(runtimeMode ? { runtimeMode } : {}),
       ...(interactionMode ? { interactionMode } : {}),
       ...(effort ? { effort } : {}),
+      ...(effort && effortProvider ? { effortProvider } : {}),
       ...(codexFastMode ? { codexFastMode } : {}),
     };
   }
@@ -596,6 +608,7 @@ function toHydratedThreadDraft(
     runtimeMode: persistedDraft.runtimeMode ?? null,
     interactionMode: persistedDraft.interactionMode ?? null,
     effort: persistedDraft.effort ?? null,
+    effortProvider: persistedDraft.effortProvider ?? null,
     codexFastMode: persistedDraft.codexFastMode === true,
   };
 }
@@ -1000,23 +1013,25 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           return { draftsByThreadId: nextDraftsByThreadId };
         });
       },
-      setEffort: (threadId, effort) => {
+      setEffort: (threadId, effort, provider) => {
         if (threadId.length === 0) {
           return;
         }
         const nextEffort = effort && REASONING_EFFORT_VALUES.has(effort) ? effort : null;
+        const nextEffortProvider = nextEffort ? normalizeProviderKind(provider) : null;
         set((state) => {
           const existing = state.draftsByThreadId[threadId];
           if (!existing && nextEffort === null) {
             return state;
           }
           const base = existing ?? createEmptyThreadDraft();
-          if (base.effort === nextEffort) {
+          if (base.effort === nextEffort && base.effortProvider === nextEffortProvider) {
             return state;
           }
           const nextDraft: ComposerThreadDraftState = {
             ...base,
             effort: nextEffort,
+            effortProvider: nextEffortProvider,
           };
           const nextDraftsByThreadId = { ...state.draftsByThreadId };
           if (shouldRemoveDraft(nextDraft)) {
@@ -1292,6 +1307,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
             draft.runtimeMode === null &&
             draft.interactionMode === null &&
             draft.effort === null &&
+            draft.effortProvider === null &&
             draft.codexFastMode === false
           ) {
             continue;
@@ -1317,6 +1333,9 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           }
           if (draft.effort) {
             persistedDraft.effort = draft.effort;
+          }
+          if (draft.effort && draft.effortProvider) {
+            persistedDraft.effortProvider = draft.effortProvider;
           }
           if (draft.codexFastMode) {
             persistedDraft.codexFastMode = true;

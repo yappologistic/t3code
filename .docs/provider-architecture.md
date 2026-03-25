@@ -35,7 +35,7 @@ Unexpected provider exits are reduced into orchestration session state as stoppe
 
 When a thread resolves to a workspace root and that workspace contains `AGENTS.md`, the server-side provider reactor wraps each outgoing provider turn with the contents of that file before dispatching the turn to the active provider runtime. This keeps workspace instructions provider-agnostic instead of relying on a provider-specific session bootstrap mechanism.
 
-Pi is the main exception to the repo's usual external-CLI pattern: CUT3 embeds Pi through its Node SDK, reuses Pi auth/models config from `~/.pi/agent`, and keeps Pi AGENTS files, system prompts, extensions, skills, prompt templates, and themes disabled so Pi threads do not double-apply repo instructions that CUT3 already injects.
+Pi is the main exception to the repo's usual external-CLI pattern: CUT3 embeds Pi through its Node SDK, reuses Pi auth/models config from `~/.pi/agent`, and keeps Pi packages, AGENTS files, system prompts, extensions, skills, prompt templates, and themes disabled so Pi threads do not double-apply repo instructions that CUT3 already injects.
 
 Codex, GitHub Copilot, OpenCode, Kimi Code, and Pi are the currently implemented providers. Gemini is a visible coming-soon entry in the picker, and `claudeCode` plus `cursor` remain unavailable placeholders for future support.
 

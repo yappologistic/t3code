@@ -67,6 +67,7 @@ function resolveReasoningOptionsForSend(input: {
   readonly copilotReasoningProbe: ServerCopilotReasoningProbe | null | undefined;
   readonly openRouterSupportsReasoningEffort: boolean;
   readonly piSupportsReasoning: boolean;
+  readonly piReasoningOptions?: ReadonlyArray<ProviderReasoningLevel> | null | undefined;
 }): ReadonlyArray<ProviderReasoningLevel> {
   if (input.provider === "copilot") {
     if (
@@ -83,6 +84,9 @@ function resolveReasoningOptionsForSend(input: {
   }
 
   if (input.provider === "pi") {
+    if (input.piReasoningOptions && input.piReasoningOptions.length > 0) {
+      return input.piReasoningOptions;
+    }
     return input.piSupportsReasoning ? getReasoningEffortOptions("pi") : [];
   }
 
@@ -126,6 +130,7 @@ export function buildModelOptionsForSend(input: {
   readonly copilotReasoningProbe: ServerCopilotReasoningProbe | null | undefined;
   readonly openRouterSupportsReasoningEffort: boolean;
   readonly piSupportsReasoning: boolean;
+  readonly piReasoningOptions?: ReadonlyArray<ProviderReasoningLevel> | null | undefined;
 }) {
   const reasoningOptions = resolveReasoningOptionsForSend({
     provider: input.provider,
@@ -133,6 +138,7 @@ export function buildModelOptionsForSend(input: {
     copilotReasoningProbe: input.copilotReasoningProbe,
     openRouterSupportsReasoningEffort: input.openRouterSupportsReasoningEffort,
     piSupportsReasoning: input.piSupportsReasoning,
+    piReasoningOptions: input.piReasoningOptions,
   });
   const selectedEffort = resolveSelectedEffortForSend({
     provider: input.provider,

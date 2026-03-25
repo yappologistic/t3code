@@ -1,4 +1,9 @@
-import { ProjectId, type ProviderKind, type ThreadId } from "@t3tools/contracts";
+import {
+  ProjectId,
+  type ProviderKind,
+  type ProviderReasoningLevel,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { type ChatMessage, type Thread } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { getAppModelOptions } from "../appSettings";
@@ -130,4 +135,15 @@ export function getCustomModelOptionsByProvider(settings: {
     kimi: getAppModelOptions("kimi", settings.customKimiModels),
     pi: getAppModelOptions("pi", settings.customPiModels),
   };
+}
+
+export function resolveComposerEffortForProvider(input: {
+  provider: ProviderKind;
+  effort: ProviderReasoningLevel | null | undefined;
+  effortProvider: ProviderKind | null | undefined;
+}): ProviderReasoningLevel | null {
+  if (input.provider === "pi" && input.effortProvider !== "pi") {
+    return null;
+  }
+  return input.effort ?? null;
 }
