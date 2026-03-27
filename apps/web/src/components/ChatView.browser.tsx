@@ -1777,6 +1777,72 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("dispatches a turn interrupt from the keyboard escape shortcut", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithInterruptFallbackTurn(TurnId.makeUnsafe("turn-running-escape")),
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          keybindings: [
+            {
+              command: "chat.interrupt",
+              shortcut: {
+                key: "escape",
+                metaKey: false,
+                ctrlKey: false,
+                shiftKey: false,
+                altKey: false,
+                modKey: false,
+              },
+              whenAst: {
+                type: "not",
+                node: { type: "identifier", name: "terminalFocus" },
+              },
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+
+      await vi.waitFor(
+        () => {
+          const interruptRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.command &&
+              typeof request.command === "object" &&
+              !Array.isArray(request.command) &&
+              "type" in request.command &&
+              request.command.type === "thread.turn.interrupt" &&
+              "turnId" in request.command &&
+              request.command.turnId === "turn-running-escape",
+          );
+          expect(interruptRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            command: {
+              type: "thread.turn.interrupt",
+              threadId: THREAD_ID,
+              turnId: "turn-running-escape",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("queues a follow-up while a turn is running and drains it after the session settles", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,

@@ -16,6 +16,8 @@ const STATIC_KEYBINDING_COMMANDS = [
   "diff.toggle",
   "chat.new",
   "chat.newLocal",
+  "chat.interrupt",
+  "commandPalette.toggle",
   "editor.openFavorite",
 ] as const;
 

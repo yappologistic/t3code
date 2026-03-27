@@ -163,6 +163,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
   showToolDetails: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(true))),
+  enableDesktopNotifications: Schema.Boolean.pipe(
+    Schema.withConstructorDefault(() => Option.some(false)),
+  ),
   codexServiceTier: AppServiceTierSchema.pipe(
     Schema.withConstructorDefault(() => Option.some("auto")),
   ),

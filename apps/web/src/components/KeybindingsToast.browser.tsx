@@ -20,6 +20,7 @@ import { render } from "vitest-browser-react";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { getRouter } from "../router";
 import { useStore } from "../store";
+import { useTerminalStateStore } from "../terminalStateStore";
 
 const THREAD_ID = "thread-kb-toast-test" as ThreadId;
 const PROJECT_ID = "project-1" as ProjectId;
@@ -41,7 +42,74 @@ function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
     keybindingsConfigPath: "/repo/project/.cut3-keybindings.json",
-    keybindings: [],
+    keybindings: [
+      {
+        command: "commandPalette.toggle",
+        shortcut: {
+          key: "p",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: true,
+          altKey: false,
+          modKey: true,
+        },
+      },
+      {
+        command: "sidebar.toggle",
+        shortcut: {
+          key: "b",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+          modKey: true,
+        },
+      },
+      {
+        command: "terminal.toggle",
+        shortcut: {
+          key: "j",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+          modKey: true,
+        },
+      },
+      {
+        command: "diff.toggle",
+        shortcut: {
+          key: "d",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+          modKey: true,
+        },
+      },
+      {
+        command: "chat.new",
+        shortcut: {
+          key: "n",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+          modKey: true,
+        },
+      },
+      {
+        command: "chat.newLocal",
+        shortcut: {
+          key: "n",
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: true,
+          altKey: false,
+          modKey: true,
+        },
+      },
+    ],
     issues: [],
     providers: [
       {
@@ -236,6 +304,36 @@ async function waitForComposerEditor(): Promise<HTMLElement> {
   );
 }
 
+async function openCommandPalette(): Promise<HTMLInputElement> {
+  const isMac = navigator.platform.includes("Mac");
+  window.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "P",
+      ctrlKey: !isMac,
+      metaKey: isMac,
+      shiftKey: true,
+      bubbles: true,
+    }),
+  );
+  return waitForElement(
+    () =>
+      Array.from(document.querySelectorAll<HTMLInputElement>("input")).find((input) =>
+        (input.getAttribute("placeholder") ?? "").includes("command"),
+      ) ?? null,
+    "Command palette should appear",
+  );
+}
+
+async function waitForCommandItem(label: string): Promise<HTMLElement> {
+  return waitForElement(
+    () =>
+      Array.from(document.querySelectorAll<HTMLElement>("[data-slot='command-item']")).find((el) =>
+        (el.textContent ?? "").includes(label),
+      ) ?? null,
+    `Expected command item ${label}`,
+  );
+}
+
 async function waitForToast(title: string, count = 1): Promise<void> {
   await vi.waitFor(
     () => {
@@ -255,7 +353,10 @@ async function waitForNoToast(title: string): Promise<void> {
   );
 }
 
-async function mountApp(): Promise<{ cleanup: () => Promise<void> }> {
+async function mountApp(initialEntry = `/${THREAD_ID}`): Promise<{
+  cleanup: () => Promise<void>;
+  router: ReturnType<typeof getRouter>;
+}> {
   const host = document.createElement("div");
   host.style.position = "fixed";
   host.style.inset = "0";
@@ -265,12 +366,20 @@ async function mountApp(): Promise<{ cleanup: () => Promise<void> }> {
   host.style.overflow = "hidden";
   document.body.append(host);
 
-  const router = getRouter(createMemoryHistory({ initialEntries: [`/${THREAD_ID}`] }));
+  const router = getRouter(createMemoryHistory({ initialEntries: [initialEntry] }));
 
   const screen = await render(<RouterProvider router={router} />, { container: host });
-  await waitForComposerEditor();
+  if (initialEntry === `/${THREAD_ID}`) {
+    await waitForComposerEditor();
+  } else {
+    await waitForElement(
+      () => document.querySelector<HTMLElement>("[data-slot='sidebar-inset']"),
+      "Expected settings route shell to render",
+    );
+  }
 
   return {
+    router,
     cleanup: async () => {
       await screen.unmount();
       host.remove();
@@ -305,6 +414,9 @@ describe("Keybindings update toast", () => {
       projects: [],
       threads: [],
       threadsHydrated: false,
+    });
+    useTerminalStateStore.setState({
+      terminalStateByThreadId: {},
     });
   });
 
@@ -366,6 +478,56 @@ describe("Keybindings update toast", () => {
     } catch (error) {
       await mounted.cleanup().catch(() => {});
       throw error;
+    }
+  });
+
+  it("executes command palette items for terminal, diff, and settings", async () => {
+    const mounted = await mountApp();
+
+    try {
+      await openCommandPalette();
+      const terminalItem = await waitForCommandItem("Toggle Terminal");
+      terminalItem.click();
+
+      await vi.waitFor(() => {
+        const threadState = useTerminalStateStore.getState().terminalStateByThreadId[THREAD_ID];
+        expect(threadState?.terminalOpen ?? false).toBe(true);
+      });
+
+      await openCommandPalette();
+      const diffItem = await waitForCommandItem("Toggle Diff Panel");
+      diffItem.click();
+
+      await vi.waitFor(() => {
+        expect((mounted.router.state.location.search as Record<string, unknown>).diff).toBe("1");
+      });
+
+      await openCommandPalette();
+      const settingsItem = await waitForCommandItem("Open Settings");
+      settingsItem.click();
+
+      await vi.waitFor(() => {
+        expect(mounted.router.state.location.pathname).toBe("/settings");
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows thread-scoped command palette actions as disabled without an open thread", async () => {
+    const mounted = await mountApp("/settings");
+
+    try {
+      await openCommandPalette();
+      const terminalItem = await waitForCommandItem("Toggle Terminal");
+      const diffItem = await waitForCommandItem("Toggle Diff Panel");
+
+      expect(terminalItem.getAttribute("data-disabled")).not.toBeNull();
+      expect(diffItem.getAttribute("data-disabled")).not.toBeNull();
+      expect(terminalItem.textContent).toContain("Open a thread first");
+      expect(diffItem.textContent).toContain("Open a thread first");
+    } finally {
+      await mounted.cleanup();
     }
   });
 });

@@ -335,6 +335,7 @@ import {
 } from "../threadActivityMetadata";
 import { findMatchingApprovalRule, type ApprovalRule } from "../approvalRules";
 import { formatTimestamp } from "../timestampFormat";
+import { showTurnCompleteNotification } from "../notifications";
 
 const LAST_EDITOR_KEY = "cut3:last-editor";
 const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "cut3:last-invoked-script-by-project";
@@ -2115,6 +2116,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const isSendBusy = sendPhase !== "idle";
   const isPreparingWorktree = sendPhase === "preparing-worktree";
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+
+  // ── Desktop notification on turn completion ──────────────────────
+  // Track phase/thread transitions separately so notifications only fire for
+  // completed turns in the current thread, not after route switches.
+  const previousNotificationStateRef = useRef({
+    threadId: activeThreadId,
+    phase,
+  });
+  const lastNotifiedTurnIdRef = useRef<TurnId | null>(null);
   const followUpMode = followUpModeByThreadId[threadId] ?? "queue";
   const hasQueuedTurns = queuedTurnsForThread.length > 0;
   const hasFailedQueuedTurn = queuedTurnsForThread.some((turn) => turn.status === "failed");
@@ -2447,6 +2457,50 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
   }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
+
+  // ── Desktop notification on turn completion (runs after timelineMessages) ──
+  useEffect(() => {
+    const previousState = previousNotificationStateRef.current;
+    previousNotificationStateRef.current = {
+      threadId: activeThreadId,
+      phase,
+    };
+
+    if (previousState.threadId !== activeThreadId) {
+      return;
+    }
+    if (previousState.phase !== "running" || phase === "running") {
+      return;
+    }
+    if (!latestTurnSettled || activeLatestTurn?.state !== "completed") {
+      return;
+    }
+    if (!activeLatestTurn?.turnId || lastNotifiedTurnIdRef.current === activeLatestTurn.turnId) {
+      return;
+    }
+
+    lastNotifiedTurnIdRef.current = activeLatestTurn.turnId;
+    const lastMessage = timelineMessages.at(-1);
+    const snippet =
+      lastMessage?.role === "assistant"
+        ? (lastMessage.text ?? "").slice(0, 120)
+        : settings.language === "fa"
+          ? "کار agent تمام شد."
+          : "Agent finished working.";
+    showTurnCompleteNotification({
+      threadTitle: activeThread?.title ?? "",
+      messageSnippet: snippet,
+    });
+  }, [
+    activeLatestTurn,
+    activeThread?.title,
+    activeThreadId,
+    latestTurnSettled,
+    phase,
+    settings.language,
+    timelineMessages,
+  ]);
+
   const visibleWorkLogEntries = useMemo(
     () => (settings.showToolDetails ? workLogEntries : []),
     [settings.showToolDetails, workLogEntries],
@@ -4109,6 +4163,36 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "chat.interrupt") {
+        if (phase === "running" && !isInterruptingTurn && activeThread) {
+          event.preventDefault();
+          event.stopPropagation();
+          const api = readNativeApi();
+          if (api) {
+            const targetTurnId = activeInterruptTurnId;
+            setPendingInterruptRequest({
+              threadId: activeThread.id,
+              turnId: targetTurnId,
+            });
+            void api.orchestration
+              .dispatchCommand({
+                type: "thread.turn.interrupt",
+                commandId: newCommandId(),
+                threadId: activeThread.id,
+                ...(targetTurnId ? { turnId: targetTurnId } : {}),
+                createdAt: new Date().toISOString(),
+              })
+              .catch((err) => {
+                setPendingInterruptRequest(null);
+                const message = err instanceof Error ? err.message : "Failed to stop generation.";
+                setThreadError(activeThread.id, message);
+              });
+          }
+        }
+        // If not running, let Escape propagate for other handlers (e.g. clear selection).
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -4120,13 +4204,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
+    activeInterruptTurnId,
     activeProject,
+    activeThread,
     terminalState.terminalOpen,
     terminalState.activeTerminalId,
     activeThreadId,
     closeTerminal,
     createNewTerminal,
+    isInterruptingTurn,
+    phase,
     setTerminalOpen,
+    setThreadError,
     runProjectScript,
     splitTerminal,
     keybindings,
@@ -10246,7 +10335,7 @@ const OpenInPicker = memo(function OpenInPicker({
   }, [effectiveEditor, keybindings, openInCwd]);
 
   return (
-    <Group aria-label="Subscription actions">
+    <Group aria-label="Editor actions">
       <Button
         size="xs"
         variant="outline"
@@ -10260,7 +10349,9 @@ const OpenInPicker = memo(function OpenInPicker({
       </Button>
       <GroupSeparator className="hidden @sm/header-actions:block" />
       <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
+        <MenuTrigger
+          render={<Button aria-label="More editor options" size="icon-xs" variant="outline" />}
+        >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">

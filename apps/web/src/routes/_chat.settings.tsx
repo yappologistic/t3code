@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OPENROUTER_FREE_ROUTER_MODEL, type ProviderKind } from "@t3tools/contracts";
 import { getModelOptions, isCodexOpenRouterModel, normalizeModelSlug } from "@t3tools/shared/model";
 import { ImagePlusIcon, LoaderCircleIcon, RefreshCwIcon, Trash2Icon, ZapIcon } from "lucide-react";
@@ -32,6 +32,7 @@ import {
 import { openRouterFreeModelsQueryOptions } from "../lib/openRouterReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
+import { requestNotificationPermission } from "../notifications";
 import { AppearanceSettingsSection } from "../components/AppearanceSettingsSection";
 import { OpenCodeCredentialsManager } from "../components/OpenCodeCredentialsManager";
 import { PermissionPoliciesSection } from "../components/settings/PermissionPoliciesSection";
@@ -253,6 +254,13 @@ function getSettingsCopy(language: AppLanguage) {
       showToolDetails: "نمایش جزئیات ابزارها",
       showToolDetailsDescription:
         "ورودی های work log را در خط زمانی گفتگو نشان دهید یا پنهان کنید. پنل task ها و درخواست های تایید همچنان جداگانه دیده می شوند.",
+      desktopNotifications: "اعلان‌های دسکتاپ",
+      desktopNotificationsDescription:
+        "وقتی agent کارش تمام شد و پنجره فعال نیست، یک اعلان دسکتاپ نشان بده.",
+      desktopNotificationsGranted: "اعلان‌های مرورگر برای CUT3 مجاز هستند.",
+      desktopNotificationsBlocked:
+        "اعلان‌ها در تنظیمات مرورگر یا سایت مسدود شده‌اند. برای استفاده، دوباره آن‌ها را مجاز کنید.",
+      desktopNotificationsUnsupported: "این محیط از اعلان‌های دسکتاپ پشتیبانی نمی‌کند.",
       keybindingsTitle: "کلیدهای میانبر",
       keybindingsDescription:
         "برای ویرایش مستقیم میانبرهای پیشرفته، فایل keybindings.json ذخیره شده را باز کنید.",
@@ -446,6 +454,13 @@ function getSettingsCopy(language: AppLanguage) {
     showToolDetails: "Show tool details",
     showToolDetailsDescription:
       "Show or hide work-log entries in the main timeline. The task panel and approval prompts stay visible separately.",
+    desktopNotifications: "Desktop notifications",
+    desktopNotificationsDescription:
+      "Show a desktop notification when the agent finishes a task and the window is not focused.",
+    desktopNotificationsGranted: "Browser notifications are allowed for CUT3.",
+    desktopNotificationsBlocked:
+      "Notifications are blocked in your browser or site settings. Re-enable them there to use this feature.",
+    desktopNotificationsUnsupported: "Desktop notifications are not supported in this environment.",
     keybindingsTitle: "Keybindings",
     keybindingsDescription:
       "Open the persisted keybindings.json file to edit advanced bindings directly.",
@@ -587,6 +602,16 @@ function SettingsRouteView() {
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
   const [chatBackgroundError, setChatBackgroundError] = useState<string | null>(null);
   const [isUpdatingChatBackground, setIsUpdatingChatBackground] = useState(false);
+  const [isRequestingNotificationPermission, setIsRequestingNotificationPermission] =
+    useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >(() => {
+    if (typeof Notification === "undefined") {
+      return "unsupported";
+    }
+    return Notification.permission;
+  });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
@@ -600,6 +625,54 @@ function SettingsRouteView() {
     Partial<Record<ProviderKind, string | null>>
   >({});
   const chatBackgroundFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const syncNotificationPermission = () => {
+      if (typeof Notification === "undefined") {
+        setNotificationPermission("unsupported");
+        if (settings.enableDesktopNotifications) {
+          updateSettings({ enableDesktopNotifications: false });
+        }
+        return;
+      }
+
+      const permission = Notification.permission;
+      setNotificationPermission(permission);
+      if (permission !== "granted" && settings.enableDesktopNotifications) {
+        updateSettings({ enableDesktopNotifications: false });
+      }
+    };
+
+    syncNotificationPermission();
+    window.addEventListener("focus", syncNotificationPermission);
+    document.addEventListener("visibilitychange", syncNotificationPermission);
+    return () => {
+      window.removeEventListener("focus", syncNotificationPermission);
+      document.removeEventListener("visibilitychange", syncNotificationPermission);
+    };
+  }, [settings.enableDesktopNotifications, updateSettings]);
+
+  const handleDesktopNotificationsChange = useCallback(
+    async (checked: boolean) => {
+      if (!checked) {
+        updateSettings({ enableDesktopNotifications: false });
+        return;
+      }
+
+      if (typeof Notification === "undefined") {
+        setNotificationPermission("unsupported");
+        updateSettings({ enableDesktopNotifications: false });
+        return;
+      }
+
+      setIsRequestingNotificationPermission(true);
+      const granted = await requestNotificationPermission();
+      setNotificationPermission(Notification.permission);
+      updateSettings({ enableDesktopNotifications: granted });
+      setIsRequestingNotificationPermission(false);
+    },
+    [updateSettings],
+  );
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
@@ -1864,10 +1937,48 @@ function SettingsRouteView() {
                     aria-label={copy.showToolDetails}
                   />
                 </div>
+
+                {/* Desktop notifications */}
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {copy.desktopNotifications}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {copy.desktopNotificationsDescription}
+                    </p>
+                    {notificationPermission === "unsupported" ? (
+                      <p className="pt-1 text-[11px] text-muted-foreground/80">
+                        {copy.desktopNotificationsUnsupported}
+                      </p>
+                    ) : notificationPermission === "denied" ? (
+                      <p className="pt-1 text-[11px] text-muted-foreground/80">
+                        {copy.desktopNotificationsBlocked}
+                      </p>
+                    ) : notificationPermission === "granted" ? (
+                      <p className="pt-1 text-[11px] text-muted-foreground/80">
+                        {copy.desktopNotificationsGranted}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Switch
+                    checked={settings.enableDesktopNotifications}
+                    disabled={
+                      isRequestingNotificationPermission ||
+                      notificationPermission === "unsupported" ||
+                      notificationPermission === "denied"
+                    }
+                    onCheckedChange={(checked) => {
+                      void handleDesktopNotificationsChange(Boolean(checked));
+                    }}
+                    aria-label={copy.desktopNotifications}
+                  />
+                </div>
               </div>
 
               {settings.enableAssistantStreaming !== defaults.enableAssistantStreaming ||
-              settings.showToolDetails !== defaults.showToolDetails ? (
+              settings.showToolDetails !== defaults.showToolDetails ||
+              settings.enableDesktopNotifications !== defaults.enableDesktopNotifications ? (
                 <div className="mt-3 flex justify-end">
                   <Button
                     size="xs"
@@ -1876,6 +1987,7 @@ function SettingsRouteView() {
                       updateSettings({
                         enableAssistantStreaming: defaults.enableAssistantStreaming,
                         showToolDetails: defaults.showToolDetails,
+                        enableDesktopNotifications: defaults.enableDesktopNotifications,
                       })
                     }
                   >

@@ -234,10 +234,15 @@ function SuspenseShikiCodeBlock({
   const cacheKey = createHighlightCacheKey(code, language, themeName);
   const cachedHighlightedHtml = !isStreaming ? highlightedCodeCache.get(cacheKey) : null;
 
+  // Show line numbers for code blocks with 4+ lines.
+  const lineCount = code.split("\n").length;
+  const showLineNumbers = lineCount >= 4;
+
   if (cachedHighlightedHtml != null) {
     return (
       <div
         className="chat-markdown-shiki"
+        {...(showLineNumbers ? { "data-show-line-numbers": "" } : undefined)}
         dangerouslySetInnerHTML={{ __html: cachedHighlightedHtml }}
       />
     );
@@ -269,7 +274,11 @@ function SuspenseShikiCodeBlock({
   }, [cacheKey, code, highlightedHtml, isStreaming]);
 
   return (
-    <div className="chat-markdown-shiki" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+    <div
+      className="chat-markdown-shiki"
+      {...(showLineNumbers ? { "data-show-line-numbers": "" } : undefined)}
+      dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+    />
   );
 }
 

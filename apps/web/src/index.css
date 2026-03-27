@@ -1159,6 +1159,25 @@ label:has(> select#reasoning-effort) select {
   font-family: inherit !important;
 }
 
+/* Line numbers for code blocks with 4+ lines */
+.chat-markdown .chat-markdown-shiki[data-show-line-numbers] .shiki code {
+  counter-reset: line;
+}
+
+.chat-markdown .chat-markdown-shiki[data-show-line-numbers] .shiki code > .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 3ch;
+  margin-right: 1em;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.35;
+  font-size: 0.75em;
+  user-select: none;
+  pointer-events: none;
+}
+
 .chat-markdown table {
   width: 100%;
   border-collapse: collapse;
