@@ -87,26 +87,31 @@ export function EmptyChatOnboarding() {
 
   if (!threadsHydrated) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3 rounded-3xl border border-border/70 bg-card/60 px-6 py-10 text-center shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/30%)] backdrop-blur-xs">
+      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4 rounded-3xl border border-border/60 bg-card/55 px-6 py-12 text-center shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/25%)] backdrop-blur-sm">
+        <div className="mb-1 flex items-center gap-[6px]">
+          <span className="app-tool-live-dot h-2 w-2 rounded-full bg-primary/70" />
+          <span className="app-tool-live-dot h-2 w-2 rounded-full bg-primary/50 [animation-delay:160ms]" />
+          <span className="app-tool-live-dot h-2 w-2 rounded-full bg-primary/30 [animation-delay:320ms]" />
+        </div>
         <p className="text-base font-medium text-foreground">{copy.loadingTitle}</p>
-        <p className="max-w-xl text-sm text-muted-foreground">{copy.loadingDescription}</p>
+        <p className="max-w-xl text-sm text-muted-foreground/70">{copy.loadingDescription}</p>
       </div>
     );
   }
 
   if (projectCount === 0) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-3xl border border-border/70 bg-card/65 px-6 py-8 shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/30%)] backdrop-blur-xs sm:px-8 sm:py-10">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-3xl border border-border/60 bg-card/55 px-6 py-8 shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/25%)] backdrop-blur-sm sm:px-8 sm:py-10">
         <div className="space-y-2 text-center sm:text-left">
           <p className="text-balance text-2xl font-semibold tracking-tight text-foreground">
             {copy.noProjectsTitle}
           </p>
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground/80">
             {copy.noProjectsDescription}
           </p>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-border/60 bg-background/70 p-4">
+        <div className="space-y-3 rounded-2xl border border-border/50 bg-background/60 p-4 shadow-[inset_0_1px_0_--alpha(var(--color-white)/4%)]">
           {isElectron ? (
             <Button
               type="button"
@@ -148,19 +153,19 @@ export function EmptyChatOnboarding() {
           </label>
 
           {addProjectError ? <p className="text-xs text-destructive">{addProjectError}</p> : null}
-          <p className="text-xs leading-relaxed text-muted-foreground">{copy.nextStepHint}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground/65">{copy.nextStepHint}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-3xl border border-border/70 bg-card/65 px-6 py-8 text-center shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/30%)] backdrop-blur-xs sm:px-8 sm:py-10">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-3xl border border-border/60 bg-card/55 px-6 py-8 text-center shadow-[0_24px_80px_-48px_--alpha(var(--color-black)/25%)] backdrop-blur-sm sm:px-8 sm:py-10">
       <div className="space-y-2">
         <p className="text-balance text-2xl font-semibold tracking-tight text-foreground">
           {copy.existingProjectsTitle}
         </p>
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground/80">
           {copy.existingProjectsDescription(projectCount)}
         </p>
       </div>
@@ -172,6 +177,7 @@ export function EmptyChatOnboarding() {
           onClick={() => {
             void openDefaultNewThread();
           }}
+          className="shadow-[0_4px_14px_-4px_--alpha(var(--color-primary)/35%)]"
         >
           <MessageSquarePlusIcon className="size-4" />
           {copy.createThread}

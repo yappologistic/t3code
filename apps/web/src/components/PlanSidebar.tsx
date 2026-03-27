@@ -118,7 +118,7 @@ const PlanSidebar = memo(function PlanSidebar({
   }, [planMarkdown, workspaceRoot]);
 
   return (
-    <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-border/70 bg-card/50">
+    <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-border/60 bg-card/40 backdrop-blur-xs">
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
         <div className="flex items-center gap-2">
@@ -180,7 +180,7 @@ const PlanSidebar = memo(function PlanSidebar({
         <div className="p-3 space-y-4">
           {/* Explanation */}
           {activePlan?.explanation ? (
-            <p className="text-[13px] leading-relaxed text-muted-foreground/80">
+            <p className="text-[13px] leading-relaxed text-muted-foreground/75">
               {activePlan.explanation}
             </p>
           ) : null}
@@ -251,8 +251,8 @@ const PlanSidebar = memo(function PlanSidebar({
           {/* Empty state */}
           {!activePlan && !planMarkdown ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-[13px] text-muted-foreground/40">No active plan yet.</p>
-              <p className="mt-1 text-[11px] text-muted-foreground/30">
+              <p className="text-[13px] text-muted-foreground/35">No active plan yet.</p>
+              <p className="mt-1.5 text-[11px] text-muted-foreground/25">
                 Plans will appear here when generated.
               </p>
             </div>

@@ -427,14 +427,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
           return (
             <div className="flex justify-end">
-              <div className="user-message-font group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+              <div className="user-message-font group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border/80 bg-secondary px-4 py-3 shadow-[0_2px_8px_-4px_--alpha(var(--color-black)/8%)]">
                 {userImages.length > 0 && (
                   <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
                     {userImages.map(
                       (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
                         <div
                           key={image.id}
-                          className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                          className="overflow-hidden rounded-lg border border-border/60 bg-background/60 shadow-[0_1px_4px_-2px_--alpha(var(--color-black)/6%)]"
                         >
                           {image.previewUrl ? (
                             <button
@@ -496,7 +496,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       </Button>
                     )}
                   </div>
-                  <p className="text-right text-[10px] text-muted-foreground/30">
+                  <p className="text-right text-[10px] text-muted-foreground/45">
                     {formatTimestamp(row.message.createdAt, timestampFormat)}
                   </p>
                 </div>
@@ -512,12 +512,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <>
               {row.showCompletionDivider && (
-                <div className="my-3 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+                  <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70 shadow-[0_1px_4px_-2px_--alpha(var(--color-black)/8%)]">
                     {completionSummary ? `Response • ${completionSummary}` : "Response"}
                   </span>
-                  <span className="h-px flex-1 bg-border" />
+                  <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
                 </div>
               )}
               <div
@@ -542,7 +542,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
-                    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
+                    <div className="mt-3 rounded-xl border border-border/60 bg-card/40 p-3 shadow-[0_2px_8px_-4px_--alpha(var(--color-black)/6%)]">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
                         <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
                           <span>Changed files ({changedFileCountLabel})</span>
@@ -602,7 +602,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       <GitPullRequestIcon className="size-3" />
                     </Button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground/30">
+                  <p className="text-[10px] text-muted-foreground/42">
                     {formatMessageMeta(
                       row.message.createdAt,
                       row.message.streaming
@@ -629,11 +629,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
       {row.kind === "working" && (
         <div className="py-0.5 pl-1.5">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-border/60 bg-card/35 px-3.5 py-2 text-[11px] text-muted-foreground/72 shadow-[0_14px_38px_-30px_--alpha(var(--color-black)/24%)]">
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-card/50 px-4 py-2.5 text-[11px] text-muted-foreground/72 shadow-[0_14px_38px_-30px_--alpha(var(--color-black)/18%)] backdrop-blur-xs">
             <span className="inline-flex items-center gap-[5px]">
-              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-foreground/75" />
-              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-foreground/55 [animation-delay:160ms]" />
-              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-foreground/35 [animation-delay:320ms]" />
+              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-primary/80" />
+              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-primary/55 [animation-delay:160ms]" />
+              <span className="app-tool-live-dot h-[5px] w-[5px] rounded-full bg-primary/35 [animation-delay:320ms]" />
             </span>
             <span>
               {row.createdAt
@@ -649,7 +649,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   if (!hasMessages && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">{emptyStateLabel}</p>
+        <p className="text-sm text-muted-foreground/25">{emptyStateLabel}</p>
       </div>
     );
   }

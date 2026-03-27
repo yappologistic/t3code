@@ -747,7 +747,7 @@ export default function ThreadTerminalDrawer({
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize terminal"
-        className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
+        className="resize-handle-affordance absolute inset-x-0 top-0 z-20 h-2 cursor-row-resize"
         onPointerDown={handleResizePointerDown}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerEnd}
