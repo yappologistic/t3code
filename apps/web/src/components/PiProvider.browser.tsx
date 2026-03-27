@@ -142,6 +142,7 @@ describe("Pi provider GUI", () => {
           hasHiddenModels={false}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
+          onOpenUsageDashboard={() => undefined}
           onProviderModelChange={onProviderModelChange}
         />
       </QueryClientProvider>,
@@ -235,6 +236,7 @@ describe("Pi provider GUI", () => {
           hasHiddenModels={false}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
+          onOpenUsageDashboard={() => undefined}
           onProviderModelChange={onProviderModelChange}
         />
       </QueryClientProvider>,

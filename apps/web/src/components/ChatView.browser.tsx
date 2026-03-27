@@ -570,6 +570,23 @@ function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
   if (tag === WS_METHODS.serverGetOpenCodeState) {
     return fixture.openCodeState ?? createUnavailableOpenCodeState();
   }
+  if (tag === WS_METHODS.serverGetCopilotUsage) {
+    return {
+      status: "available",
+      source: "copilot_internal_user",
+      fetchedAt: NOW_ISO,
+      login: "octocat",
+      plan: "individual",
+      entitlement: 500,
+      remaining: 320,
+      used: 180,
+      percentRemaining: 64,
+      overagePermitted: true,
+      overageCount: 0,
+      unlimited: false,
+      resetAt: isoAt(86_400),
+    };
+  }
   if (tag === WS_METHODS.gitListBranches) {
     return {
       isRepo: true,
@@ -1624,6 +1641,72 @@ describe("ChatView timeline estimator parity (full app)", () => {
       expect(Math.max(...centerLines) - Math.min(...centerLines)).toBeLessThanOrEqual(6);
       expect(providerRect.bottom).toBeLessThanOrEqual(footerRect.bottom);
       expect(contextRect.bottom).toBeLessThanOrEqual(footerRect.bottom);
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens the usage dashboard with spend and Copilot quota details", async () => {
+    const snapshot = withActiveThreadProvider(
+      createSnapshotForTargetUser({
+        targetMessageId: "msg-user-usage-dashboard" as MessageId,
+        targetText: "usage dashboard target",
+      }),
+      "copilot",
+    );
+    const snapshotWithUsage = {
+      ...snapshot,
+      threads: snapshot.threads.map((thread) => {
+        if (thread.id !== THREAD_ID || !thread.session) {
+          return thread;
+        }
+        return Object.assign({}, thread, {
+          model: "claude-sonnet-4.5",
+          session: {
+            ...thread.session,
+            providerName: "copilot",
+            tokenUsage: {
+              provider: "copilot",
+              kind: "turn",
+              observedAt: NOW_ISO,
+              model: "claude-sonnet-4.5",
+              totalCostUsd: 0.42,
+              usage: {
+                inputTokens: 1_200,
+                outputTokens: 340,
+                thoughtTokens: 56,
+              },
+            },
+          },
+        });
+      }),
+    } satisfies OrchestrationReadModel;
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: snapshotWithUsage,
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [createReadyProviderStatus("codex"), createReadyProviderStatus("copilot")],
+        };
+      },
+    });
+
+    try {
+      const contextStatus = await waitForComposerControl("context-status");
+      contextStatus.click();
+
+      const dashboard = await waitForElement(
+        () => document.querySelector<HTMLElement>("[data-usage-dashboard='true']"),
+        "Unable to find the usage dashboard dialog.",
+      );
+
+      expect(normalizeTextContent(document.body.textContent)).toContain("Usage dashboard");
+      expect(normalizeTextContent(dashboard.textContent)).toContain("$0.4200");
+      expect(normalizeTextContent(dashboard.textContent)).toContain("320 / 500");
+      expect(normalizeTextContent(dashboard.textContent)).toContain("GitHub Copilot billing");
+      expect(normalizeTextContent(dashboard.textContent)).toContain("1,596 tokens");
     } finally {
       await mounted.cleanup();
     }

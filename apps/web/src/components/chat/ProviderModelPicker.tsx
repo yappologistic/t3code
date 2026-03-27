@@ -1,5 +1,5 @@
 import { type ModelSlug, type ProviderKind, type ServerCopilotUsage } from "@t3tools/contracts";
-import { getModelDisplayName, normalizeModelSlug } from "@t3tools/shared/model";
+import { getModelDisplayName } from "@t3tools/shared/model";
 import { formatGitHubCopilotPlan } from "@t3tools/shared/copilotPlan";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -23,6 +23,7 @@ import {
 import { getModelPickerOptionDisplayParts } from "../../lib/modelPickerOptionDisplay";
 import {
   describeContextWindowState,
+  getDocumentedContextWindowOverride,
   shouldHideContextWindowForModel,
 } from "../../lib/contextWindow";
 import { serverCopilotUsageQueryOptions } from "../../lib/serverReactQuery";
@@ -30,6 +31,7 @@ import { type AppServiceTier, shouldShowFastTierIcon } from "../../appSettings";
 import { getAppLanguageDetails, type AppLanguage } from "../../appLanguage";
 
 import {
+  BarChart3Icon,
   BotIcon,
   ChevronDownIcon,
   CheckIcon,
@@ -114,31 +116,6 @@ function formatCopilotQuotaDate(iso: string, language: AppLanguage): string {
 // ---------------------------------------------------------------------------
 // Context window summary
 // ---------------------------------------------------------------------------
-
-const OPENCODE_MODELS_DEV_CONTEXT_NOTE =
-  "OpenCode uses provider/model metadata from models.dev and reads limit.context when the selected model publishes it.";
-
-function getDocumentedContextWindowOverride(input: {
-  provider: ProviderKind;
-  model: string | null | undefined;
-  opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>;
-}) {
-  if (input.provider !== "opencode") {
-    return {};
-  }
-  const normalizedModel = normalizeModelSlug(input.model, "opencode");
-  if (!normalizedModel) {
-    return {};
-  }
-  const documentedTotalTokens = input.opencodeContextLengthsBySlug?.get(normalizedModel) ?? null;
-  if (documentedTotalTokens === null) {
-    return {};
-  }
-  return {
-    documentedTotalTokens,
-    documentedNote: OPENCODE_MODELS_DEV_CONTEXT_NOTE,
-  };
-}
 
 function renderProviderContextWindowSummary(input: {
   provider: ProviderKind;
@@ -449,6 +426,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   disabled?: boolean;
   onOpenProviderSetup: () => void;
   onOpenManageModels: () => void;
+  onOpenUsageDashboard: () => void;
   onProviderModelChange: (provider: AvailableProviderPickerKind, model: ModelSlug) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -836,6 +814,17 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               {props.hasHiddenModels ? copy.hiddenModelsHint : copy.pickModelHint}
             </p>
             <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  setIsOpen(false);
+                  props.onOpenUsageDashboard();
+                }}
+              >
+                <BarChart3Icon className="size-3.5" />
+                {props.language === "fa" ? "مصرف" : "Usage"}
+              </Button>
               <Button
                 size="xs"
                 variant="outline"

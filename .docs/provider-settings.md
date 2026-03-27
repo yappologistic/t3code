@@ -161,6 +161,16 @@ Codex also has a per-turn `Fast Mode` toggle in the composer controls. This is s
 
 CUT3 hides the "token context left" UI for OpenRouter-routed models because the routed model can change and the remaining-context display is not reliable enough there.
 
+### Usage dashboard
+
+The composer context ring is now a full `Usage dashboard` trigger instead of only a passive status badge.
+
+- Click the context ring to open a dialog with the current selection's documented/live context window, token breakdown, latest matching runtime snapshot metadata, and latest reported spend when the provider exposes it.
+- The model picker footer also includes a `Usage` shortcut so you can open the same dashboard while browsing providers/models.
+- If the latest stored runtime snapshot belongs to a different provider/model than the current selection, CUT3 calls that out explicitly instead of silently showing stale numbers.
+- GitHub Copilot selections also include current premium-request quota information in the dashboard.
+- Cost reporting depends on the provider runtime. CUT3 shows the latest reported USD amount when the provider supplies it, otherwise the spend card stays unavailable instead of guessing.
+
 ### Image attachments
 
 The composer also supports lightweight image input:

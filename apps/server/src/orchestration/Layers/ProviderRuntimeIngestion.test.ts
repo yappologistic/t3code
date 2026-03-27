@@ -274,17 +274,19 @@ describe("ProviderRuntimeIngestion", () => {
         modelUsage: {
           inputTokens: 321,
         },
+        totalCostUsd: 0.42,
       },
     });
 
     const thread = await waitForThread(harness.engine, (entry) => {
       const tokenUsage = entry.session?.tokenUsage as
-        | { kind?: string; usage?: { inputTokens?: number } }
+        | { kind?: string; usage?: { inputTokens?: number }; totalCostUsd?: number }
         | undefined;
       return (
         entry.session?.status === "ready" &&
         tokenUsage?.kind === "turn" &&
-        tokenUsage.usage?.inputTokens === 321
+        tokenUsage.usage?.inputTokens === 321 &&
+        tokenUsage.totalCostUsd === 0.42
       );
     });
 
@@ -299,6 +301,7 @@ describe("ProviderRuntimeIngestion", () => {
       modelUsage: {
         inputTokens: 321,
       },
+      totalCostUsd: 0.42,
     });
   });
 

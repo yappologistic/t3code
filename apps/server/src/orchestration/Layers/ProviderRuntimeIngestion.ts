@@ -137,6 +137,7 @@ function createSessionTokenUsageSnapshot(input: {
   model: string;
   usage?: unknown;
   modelUsage?: Readonly<Record<string, unknown>>;
+  totalCostUsd?: number;
 }) {
   return {
     provider: input.event.provider,
@@ -145,6 +146,7 @@ function createSessionTokenUsageSnapshot(input: {
     model: input.model,
     ...(input.usage !== undefined ? { usage: normalizeRuntimeTokenUsage(input.usage) } : {}),
     ...(input.modelUsage !== undefined ? { modelUsage: input.modelUsage } : {}),
+    ...(typeof input.totalCostUsd === "number" ? { totalCostUsd: input.totalCostUsd } : {}),
   };
 }
 
@@ -939,6 +941,9 @@ const make = Effect.gen(function* () {
                         Record<string, unknown>
                       >,
                     }
+                  : {}),
+                ...(typeof turnCompletedPayload.totalCostUsd === "number"
+                  ? { totalCostUsd: turnCompletedPayload.totalCostUsd }
                   : {}),
               })
             : undefined;

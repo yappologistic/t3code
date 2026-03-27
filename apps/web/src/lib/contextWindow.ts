@@ -12,6 +12,7 @@ export type ThreadContextUsageSnapshot = {
   model?: string;
   usage?: unknown;
   modelUsage?: Record<string, unknown>;
+  totalCostUsd?: number;
 };
 
 export type ContextWindowState = {
@@ -24,6 +25,34 @@ export type ContextWindowState = {
   remainingLabel: string | null;
   usageScope: "thread" | "turn" | null;
 };
+
+export const OPENCODE_MODELS_DEV_CONTEXT_NOTE =
+  "OpenCode uses provider/model metadata from models.dev and reads limit.context when the selected model publishes it.";
+
+export function getDocumentedContextWindowOverride(input: {
+  provider: ProviderKind;
+  model: string | null | undefined;
+  opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>;
+}) {
+  if (input.provider !== "opencode") {
+    return {};
+  }
+
+  const normalizedModel = normalizeModelSlug(input.model, "opencode");
+  if (!normalizedModel) {
+    return {};
+  }
+
+  const documentedTotalTokens = input.opencodeContextLengthsBySlug?.get(normalizedModel) ?? null;
+  if (documentedTotalTokens === null) {
+    return {};
+  }
+
+  return {
+    documentedTotalTokens,
+    documentedNote: OPENCODE_MODELS_DEV_CONTEXT_NOTE,
+  };
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -166,6 +195,7 @@ export function parseThreadContextUsageSnapshot(value: unknown): ThreadContextUs
   const modelUsage = asRecord(record.modelUsage ?? record.model_usage ?? null);
   const observedAtValue = record.observedAt ?? record.observed_at ?? null;
   const observedAt = typeof observedAtValue === "string" ? observedAtValue : undefined;
+  const totalCostUsd = readNumber(record, ["totalCostUsd", "total_cost_usd"]);
 
   const structuredSnapshot: ThreadContextUsageSnapshot = {
     ...(typeof record.provider === "string" ? { provider: record.provider } : {}),
@@ -174,6 +204,7 @@ export function parseThreadContextUsageSnapshot(value: unknown): ThreadContextUs
     ...(typeof record.model === "string" ? { model: record.model } : {}),
     ...(record.usage !== undefined ? { usage: record.usage } : {}),
     ...(modelUsage ? { modelUsage } : {}),
+    ...(totalCostUsd !== null ? { totalCostUsd } : {}),
   };
 
   if (
@@ -182,7 +213,8 @@ export function parseThreadContextUsageSnapshot(value: unknown): ThreadContextUs
     structuredSnapshot.observedAt !== undefined ||
     structuredSnapshot.model !== undefined ||
     structuredSnapshot.usage !== undefined ||
-    structuredSnapshot.modelUsage !== undefined
+    structuredSnapshot.modelUsage !== undefined ||
+    structuredSnapshot.totalCostUsd !== undefined
   ) {
     return structuredSnapshot;
   }
@@ -253,7 +285,7 @@ function formatCompactUsedTokenCount(tokens: number): string {
   return String(tokens);
 }
 
-function snapshotMatchesSelection(
+export function doesThreadContextUsageSnapshotMatchSelection(
   snapshot: ThreadContextUsageSnapshot | null,
   provider: ProviderKind,
   model: string | null | undefined,
@@ -320,7 +352,7 @@ export function describeContextWindowState(input: {
 }): ContextWindowState {
   const info = getModelContextWindowInfo(input.model, input.provider);
   const snapshot = parseThreadContextUsageSnapshot(input.tokenUsage);
-  const matchingSnapshot = snapshotMatchesSelection(
+  const matchingSnapshot = doesThreadContextUsageSnapshotMatchSelection(
     snapshot,
     input.provider,
     input.model,

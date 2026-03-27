@@ -82,7 +82,11 @@ import {
   serverOpenCodeStateQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
-import { describeContextWindowState, shouldHideContextWindowForModel } from "~/lib/contextWindow";
+import {
+  describeContextWindowState,
+  getDocumentedContextWindowOverride,
+  shouldHideContextWindowForModel,
+} from "~/lib/contextWindow";
 import {
   isCut3CompatibleOpenRouterModelOption,
   isOpenRouterGuaranteedFreeSlug,
@@ -258,6 +262,7 @@ import { ThreadTasksPanel } from "./chat/ThreadTasksPanel";
 import { ThreadExportDialog } from "./chat/ThreadExportDialog";
 import { ThreadShareDialog } from "./chat/ThreadShareDialog";
 import { ComposerSkillPicker } from "./chat/ComposerSkillPicker";
+import { UsageDashboardDialog } from "./chat/UsageDashboardDialog";
 import {
   commandForProjectScript,
   nextProjectScriptId,
@@ -981,6 +986,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     useState<ProjectCommandTemplateOverrides | null>(null);
   const [isProviderSetupDialogOpen, setIsProviderSetupDialogOpen] = useState(false);
   const [isManageModelsDialogOpen, setIsManageModelsDialogOpen] = useState(false);
+  const [isUsageDashboardOpen, setIsUsageDashboardOpen] = useState(false);
   const [isRefreshingProviderSetupState, setIsRefreshingProviderSetupState] = useState(false);
   const [isOpenRouterApiKeyDialogOpen, setIsOpenRouterApiKeyDialogOpen] = useState(false);
   const [openRouterApiKeyDraft, setOpenRouterApiKeyDraft] = useState("");
@@ -6872,6 +6878,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         hasHiddenModels={hasHiddenPickerModels}
                         onOpenProviderSetup={openProviderSetupDialog}
                         onOpenManageModels={openManageModelsDialog}
+                        onOpenUsageDashboard={() => setIsUsageDashboardOpen(true)}
                         onProviderModelChange={onProviderModelSelectFromPicker}
                       />
 
@@ -6886,10 +6893,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
                       <ComposerContextWindowStatus
                         compact={isComposerFooterCompact}
+                        language={settings.language}
                         provider={selectedProvider}
                         model={selectedModelForPickerWithCustomFallback}
                         tokenUsage={activeThread?.session?.tokenUsage}
                         opencodeContextLengthsBySlug={openCodeContextLengthsBySlug}
+                        onOpenUsageDashboard={() => setIsUsageDashboardOpen(true)}
                       />
 
                       {isComposerFooterCompact ? (
@@ -7490,6 +7499,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
           )}
         </div>
       )}
+
+      <UsageDashboardDialog
+        open={isUsageDashboardOpen}
+        onOpenChange={setIsUsageDashboardOpen}
+        language={settings.language}
+        provider={selectedProvider}
+        model={selectedModelForPickerWithCustomFallback}
+        tokenUsage={activeThread?.session?.tokenUsage}
+        opencodeContextLengthsBySlug={openCodeContextLengthsBySlug}
+      />
 
       <ProviderSetupDialog
         open={isProviderSetupDialogOpen}
@@ -8601,34 +8620,6 @@ function getChatSurfaceCopy(language: AppLanguage) {
   };
 }
 
-const OPENCODE_MODELS_DEV_CONTEXT_NOTE =
-  "OpenCode uses provider/model metadata from models.dev and reads limit.context when the selected model publishes it.";
-
-function getDocumentedContextWindowOverride(input: {
-  provider: ProviderKind;
-  model: string | null | undefined;
-  opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>;
-}) {
-  if (input.provider !== "opencode") {
-    return {};
-  }
-
-  const normalizedModel = normalizeModelSlug(input.model, "opencode");
-  if (!normalizedModel) {
-    return {};
-  }
-
-  const documentedTotalTokens = input.opencodeContextLengthsBySlug?.get(normalizedModel) ?? null;
-  if (documentedTotalTokens === null) {
-    return {};
-  }
-
-  return {
-    documentedTotalTokens,
-    documentedNote: OPENCODE_MODELS_DEV_CONTEXT_NOTE,
-  };
-}
-
 function formatContextUsagePercent(percentUsed: number): string {
   if (!Number.isFinite(percentUsed) || percentUsed <= 0) {
     return "0%";
@@ -8652,11 +8643,13 @@ function getContextIndicatorLabel(input: {
 }
 
 const ComposerContextWindowStatus = memo(function ComposerContextWindowStatus(props: {
+  language: AppLanguage;
   provider: ProviderKind;
   model: string | null | undefined;
   tokenUsage?: unknown;
   opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>;
   compact?: boolean;
+  onOpenUsageDashboard: () => void;
 }) {
   if (shouldHideContextWindowForModel(props.provider, props.model)) {
     return null;
@@ -8716,13 +8709,16 @@ const ComposerContextWindowStatus = memo(function ComposerContextWindowStatus(pr
     <Tooltip>
       <TooltipTrigger
         render={
-          <div
-            aria-label="Context window status"
+          <button
+            type="button"
+            aria-label="Open usage dashboard"
+            aria-haspopup="dialog"
             data-chat-composer-control="context-status"
             className={cn(
               "app-interactive-motion group relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted/25 shadow-none transition-[background-color,border-color,transform,box-shadow] hover:border-border/80 hover:bg-muted/30 motion-safe:hover:-translate-y-px",
               props.compact ? "size-9" : "size-11",
             )}
+            onClick={props.onOpenUsageDashboard}
           >
             <svg
               viewBox="0 0 36 36"
@@ -8761,7 +8757,7 @@ const ComposerContextWindowStatus = memo(function ComposerContextWindowStatus(pr
             >
               {indicatorLabel}
             </span>
-          </div>
+          </button>
         }
       />
       <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-relaxed">
@@ -8773,6 +8769,11 @@ const ComposerContextWindowStatus = memo(function ComposerContextWindowStatus(pr
           {state.note ? (
             <div className="text-muted-foreground/80 text-[11px]">{state.note}</div>
           ) : null}
+          <div className="pt-1 text-muted-foreground/80 text-[11px]">
+            {props.language === "fa"
+              ? "برای جزئیات کامل توکن و هزینه کلیک کنید."
+              : "Click for full token and spend details."}
+          </div>
         </div>
       </TooltipPopup>
     </Tooltip>
