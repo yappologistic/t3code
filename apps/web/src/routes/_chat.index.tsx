@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { isElectron } from "../env";
 import ThreadNewButton from "../components/ThreadNewButton";
 import ThreadSidebarToggle from "../components/ThreadSidebarToggle";
+import { EmptyChatOnboarding } from "../components/chat/EmptyChatOnboarding";
 
 function ChatIndexRouteView() {
   return (
@@ -25,10 +26,8 @@ function ChatIndexRouteView() {
         </div>
       )}
 
-      <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <p className="text-sm">Select a thread or create a new one to get started.</p>
-        </div>
+      <div className="flex flex-1 items-center justify-center px-4 py-6 sm:px-6">
+        <EmptyChatOnboarding />
       </div>
     </div>
   );

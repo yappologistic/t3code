@@ -20,6 +20,8 @@ export type OpenRouterFreeModelCatalog =
       readonly status: "available";
       readonly fetchedAt: string;
       readonly models: ReadonlyArray<OpenRouterFreeModelOption>;
+      readonly source: "live" | "cache";
+      readonly staleReason?: string;
     }
   | {
       readonly status: "unavailable";
@@ -27,6 +29,8 @@ export type OpenRouterFreeModelCatalog =
       readonly message: string;
       readonly models: ReadonlyArray<OpenRouterFreeModelOption>;
     };
+
+const OPENROUTER_FREE_MODEL_CACHE_STORAGE_KEY = "cut3:openrouter-free-models-cache:v1";
 
 export const OPENROUTER_FREE_ROUTER_OPTION: OpenRouterFreeModelOption = {
   slug: OPENROUTER_FREE_ROUTER_MODEL,
@@ -191,6 +195,110 @@ export function extractOpenRouterFreeModels(
   ].filter((entry): entry is OpenRouterFreeModelOption => entry !== undefined);
 }
 
+function readCachedOpenRouterFreeModelOption(value: unknown): OpenRouterFreeModelOption | null {
+  const record = asRecord(value);
+  const slug = asNonEmptyString(record?.slug);
+  const name = asNonEmptyString(record?.name);
+  const source = record?.source;
+  if (!slug || !name || (source !== "router" && source !== "catalog")) {
+    return null;
+  }
+
+  return {
+    slug,
+    name,
+    description: record?.description === null ? null : asNonEmptyString(record?.description),
+    contextLength: asNumber(record?.contextLength),
+    supportsTools: record?.supportsTools === true,
+    supportsToolChoice: record?.supportsToolChoice === true,
+    supportsImages: record?.supportsImages === true,
+    supportsReasoning: record?.supportsReasoning === true,
+    source,
+  };
+}
+
+function readCachedOpenRouterFreeModelCatalog(): {
+  readonly fetchedAt: string;
+  readonly models: ReadonlyArray<OpenRouterFreeModelOption>;
+} | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(OPENROUTER_FREE_MODEL_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as {
+      fetchedAt?: unknown;
+      models?: unknown;
+    };
+    if (typeof parsed.fetchedAt !== "string" || !Array.isArray(parsed.models)) {
+      return null;
+    }
+    const cachedModels = parsed.models
+      .map(readCachedOpenRouterFreeModelOption)
+      .filter((entry): entry is OpenRouterFreeModelOption => entry !== null);
+    const cachedRouterModel =
+      cachedModels.find((entry) => entry.slug === OPENROUTER_FREE_ROUTER_OPTION.slug) ??
+      OPENROUTER_FREE_ROUTER_OPTION;
+    const models = [
+      { ...OPENROUTER_FREE_ROUTER_OPTION, ...cachedRouterModel, source: "router" as const },
+      ...cachedModels.filter((entry) => entry.slug !== OPENROUTER_FREE_ROUTER_OPTION.slug),
+    ];
+    return {
+      fetchedAt: parsed.fetchedAt,
+      models,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedOpenRouterFreeModelCatalog(
+  catalog: Pick<OpenRouterFreeModelCatalog, "fetchedAt" | "models">,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      OPENROUTER_FREE_MODEL_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        fetchedAt: catalog.fetchedAt,
+        models: catalog.models,
+      }),
+    );
+  } catch {
+    // Best-effort cache only.
+  }
+}
+
+function buildUnavailableOpenRouterFreeModelCatalog(
+  fetchedAt: string,
+  message: string,
+): OpenRouterFreeModelCatalog {
+  const cachedCatalog = readCachedOpenRouterFreeModelCatalog();
+  if (cachedCatalog) {
+    return {
+      status: "available",
+      fetchedAt: cachedCatalog.fetchedAt,
+      models: cachedCatalog.models,
+      source: "cache",
+      staleReason: message,
+    };
+  }
+
+  return {
+    status: "unavailable",
+    fetchedAt,
+    message,
+    models: [OPENROUTER_FREE_ROUTER_OPTION],
+  };
+}
+
 export async function readOpenRouterFreeModelCatalog(
   fetchImpl: typeof fetch = fetch,
 ): Promise<OpenRouterFreeModelCatalog> {
@@ -205,30 +313,26 @@ export async function readOpenRouterFreeModelCatalog(
     });
 
     if (!response.ok) {
-      return {
-        status: "unavailable",
+      return buildUnavailableOpenRouterFreeModelCatalog(
         fetchedAt,
-        message: `OpenRouter returned ${response.status}.`,
-        models: [OPENROUTER_FREE_ROUTER_OPTION],
-      };
+        `OpenRouter returned ${response.status}.`,
+      );
     }
 
     const payload = (await response.json()) as unknown;
+    const models = extractOpenRouterFreeModels(payload);
+    writeCachedOpenRouterFreeModelCatalog({ fetchedAt, models });
     return {
       status: "available",
       fetchedAt,
-      models: extractOpenRouterFreeModels(payload),
+      models,
+      source: "live",
     };
   } catch (error) {
     const message =
       error instanceof Error && error.message.trim().length > 0
         ? error.message.trim()
         : "Could not fetch the OpenRouter model catalog.";
-    return {
-      status: "unavailable",
-      fetchedAt,
-      message,
-      models: [OPENROUTER_FREE_ROUTER_OPTION],
-    };
+    return buildUnavailableOpenRouterFreeModelCatalog(fetchedAt, message);
   }
 }

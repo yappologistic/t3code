@@ -94,6 +94,7 @@ import {
   supportsOpenRouterReasoningEffortControl,
 } from "~/lib/openRouterModels";
 import { getModelPickerOptionDisplayParts } from "~/lib/modelPickerOptionDisplay";
+import { buildRecentModelSelection, prioritizeModelOptions } from "~/lib/modelPreferences";
 import {
   type PickerModelOption,
   mergeModelOptions,
@@ -181,6 +182,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useChatBackgroundImage } from "../hooks/useChatBackgroundImage";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useNewThreadActions } from "../hooks/useNewThread";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
 import {
@@ -259,6 +261,7 @@ import {
   COMING_SOON_PROVIDER_OPTIONS,
 } from "./chat/ProviderModelPicker";
 import { ThreadTasksPanel } from "./chat/ThreadTasksPanel";
+import { EmptyChatOnboarding } from "./chat/EmptyChatOnboarding";
 import { ThreadExportDialog } from "./chat/ThreadExportDialog";
 import { ThreadShareDialog } from "./chat/ThreadShareDialog";
 import { ComposerSkillPicker } from "./chat/ComposerSkillPicker";
@@ -455,6 +458,24 @@ type ProviderCustomModelSettings = {
   readonly customPiModels: readonly string[];
 };
 
+type ProviderFavoriteModelSettings = Pick<
+  AppSettings,
+  | "favoriteCodexModels"
+  | "favoriteCopilotModels"
+  | "favoriteOpencodeModels"
+  | "favoriteKimiModels"
+  | "favoritePiModels"
+>;
+
+type ProviderRecentModelSettings = Pick<
+  AppSettings,
+  | "recentCodexModels"
+  | "recentCopilotModels"
+  | "recentOpencodeModels"
+  | "recentKimiModels"
+  | "recentPiModels"
+>;
+
 type ProviderHiddenModelSettings = Pick<
   AppSettings,
   | "hiddenCodexModels"
@@ -463,6 +484,46 @@ type ProviderHiddenModelSettings = Pick<
   | "hiddenKimiModels"
   | "hiddenPiModels"
 >;
+
+function getFavoriteModelsForProvider(
+  provider: ProviderKind,
+  settings: ProviderFavoriteModelSettings,
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return settings.favoriteCodexModels;
+    case "copilot":
+      return settings.favoriteCopilotModels;
+    case "opencode":
+      return settings.favoriteOpencodeModels;
+    case "kimi":
+      return settings.favoriteKimiModels;
+    case "pi":
+      return settings.favoritePiModels;
+    default:
+      return settings.favoriteCodexModels;
+  }
+}
+
+function getRecentModelsForProvider(
+  provider: ProviderKind,
+  settings: ProviderRecentModelSettings,
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return settings.recentCodexModels;
+    case "copilot":
+      return settings.recentCopilotModels;
+    case "opencode":
+      return settings.recentOpencodeModels;
+    case "kimi":
+      return settings.recentKimiModels;
+    case "pi":
+      return settings.recentPiModels;
+    default:
+      return settings.recentCodexModels;
+  }
+}
 
 function getHiddenModelsForProvider(
   provider: ProviderKind,
@@ -481,6 +542,46 @@ function getHiddenModelsForProvider(
       return settings.hiddenPiModels;
     default:
       return settings.hiddenCodexModels;
+  }
+}
+
+function patchFavoriteModels(
+  provider: ProviderKind,
+  favoriteModels: readonly string[],
+): Partial<AppSettings> {
+  switch (provider) {
+    case "codex":
+      return { favoriteCodexModels: [...favoriteModels] };
+    case "copilot":
+      return { favoriteCopilotModels: [...favoriteModels] };
+    case "opencode":
+      return { favoriteOpencodeModels: [...favoriteModels] };
+    case "kimi":
+      return { favoriteKimiModels: [...favoriteModels] };
+    case "pi":
+      return { favoritePiModels: [...favoriteModels] };
+    default:
+      return { favoriteCodexModels: [...favoriteModels] };
+  }
+}
+
+function patchRecentModels(
+  provider: ProviderKind,
+  recentModels: readonly string[],
+): Partial<AppSettings> {
+  switch (provider) {
+    case "codex":
+      return { recentCodexModels: [...recentModels] };
+    case "copilot":
+      return { recentCopilotModels: [...recentModels] };
+    case "opencode":
+      return { recentOpencodeModels: [...recentModels] };
+    case "kimi":
+      return { recentKimiModels: [...recentModels] };
+    case "pi":
+      return { recentPiModels: [...recentModels] };
+    default:
+      return { recentCodexModels: [...recentModels] };
   }
 }
 
@@ -1302,6 +1403,38 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [providerStatusModelOptionsByProvider, setProviderStatusModelOptionsByProvider] = useState<
     Record<ProviderKind, ReadonlyArray<PickerModelOption>>
   >(EMPTY_PROVIDER_STATUS_MODEL_OPTIONS_BY_PROVIDER);
+  const providerFavoriteModelSettings = useMemo<ProviderFavoriteModelSettings>(
+    () => ({
+      favoriteCodexModels: settings.favoriteCodexModels,
+      favoriteCopilotModels: settings.favoriteCopilotModels,
+      favoriteOpencodeModels: settings.favoriteOpencodeModels,
+      favoriteKimiModels: settings.favoriteKimiModels,
+      favoritePiModels: settings.favoritePiModels,
+    }),
+    [
+      settings.favoriteCodexModels,
+      settings.favoriteCopilotModels,
+      settings.favoriteKimiModels,
+      settings.favoriteOpencodeModels,
+      settings.favoritePiModels,
+    ],
+  );
+  const providerRecentModelSettings = useMemo<ProviderRecentModelSettings>(
+    () => ({
+      recentCodexModels: settings.recentCodexModels,
+      recentCopilotModels: settings.recentCopilotModels,
+      recentOpencodeModels: settings.recentOpencodeModels,
+      recentKimiModels: settings.recentKimiModels,
+      recentPiModels: settings.recentPiModels,
+    }),
+    [
+      settings.recentCodexModels,
+      settings.recentCopilotModels,
+      settings.recentKimiModels,
+      settings.recentOpencodeModels,
+      settings.recentPiModels,
+    ],
+  );
   const providerHiddenModelSettings = useMemo<ProviderHiddenModelSettings>(
     () => ({
       hiddenCodexModels: settings.hiddenCodexModels,
@@ -1400,7 +1533,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     providerStatusModelOptionsByProvider.pi,
   ]);
   const openRouterCatalogQuery = useQuery(openRouterFreeModelsQueryOptions());
-  const hasLiveOpenRouterCatalog = openRouterCatalogQuery.data?.status === "available";
+  const hasLiveOpenRouterCatalog =
+    openRouterCatalogQuery.data?.status === "available" &&
+    openRouterCatalogQuery.data.source === "live";
   const openRouterModels = useMemo(
     () => openRouterCatalogQuery.data?.models ?? [],
     [openRouterCatalogQuery.data?.models],
@@ -1936,27 +2071,34 @@ export default function ChatView({ threadId }: ChatViewProps) {
         (option) =>
           lockedProvider === null ||
           getProviderPickerBackingProvider(option.value) === lockedProvider,
-      ).flatMap((option) =>
-        getModelOptionsForProviderPicker(
-          option.value,
-          visibleModelOptionsByProvider,
-          visibleOpenRouterModelOptions,
-          visibleOpencodeModelOptions,
+      ).flatMap((option) => {
+        const backingProvider = getProviderPickerBackingProvider(option.value) ?? "codex";
+        return prioritizeModelOptions(
+          getModelOptionsForProviderPicker(
+            option.value,
+            visibleModelOptionsByProvider,
+            visibleOpenRouterModelOptions,
+            visibleOpencodeModelOptions,
+          ),
+          getFavoriteModelsForProvider(backingProvider, providerFavoriteModelSettings),
+          getRecentModelsForProvider(backingProvider, providerRecentModelSettings),
         ).map(({ slug, name }) => ({
-          provider: getProviderPickerBackingProvider(option.value) ?? "codex",
+          provider: backingProvider,
           providerLabel: option.label,
           slug,
           name,
           searchSlug: slug.toLowerCase(),
           searchName: name.toLowerCase(),
           searchProvider: option.label.toLowerCase(),
-        })),
-      ),
+        }));
+      }),
     [
       lockedProvider,
       visibleModelOptionsByProvider,
       visibleOpenRouterModelOptions,
       visibleOpencodeModelOptions,
+      providerFavoriteModelSettings,
+      providerRecentModelSettings,
     ],
   );
   const hasHiddenPickerModels = useMemo(
@@ -5804,6 +5946,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
       settings.customPiModels,
     ],
   );
+  const onFavoriteModelChange = useCallback(
+    (provider: ProviderKind, model: string, favorite: boolean) => {
+      const favoriteModels = new Set(
+        getFavoriteModelsForProvider(provider, providerFavoriteModelSettings),
+      );
+      if (favorite) {
+        favoriteModels.add(model);
+      } else {
+        favoriteModels.delete(model);
+      }
+      updateSettings(patchFavoriteModels(provider, [...favoriteModels]));
+    },
+    [providerFavoriteModelSettings, updateSettings],
+  );
   const onModelVisibilityChange = useCallback(
     (provider: ProviderKind, model: string, visible: boolean) => {
       const hiddenModels = new Set(
@@ -5827,6 +5983,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
       hiddenPiModels: [],
     });
   }, [updateSettings]);
+  useEffect(() => {
+    if (!activeThread) {
+      return;
+    }
+    const nextRecentModels = buildRecentModelSelection(
+      getRecentModelsForProvider(selectedProvider, providerRecentModelSettings),
+      selectedProvider,
+      selectedModel,
+      12,
+    );
+    const currentRecentModels = getRecentModelsForProvider(
+      selectedProvider,
+      providerRecentModelSettings,
+    );
+    if (
+      nextRecentModels.length === currentRecentModels.length &&
+      nextRecentModels.every((entry, index) => entry === currentRecentModels[index])
+    ) {
+      return;
+    }
+    updateSettings(patchRecentModels(selectedProvider, nextRecentModels));
+  }, [activeThread, providerRecentModelSettings, selectedModel, selectedProvider, updateSettings]);
   const openProviderSetupDialog = useCallback(() => {
     setIsProviderSetupDialogOpen(true);
   }, []);
@@ -6300,10 +6478,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
             <span className="text-xs text-muted-foreground/50">No active thread</span>
           </div>
         )}
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <p className="text-sm">Select a thread or create a new one to get started.</p>
-          </div>
+        <div className="flex flex-1 items-center justify-center px-4 py-6 sm:px-6">
+          <EmptyChatOnboarding />
         </div>
       </div>
     );
@@ -6876,6 +7052,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         opencodeContextLengthsBySlug={openCodeContextLengthsBySlug}
                         serviceTierSetting={selectedServiceTierSetting}
                         hasHiddenModels={hasHiddenPickerModels}
+                        favoriteModelsByProvider={{
+                          codex: providerFavoriteModelSettings.favoriteCodexModels,
+                          copilot: providerFavoriteModelSettings.favoriteCopilotModels,
+                          opencode: providerFavoriteModelSettings.favoriteOpencodeModels,
+                          kimi: providerFavoriteModelSettings.favoriteKimiModels,
+                          pi: providerFavoriteModelSettings.favoritePiModels,
+                        }}
+                        recentModelsByProvider={{
+                          codex: providerRecentModelSettings.recentCodexModels,
+                          copilot: providerRecentModelSettings.recentCopilotModels,
+                          opencode: providerRecentModelSettings.recentOpencodeModels,
+                          kimi: providerRecentModelSettings.recentKimiModels,
+                          pi: providerRecentModelSettings.recentPiModels,
+                        }}
                         onOpenProviderSetup={openProviderSetupDialog}
                         onOpenManageModels={openManageModelsDialog}
                         onOpenUsageDashboard={() => setIsUsageDashboardOpen(true)}
@@ -7518,26 +7708,36 @@ export default function ChatView({ threadId }: ChatViewProps) {
         openCodeState={openCodeStateQuery.data ?? null}
         hasOpenRouterApiKey={settings.openRouterApiKey.trim().length > 0}
         hasKimiApiKey={settings.kimiApiKey.trim().length > 0}
+        codexBinaryPath={settings.codexBinaryPath}
+        copilotBinaryPath={settings.copilotBinaryPath}
+        opencodeBinaryPath={settings.opencodeBinaryPath}
+        kimiBinaryPath={settings.kimiBinaryPath}
         isRefreshing={isRefreshingProviderSetupState}
         onRefresh={refreshProviderSetupState}
         onOpenOpenRouterKeyDialog={openOpenRouterApiKeyDialogFromProviderSetup}
         onOpenKimiKeyDialog={openKimiApiKeyDialogFromProviderSetup}
         onOpenManageModels={openManageModelsFromProviderSetup}
+        onOpenSettings={() => {
+          setIsProviderSetupDialogOpen(false);
+          void navigate({ to: "/settings" });
+        }}
       />
 
       <ManageModelsDialog
         open={isManageModelsDialogOpen}
         onOpenChange={setIsManageModelsDialogOpen}
         language={settings.language}
-        selectedProvider={selectedProvider}
         selectedProviderPickerKind={selectedProviderPickerKind}
         allModelOptionsByProvider={allModelOptionsByProvider}
         openRouterModelOptions={openRouterModelOptions}
         opencodeModelOptions={opencodeModelOptions}
         hiddenModelsByProvider={providerHiddenModelSettings}
+        favoriteModelsByProvider={providerFavoriteModelSettings}
+        recentModelsByProvider={providerRecentModelSettings}
         openRouterContextLengthsBySlug={openRouterContextLengthsBySlug}
         opencodeContextLengthsBySlug={openCodeContextLengthsBySlug}
         serviceTierSetting={selectedServiceTierSetting}
+        onFavoriteModelChange={onFavoriteModelChange}
         onModelVisibilityChange={onModelVisibilityChange}
         onShowAll={showAllManagedModels}
         onOpenProviderSetup={openProviderSetupFromManageModels}
@@ -8817,34 +9017,163 @@ export function ProviderSetupDialog(props: {
   openCodeState: ServerOpenCodeState | null;
   hasOpenRouterApiKey: boolean;
   hasKimiApiKey: boolean;
+  codexBinaryPath: string;
+  copilotBinaryPath: string;
+  opencodeBinaryPath: string;
+  kimiBinaryPath: string;
   isRefreshing: boolean;
   onRefresh: () => void;
   onOpenOpenRouterKeyDialog: () => void;
   onOpenKimiKeyDialog: () => void;
   onOpenManageModels: () => void;
+  onOpenSettings: () => void;
 }) {
   const chatCopy = getChatSurfaceCopy(props.language);
+  const copy =
+    props.language === "fa"
+      ? {
+          title: "آماده سازی ارائه دهنده",
+          description:
+            "وضعیت runtime های محلی را بررسی کنید، کلیدها را اضافه کنید، و قدم بعدی هر ارائه دهنده را بدون خروج از چت ببینید.",
+          snapshotTitle: "نمای آماده سازی ارائه دهنده",
+          snapshotDescription:
+            "CUT3 وضعیت runtime های محلی را می خواند. احراز هویت OpenCode، Codex، Copilot، Kimi، و Pi همچنان در ابزارهای خود آنها مدیریت می شود.",
+          ready: "آماده",
+          attention: "نیاز به توجه",
+          unavailable: "ناموجود",
+          refresh: "نوسازی وضعیت",
+          addKey: "افزودن کلید",
+          updateKey: "به روز رسانی کلید",
+          copied: "کپی شد",
+          copyLogin: "کپی ورود",
+          copyLaunch: "کپی اجرای CLI",
+          manageModels: "مدیریت مدل ها",
+          settings: "تنظیمات",
+          done: "انجام شد",
+          notAvailableYet: "هنوز در دسترس نیست",
+          credentials: (count: number) => `${count} اعتبار`,
+          models: (count: number) => `${count} مدل`,
+          mcpServers: (count: number) => `${count} سرور MCP`,
+        }
+      : {
+          title: "Provider readiness",
+          description:
+            "Check local runtime health, add keys, and see the next step for each provider without leaving chat.",
+          snapshotTitle: "Provider readiness snapshot",
+          snapshotDescription:
+            "CUT3 inspects your local runtimes here. Authentication for OpenCode, Codex, Copilot, Kimi, and Pi still lives in their own CLIs and config files.",
+          ready: "Ready",
+          attention: "Needs attention",
+          unavailable: "Unavailable",
+          refresh: "Refresh status",
+          addKey: "Add key",
+          updateKey: "Update key",
+          copied: "Copied",
+          copyLogin: "Copy login",
+          copyLaunch: "Copy CLI launch",
+          manageModels: "Manage models",
+          settings: "Settings",
+          done: "Done",
+          notAvailableYet: "Not available yet",
+          credentials: (count: number) => `${count} credential${count === 1 ? "" : "s"}`,
+          models: (count: number) => `${count} model${count === 1 ? "" : "s"}`,
+          mcpServers: (count: number) => `${count} MCP server${count === 1 ? "" : "s"}`,
+        };
   const openCodeCredentialCount = props.openCodeState?.credentials.length ?? 0;
   const openCodeModelCount = props.openCodeState?.models.length ?? 0;
+  const openCodeMcpServerCount = props.openCodeState?.mcpServers.length ?? 0;
+  const [lastCopiedCommandId, setLastCopiedCommandId] = useState<string | null>(null);
+  const { copyToClipboard, isCopied } = useCopyToClipboard<{ id: string }>({
+    onCopy: ({ id }) => setLastCopiedCommandId(id),
+  });
+
+  const formatCommandBinary = useCallback((binaryPath: string, fallback: string) => {
+    const trimmed = binaryPath.trim();
+    if (!trimmed) {
+      return fallback;
+    }
+    return `'${trimmed.replaceAll("'", "'\\''")}'`;
+  }, []);
+
+  const codexCommand = formatCommandBinary(props.codexBinaryPath, "codex");
+  const copilotCommand = formatCommandBinary(props.copilotBinaryPath, "copilot");
+  const opencodeCommand = formatCommandBinary(props.opencodeBinaryPath, "opencode");
+  const kimiCommand = formatCommandBinary(props.kimiBinaryPath, "kimi");
+
+  const renderCopyCommandButton = useCallback(
+    (input: { id: string; label: string; command: string }) => {
+      const copied = isCopied && lastCopiedCommandId === input.id;
+      return (
+        <Button
+          key={input.id}
+          size="xs"
+          variant="outline"
+          onClick={() => copyToClipboard(input.command, { id: input.id })}
+        >
+          {copied ? copy.copied : input.label}
+        </Button>
+      );
+    },
+    [copy.copied, copyToClipboard, isCopied, lastCopiedCommandId],
+  );
+
+  const readinessSummary = useMemo(() => {
+    return [...AVAILABLE_PROVIDER_OPTIONS].reduce(
+      (counts, option) => {
+        if (option.value === "openrouter") {
+          if (props.hasOpenRouterApiKey) {
+            counts.ready += 1;
+          } else {
+            counts.attention += 1;
+          }
+          return counts;
+        }
+
+        const backingProvider = getProviderPickerBackingProvider(option.value);
+        if (!backingProvider) {
+          return counts;
+        }
+        const status = findProviderStatus(props.providerStatuses, backingProvider);
+        if (!status || !status.available || status.status === "error") {
+          counts.unavailable += 1;
+          return counts;
+        }
+        if (status.status === "ready" && status.authStatus !== "unauthenticated") {
+          counts.ready += 1;
+          return counts;
+        }
+        counts.attention += 1;
+        return counts;
+      },
+      { ready: 0, attention: 0, unavailable: 0 },
+    );
+  }, [props.hasOpenRouterApiKey, props.providerStatuses]);
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogPopup className="max-w-3xl">
+      <DialogPopup className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Connect provider</DialogTitle>
-          <DialogDescription>
-            Review provider health, add API keys, and refresh runtime state without leaving the chat
-            surface.
-          </DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
-            <div className="space-y-1">
-              <p className="font-medium text-sm text-foreground">Provider status snapshot</p>
-              <p className="text-xs text-muted-foreground">
-                CUT3 reads local provider status here. OpenCode authentication still stays in
-                OpenCode itself via <code>opencode auth login</code>.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3">
+            <div className="space-y-2">
+              <div>
+                <p className="font-medium text-sm text-foreground">{copy.snapshotTitle}</p>
+                <p className="text-xs text-muted-foreground">{copy.snapshotDescription}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="success" size="sm">
+                  {copy.ready} · {readinessSummary.ready}
+                </Badge>
+                <Badge variant="warning" size="sm">
+                  {copy.attention} · {readinessSummary.attention}
+                </Badge>
+                <Badge variant="outline" size="sm">
+                  {copy.unavailable} · {readinessSummary.unavailable}
+                </Badge>
+              </div>
             </div>
             <Button
               size="sm"
@@ -8853,7 +9182,7 @@ export function ProviderSetupDialog(props: {
               disabled={props.isRefreshing}
             >
               <RefreshCwIcon className={cn("size-4", props.isRefreshing && "animate-spin")} />
-              Refresh status
+              {copy.refresh}
             </Button>
           </div>
 
@@ -8869,24 +9198,61 @@ export function ProviderSetupDialog(props: {
               let badge = getProviderStatusBadge(providerStatus);
               let description = getProviderPickerSectionDescription(option.value);
               let message = providerStatus?.message?.trim() || null;
-              let action: ReactNode = null;
               let footer: ReactNode = null;
+              const actions: ReactNode[] = [];
 
               if (option.value === "openrouter") {
                 badge = props.hasOpenRouterApiKey
                   ? { label: "Key saved", variant: "success" }
                   : { label: "Needs key", variant: "warning" };
                 description = props.hasOpenRouterApiKey
-                  ? "Shared OpenRouter key is ready for router-backed Codex sessions."
-                  : "Add an OpenRouter API key to use router-backed Codex models.";
+                  ? "Shared OpenRouter key is ready for OpenRouter-routed sessions."
+                  : "Add the shared OpenRouter API key to unlock OpenRouter-routed models.";
                 message =
-                  "Used for openrouter/free and any saved OpenRouter model ids. New OpenCode sessions also inherit it as OPENROUTER_API_KEY when needed.";
-                action = (
-                  <Button size="xs" variant="outline" onClick={props.onOpenOpenRouterKeyDialog}>
+                  "Used for openrouter/free and any saved OpenRouter :free slugs. CUT3 also forwards the same key to new OpenCode sessions when their config expects OPENROUTER_API_KEY.";
+                actions.push(
+                  <Button
+                    key="openrouter-key"
+                    size="xs"
+                    variant="outline"
+                    onClick={props.onOpenOpenRouterKeyDialog}
+                  >
                     <PlusIcon className="size-3.5" />
-                    {props.hasOpenRouterApiKey ? "Update key" : "Add key"}
-                  </Button>
+                    {props.hasOpenRouterApiKey ? copy.updateKey : copy.addKey}
+                  </Button>,
                 );
+              }
+
+              if (option.value === "codex") {
+                description =
+                  providerStatus?.authStatus === "authenticated"
+                    ? "Native Codex models are ready through your local Codex runtime."
+                    : "Authenticate or repair the local Codex runtime, then refresh CUT3.";
+                if (providerStatus?.authStatus !== "authenticated") {
+                  actions.push(
+                    renderCopyCommandButton({
+                      id: "codex-login",
+                      label: copy.copyLogin,
+                      command: `${codexCommand} login`,
+                    }),
+                  );
+                }
+              }
+
+              if (option.value === "copilot") {
+                description =
+                  providerStatus?.authStatus === "authenticated"
+                    ? "GitHub Copilot is available from the local runtime CUT3 is connected to."
+                    : "Sign into the local Copilot CLI/runtime, then refresh CUT3.";
+                if (providerStatus?.authStatus !== "authenticated") {
+                  actions.push(
+                    renderCopyCommandButton({
+                      id: "copilot-login",
+                      label: copy.copyLogin,
+                      command: `${copilotCommand} login`,
+                    }),
+                  );
+                }
               }
 
               if (option.value === "kimi") {
@@ -8896,39 +9262,68 @@ export function ProviderSetupDialog(props: {
                     ? { label: "Ready", variant: "success" }
                     : { label: "Needs auth", variant: "warning" };
                 description = props.hasKimiApiKey
-                  ? "Kimi API key is configured for new Kimi Code sessions."
-                  : "Authenticate in the Kimi CLI with `kimi login` or `/login`, or add an API key here.";
+                  ? "A Kimi API key is configured for new Kimi Code sessions."
+                  : "Use kimi login / /login, or add a Kimi API key here.";
                 message = props.hasKimiApiKey
                   ? "CUT3 will inject the saved Kimi API key into new Kimi Code sessions."
                   : providerStatus?.message?.trim() ||
-                    "If you prefer not to store an API key in CUT3, run `kimi login` or `/login` in the local Kimi CLI and refresh this panel.";
-                action = (
-                  <Button size="xs" variant="outline" onClick={props.onOpenKimiKeyDialog}>
+                    "If you do not want to store a key in CUT3, authenticate in the CLI with kimi login or the in-shell /login flow.";
+                actions.push(
+                  <Button
+                    key="kimi-key"
+                    size="xs"
+                    variant="outline"
+                    onClick={props.onOpenKimiKeyDialog}
+                  >
                     <PlusIcon className="size-3.5" />
-                    {props.hasKimiApiKey ? "Update key" : "Add key"}
-                  </Button>
+                    {props.hasKimiApiKey ? copy.updateKey : copy.addKey}
+                  </Button>,
                 );
+                if (!props.hasKimiApiKey) {
+                  actions.push(
+                    renderCopyCommandButton({
+                      id: "kimi-login",
+                      label: copy.copyLogin,
+                      command: `${kimiCommand} login`,
+                    }),
+                  );
+                }
+              }
+
+              if (option.value === "opencode") {
+                badge =
+                  props.openCodeState?.status === "available"
+                    ? { label: "Ready", variant: "success" }
+                    : openCodeCredentialCount > 0
+                      ? { label: "Check setup", variant: "warning" }
+                      : { label: "Needs auth", variant: "warning" };
+                description =
+                  props.openCodeState?.status === "available"
+                    ? `${copy.credentials(openCodeCredentialCount)} · ${copy.models(openCodeModelCount)}`
+                    : "Manage OpenCode credentials in OpenCode itself, then refresh CUT3.";
+                message = props.openCodeState?.message?.trim() || null;
                 footer = (
-                  <p className="text-xs text-muted-foreground">
-                    Kimi also supports CLI auth via <code>kimi login</code> or the in-shell{" "}
-                    <code>/login</code> command. CUT3 reads the runtime state and can optionally
-                    inject a saved API key for new sessions.
-                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline" size="sm">
+                      {copy.credentials(openCodeCredentialCount)}
+                    </Badge>
+                    <Badge variant="outline" size="sm">
+                      {copy.models(openCodeModelCount)}
+                    </Badge>
+                    {props.openCodeState?.mcpSupported ? (
+                      <Badge variant="outline" size="sm">
+                        {copy.mcpServers(openCodeMcpServerCount)}
+                      </Badge>
+                    ) : null}
+                  </div>
                 );
-              }
-
-              if (option.value === "copilot") {
-                description =
-                  providerStatus?.authStatus === "unauthenticated"
-                    ? "Authenticate with the local GitHub Copilot CLI/runtime, then refresh CUT3."
-                    : "GitHub Copilot availability is read from the local runtime that CUT3 talks to.";
-              }
-
-              if (option.value === "codex") {
-                description =
-                  providerStatus?.authStatus === "unauthenticated"
-                    ? "Authenticate Codex outside CUT3, then refresh this panel."
-                    : "Native Codex models use your existing local Codex authentication.";
+                actions.push(
+                  renderCopyCommandButton({
+                    id: "opencode-auth-login",
+                    label: copy.copyLogin,
+                    command: `${opencodeCommand} auth login`,
+                  }),
+                );
               }
 
               if (option.value === "pi") {
@@ -8944,42 +9339,29 @@ export function ProviderSetupDialog(props: {
                   providerStatus?.authStatus === "authenticated"
                     ? providerStatus.status === "warning"
                       ? "Pi is authenticated, but the local Pi config still needs attention."
-                      : "Pi is ready using your local ~/.pi/agent auth/models config."
-                    : "Authenticate Pi outside CUT3, then refresh this panel.";
+                      : "Pi is ready from the local ~/.pi/agent auth/models state."
+                    : "Run pi or bunx pi, complete /login, then refresh CUT3.";
                 message = providerStatus?.message?.trim() || null;
                 footer = (
                   <p className="text-xs text-muted-foreground">
-                    CUT3 embeds Pi through its Node SDK, but intentionally disables Pi packages,
-                    AGENTS, system prompts, extensions, skills, prompt templates, and themes here so
-                    CUT3 remains the only source of workspace instructions for Pi threads.
+                    CUT3 embeds Pi through its Node SDK, but keeps Pi packages, AGENTS, prompts,
+                    extensions, skills, and themes disabled so CUT3 remains the only source of
+                    workspace instructions.
                   </p>
                 );
-              }
-
-              if (option.value === "opencode") {
-                badge =
-                  props.openCodeState?.status === "available"
-                    ? { label: "Ready", variant: "success" }
-                    : openCodeCredentialCount > 0
-                      ? { label: "Check setup", variant: "warning" }
-                      : { label: "Needs auth", variant: "warning" };
-                description =
-                  props.openCodeState?.status === "available"
-                    ? `${openCodeCredentialCount} credentials · ${openCodeModelCount} models discovered`
-                    : "Manage credentials in OpenCode itself, then refresh CUT3.";
-                message = props.openCodeState?.message?.trim() || null;
-                footer = (
-                  <p className="text-xs text-muted-foreground">
-                    Use <code>opencode auth login</code> or <code>opencode auth logout</code> in a
-                    terminal. CUT3 only reads the current state here.
-                  </p>
+                actions.push(
+                  renderCopyCommandButton({
+                    id: "pi-launch",
+                    label: copy.copyLaunch,
+                    command: "bunx pi",
+                  }),
                 );
               }
 
               return (
                 <div
                   key={option.value}
-                  className="flex min-h-44 flex-col rounded-2xl border border-border/60 bg-background/95 p-4 shadow-xs/5"
+                  className="flex min-h-48 flex-col rounded-2xl border border-border/60 bg-background/95 p-4 shadow-xs/5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
@@ -9010,7 +9392,9 @@ export function ProviderSetupDialog(props: {
                       ) : null}
                       {footer}
                     </div>
-                    {action ? <div className="flex items-center justify-end">{action}</div> : null}
+                    {actions.length > 0 ? (
+                      <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -9019,7 +9403,7 @@ export function ProviderSetupDialog(props: {
 
           <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium text-foreground">Not available yet</span>
+              <span className="font-medium text-foreground">{copy.notAvailableYet}</span>
               {[...UNAVAILABLE_PROVIDER_OPTIONS, ...COMING_SOON_PROVIDER_OPTIONS].map((option) => {
                 const OptionIcon =
                   "icon" in option ? option.icon : PROVIDER_ICON_BY_PROVIDER[option.value];
@@ -9041,12 +9425,15 @@ export function ProviderSetupDialog(props: {
           </div>
         </DialogPanel>
         <DialogFooter>
+          <Button size="sm" variant="outline" onClick={props.onOpenSettings}>
+            {copy.settings}
+          </Button>
           <Button size="sm" variant="outline" onClick={props.onOpenManageModels}>
             <SlidersHorizontalIcon className="size-4" />
-            Manage models
+            {copy.manageModels}
           </Button>
           <Button size="sm" onClick={() => props.onOpenChange(false)}>
-            Done
+            {copy.done}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -9058,20 +9445,66 @@ function ManageModelsDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   language: AppLanguage;
-  selectedProvider: ProviderKind;
   selectedProviderPickerKind: AvailableProviderPickerKind;
   allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
   openRouterModelOptions: ReadonlyArray<PickerModelOption>;
   opencodeModelOptions: ReadonlyArray<PickerModelOption>;
   hiddenModelsByProvider: ProviderHiddenModelSettings;
+  favoriteModelsByProvider: ProviderFavoriteModelSettings;
+  recentModelsByProvider: ProviderRecentModelSettings;
   openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
   opencodeContextLengthsBySlug: ReadonlyMap<string, number | null>;
   serviceTierSetting: AppServiceTier;
+  onFavoriteModelChange: (provider: ProviderKind, model: string, favorite: boolean) => void;
   onModelVisibilityChange: (provider: ProviderKind, model: string, visible: boolean) => void;
   onShowAll: () => void;
   onOpenProviderSetup: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const copy =
+    props.language === "fa"
+      ? {
+          title: "مدیریت مدل ها",
+          description:
+            "مدل ها را برای نمایش یا پنهان سازی در picker و پیشنهادهای /model مدیریت کنید و موارد محبوب را برای دسترسی سریع سنجاق کنید.",
+          searchPlaceholder: "جستجوی مدل ها یا ارائه دهندگان",
+          allVisible: "همه نمایش داده می شوند",
+          hiddenCount: (count: number) => `${count} مورد مخفی`,
+          showAllHidden: "نمایش همه مدل های مخفی",
+          noMatchesTitle: "هیچ مدلی با این جستجو مطابقت ندارد.",
+          noMatchesDescription: "نام، ارائه دهنده، یا slug دیگری را امتحان کنید.",
+          clearSearch: "پاک کردن جستجو",
+          current: "فعلی",
+          shown: "نمایش داده شده",
+          hidden: "مخفی",
+          favorite: "محبوب",
+          pin: "سنجاق کردن",
+          unpin: "برداشتن سنجاق",
+          recent: "اخیر",
+          providerSetup: "آماده سازی ارائه دهنده",
+          done: "انجام شد",
+        }
+      : {
+          title: "Manage models",
+          description:
+            "Control which models appear in the picker and /model suggestions, and pin favorites for faster access.",
+          searchPlaceholder: "Search models or providers",
+          allVisible: "All visible",
+          hiddenCount: (count: number) => `${count} hidden`,
+          showAllHidden: "Show all hidden models",
+          noMatchesTitle: "No models match this search.",
+          noMatchesDescription: "Try a different provider, model slug, or partial name.",
+          clearSearch: "Clear search",
+          current: "Current",
+          shown: "Shown",
+          hidden: "Hidden",
+          favorite: "Favorite",
+          pin: "Pin",
+          unpin: "Unpin",
+          recent: "Recent",
+          providerSetup: "Provider readiness",
+          done: "Done",
+        };
   const totalHiddenCount =
     props.hiddenModelsByProvider.hiddenCodexModels.length +
     props.hiddenModelsByProvider.hiddenCopilotModels.length +
@@ -9111,6 +9544,14 @@ function ManageModelsDialog(props: {
           const hiddenModels = new Set(
             getHiddenModelsForProvider(backingProvider, props.hiddenModelsByProvider),
           );
+          const favoriteModels = getFavoriteModelsForProvider(
+            backingProvider,
+            props.favoriteModelsByProvider,
+          );
+          const recentModels = getRecentModelsForProvider(
+            backingProvider,
+            props.recentModelsByProvider,
+          );
           const allOptions = getModelOptionsForProviderPicker(
             option.value,
             props.allModelOptionsByProvider,
@@ -9119,22 +9560,26 @@ function ManageModelsDialog(props: {
               : props.openRouterModelOptions,
             props.opencodeModelOptions,
           );
-          const filteredOptions = allOptions.filter((modelOption) => {
-            if (!normalizedQuery) {
-              return true;
-            }
-            const displayParts = getModelPickerOptionDisplayParts(modelOption);
-            const haystack = [
-              option.label,
-              modelOption.slug,
-              modelOption.name,
-              displayParts.providerLabel,
-              displayParts.modelLabel,
-            ]
-              .join(" ")
-              .toLowerCase();
-            return haystack.includes(normalizedQuery);
-          });
+          const filteredOptions = prioritizeModelOptions(
+            allOptions.filter((modelOption) => {
+              if (!normalizedQuery) {
+                return true;
+              }
+              const displayParts = getModelPickerOptionDisplayParts(modelOption);
+              const haystack = [
+                option.label,
+                modelOption.slug,
+                modelOption.name,
+                displayParts.providerLabel,
+                displayParts.modelLabel,
+              ]
+                .join(" ")
+                .toLowerCase();
+              return haystack.includes(normalizedQuery);
+            }),
+            favoriteModels,
+            recentModels,
+          );
 
           if (filteredOptions.length === 0) {
             return null;
@@ -9143,6 +9588,8 @@ function ManageModelsDialog(props: {
           return {
             option,
             backingProvider,
+            favoriteModels,
+            recentModels,
             filteredOptions,
             hiddenCount: filteredOptions.filter((modelOption) => hiddenModels.has(modelOption.slug))
               .length,
@@ -9154,6 +9601,8 @@ function ManageModelsDialog(props: {
       orderedProviders,
       props.allModelOptionsByProvider,
       props.hiddenModelsByProvider,
+      props.favoriteModelsByProvider,
+      props.recentModelsByProvider,
       props.openRouterModelOptions,
       props.opencodeModelOptions,
     ],
@@ -9163,11 +9612,8 @@ function ManageModelsDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogPopup className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Manage models</DialogTitle>
-          <DialogDescription>
-            Hide models from the picker and from /model suggestions without deleting any saved model
-            ids.
-          </DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -9177,13 +9623,13 @@ function ManageModelsDialog(props: {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search models or providers"
+                placeholder={copy.searchPlaceholder}
                 className="pl-9"
               />
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={totalHiddenCount > 0 ? "warning" : "outline"} size="sm">
-                {totalHiddenCount > 0 ? `${totalHiddenCount} hidden` : "All visible"}
+                {totalHiddenCount > 0 ? copy.hiddenCount(totalHiddenCount) : copy.allVisible}
               </Badge>
               <Button
                 size="sm"
@@ -9191,26 +9637,24 @@ function ManageModelsDialog(props: {
                 onClick={props.onShowAll}
                 disabled={totalHiddenCount === 0}
               >
-                Show all hidden
+                {copy.showAllHidden}
               </Button>
             </div>
           </div>
 
           {sections.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center">
-              <p className="font-medium text-sm text-foreground">No models match this search.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Try a different provider, model slug, or partial name.
-              </p>
+              <p className="font-medium text-sm text-foreground">{copy.noMatchesTitle}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{copy.noMatchesDescription}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 {normalizedQuery ? (
                   <Button size="sm" variant="outline" onClick={() => setQuery("")}>
-                    Clear search
+                    {copy.clearSearch}
                   </Button>
                 ) : null}
                 {totalHiddenCount > 0 ? (
                   <Button size="sm" variant="outline" onClick={props.onShowAll}>
-                    Show all hidden models
+                    {copy.showAllHidden}
                   </Button>
                 ) : null}
               </div>
@@ -9235,7 +9679,7 @@ function ManageModelsDialog(props: {
                           </span>
                           {isActiveSection ? (
                             <Badge variant="secondary" size="sm">
-                              Current
+                              {copy.current}
                             </Badge>
                           ) : null}
                         </div>
@@ -9245,8 +9689,8 @@ function ManageModelsDialog(props: {
                       </div>
                       <Badge variant={section.hiddenCount > 0 ? "warning" : "outline"} size="sm">
                         {section.hiddenCount > 0
-                          ? `${section.filteredOptions.length - section.hiddenCount} shown · ${section.hiddenCount} hidden`
-                          : `${section.filteredOptions.length} shown`}
+                          ? `${section.filteredOptions.length - section.hiddenCount} ${copy.shown.toLowerCase()} · ${section.hiddenCount} ${copy.hidden.toLowerCase()}`
+                          : `${section.filteredOptions.length} ${copy.shown.toLowerCase()}`}
                       </Badge>
                     </div>
                     <div className="divide-y divide-border/50">
@@ -9273,6 +9717,15 @@ function ManageModelsDialog(props: {
                                 <span className="truncate font-medium text-sm text-foreground">
                                   {displayParts.modelLabel}
                                 </span>
+                                {section.favoriteModels.includes(modelOption.slug) ? (
+                                  <Badge variant="warning" size="sm">
+                                    {copy.favorite}
+                                  </Badge>
+                                ) : section.recentModels.includes(modelOption.slug) ? (
+                                  <Badge variant="outline" size="sm">
+                                    {copy.recent}
+                                  </Badge>
+                                ) : null}
                                 {section.backingProvider === "codex" &&
                                 shouldShowFastTierIcon(
                                   modelOption.slug,
@@ -9304,9 +9757,29 @@ function ManageModelsDialog(props: {
                                 <span className="shrink-0">{contextLabel}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant={
+                                  section.favoriteModels.includes(modelOption.slug)
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                                onClick={() => {
+                                  props.onFavoriteModelChange(
+                                    section.backingProvider,
+                                    modelOption.slug,
+                                    !section.favoriteModels.includes(modelOption.slug),
+                                  );
+                                }}
+                              >
+                                {section.favoriteModels.includes(modelOption.slug)
+                                  ? copy.unpin
+                                  : copy.pin}
+                              </Button>
                               <span className="min-w-10 text-right text-xs text-muted-foreground">
-                                {visible ? "Shown" : "Hidden"}
+                                {visible ? copy.shown : copy.hidden}
                               </span>
                               <Switch
                                 checked={visible}
@@ -9332,7 +9805,7 @@ function ManageModelsDialog(props: {
         <DialogFooter>
           <Button size="sm" variant="outline" onClick={props.onOpenProviderSetup}>
             <PlusIcon className="size-4" />
-            Connect provider
+            {copy.providerSetup}
           </Button>
           <Button
             size="sm"
@@ -9340,10 +9813,10 @@ function ManageModelsDialog(props: {
             onClick={props.onShowAll}
             disabled={totalHiddenCount === 0}
           >
-            Show all hidden models
+            {copy.showAllHidden}
           </Button>
           <Button size="sm" onClick={() => props.onOpenChange(false)}>
-            Done
+            {copy.done}
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -31,7 +31,6 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  DEFAULT_MODEL_BY_PROVIDER,
   type DesktopUpdateState,
   ProjectId,
   ThreadId,
@@ -45,12 +44,13 @@ import { getAppLanguageDetails, type AppLanguage } from "../appLanguage";
 import { isElectron } from "../env";
 import { APP_BASE_NAME, APP_VERSION } from "../branding";
 import { resolveServerHttpUrl } from "../lib/serverUrl";
-import { cn, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
+import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import { useStore } from "../store";
 import { shortcutLabelForCommand } from "../keybindings";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { useNewThreadActions } from "../hooks/useNewThread";
+import { useProjectCreationActions } from "../hooks/useProjectCreationActions";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
@@ -89,7 +89,6 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
-import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
   buildSidebarProjectEntries,
   resolveSidebarNewThreadEnvMode,
@@ -99,7 +98,7 @@ import {
 } from "./Sidebar.logic";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useSidebarPreferencesStore } from "../sidebarPreferencesStore";
-import { compareThreadsByRecency, type SidebarArchiveFilterMode } from "../lib/threadOrdering";
+import { type SidebarArchiveFilterMode } from "../lib/threadOrdering";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 10;
@@ -505,10 +504,17 @@ export default function Sidebar() {
   const queryClient = useQueryClient();
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const [addingProject, setAddingProject] = useState(false);
-  const [newCwd, setNewCwd] = useState("");
-  const [isPickingFolder, setIsPickingFolder] = useState(false);
-  const [isAddingProject, setIsAddingProject] = useState(false);
-  const [addProjectError, setAddProjectError] = useState<string | null>(null);
+  const {
+    addProjectError,
+    addProjectFromPath,
+    canAddProject,
+    clearProjectCreationError,
+    isAddingProject,
+    isPickingFolder,
+    newCwd,
+    pickProjectFolder,
+    setNewCwd,
+  } = useProjectCreationActions();
   const addProjectInputRef = useRef<HTMLInputElement | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<ThreadId | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
@@ -656,118 +662,44 @@ export default function Sidebar() {
     [sidebarCopy.genericError, sidebarCopy.linkOpeningUnavailable, sidebarCopy.unableToOpenPrLink],
   );
 
-  const focusMostRecentThreadForProject = useCallback(
-    (projectId: ProjectId) => {
-      const latestThread = threads
-        .filter((thread) => thread.projectId === projectId && !archivedThreadIds.has(thread.id))
-        .toSorted((left, right) => {
-          const leftPinned = pinnedThreadIds.has(left.id);
-          const rightPinned = pinnedThreadIds.has(right.id);
-          if (leftPinned !== rightPinned) {
-            return leftPinned ? -1 : 1;
-          }
-          return compareThreadsByRecency(left, right);
-        })[0];
-      if (!latestThread) return;
-
-      navigateToThread(latestThread.id);
-    },
-    [archivedThreadIds, navigateToThread, pinnedThreadIds, threads],
-  );
-
-  const addProjectFromPath = useCallback(
-    async (rawCwd: string) => {
-      const cwd = rawCwd.trim();
-      if (!cwd || isAddingProject) return;
-      const api = readNativeApi();
-      if (!api) return;
-
-      setIsAddingProject(true);
-      const finishAddingProject = () => {
-        setIsAddingProject(false);
-        setNewCwd("");
-        setAddProjectError(null);
+  const handleAddProject = () => {
+    void addProjectFromPath(newCwd).then((result) => {
+      if (result.ok) {
         setAddingProject(false);
-      };
-
-      try {
-        const existing = projects.find((project) => project.cwd === cwd);
-        if (existing) {
-          focusMostRecentThreadForProject(existing.id);
-          finishAddingProject();
-          return;
-        }
-
-        const projectId = newProjectId();
-        const createdAt = new Date().toISOString();
-        const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
-        await api.orchestration.dispatchCommand({
-          type: "project.create",
-          commandId: newCommandId(),
-          projectId,
-          title,
-          workspaceRoot: cwd,
-          defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
-          createdAt,
-        });
-        await openNewThread(projectId, {
-          envMode: appSettings.defaultThreadEnvMode,
-        }).catch(() => undefined);
-      } catch (error) {
-        const description =
-          error instanceof Error ? error.message : sidebarCopy.addProjectUnexpectedError;
-        setIsAddingProject(false);
-        if (shouldBrowseForProjectImmediately) {
-          toastManager.add({
-            type: "error",
-            title: sidebarCopy.failedToAddProject,
-            description,
-          });
-        } else {
-          setAddProjectError(description);
-        }
         return;
       }
-      finishAddingProject();
-    },
-    [
-      focusMostRecentThreadForProject,
-      isAddingProject,
-      openNewThread,
-      projects,
-      shouldBrowseForProjectImmediately,
-      appSettings.defaultThreadEnvMode,
-      sidebarCopy.addProjectUnexpectedError,
-      sidebarCopy.failedToAddProject,
-    ],
-  );
-
-  const handleAddProject = () => {
-    void addProjectFromPath(newCwd);
+      if (shouldBrowseForProjectImmediately) {
+        toastManager.add({
+          type: "error",
+          title: sidebarCopy.failedToAddProject,
+          description: result.message,
+        });
+      }
+    });
   };
 
-  const canAddProject = newCwd.trim().length > 0 && !isAddingProject;
-
   const handlePickFolder = async () => {
-    const api = readNativeApi();
-    if (!api || isPickingFolder) return;
-    setIsPickingFolder(true);
-    let pickedPath: string | null = null;
-    try {
-      pickedPath = await api.dialogs.pickFolder();
-    } catch {
-      // Ignore picker failures and leave the current thread selection unchanged.
-    }
+    const pickedPath = await pickProjectFolder();
     if (pickedPath) {
-      await addProjectFromPath(pickedPath);
-    } else if (!shouldBrowseForProjectImmediately) {
+      const result = await addProjectFromPath(pickedPath);
+      if (!result.ok) {
+        toastManager.add({
+          type: "error",
+          title: sidebarCopy.failedToAddProject,
+          description: result.message,
+        });
+      } else {
+        setAddingProject(false);
+      }
+      return;
+    }
+    if (!shouldBrowseForProjectImmediately) {
       addProjectInputRef.current?.focus();
     }
-    setIsPickingFolder(false);
   };
 
   const handleStartAddProject = () => {
-    setAddProjectError(null);
+    clearProjectCreationError();
     if (shouldBrowseForProjectImmediately) {
       void handlePickFolder();
       return;
@@ -1680,13 +1612,13 @@ export default function Sidebar() {
                   value={newCwd}
                   onChange={(event) => {
                     setNewCwd(event.target.value);
-                    setAddProjectError(null);
+                    clearProjectCreationError();
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") handleAddProject();
                     if (event.key === "Escape") {
                       setAddingProject(false);
-                      setAddProjectError(null);
+                      clearProjectCreationError();
                     }
                   }}
                   autoFocus
@@ -1711,7 +1643,7 @@ export default function Sidebar() {
                   className="text-[11px] text-sidebar-foreground/75 transition-colors hover:text-sidebar-foreground"
                   onClick={() => {
                     setAddingProject(false);
-                    setAddProjectError(null);
+                    clearProjectCreationError();
                   }}
                 >
                   {sidebarCopy.cancel}

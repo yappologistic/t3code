@@ -129,6 +129,9 @@ function buildFixture(): TestFixture {
 }
 
 function resolveWsRpc(tag: string): unknown {
+  if (tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+    return { sequence: pushSequence++ };
+  }
   if (tag === ORCHESTRATION_WS_METHODS.getSnapshot) {
     return fixture.snapshot;
   }
@@ -334,6 +337,95 @@ describe("ThreadNewButton", () => {
         mounted.router,
         (path) => UUID_ROUTE_RE.test(path),
         "Settings new-thread button should navigate to a new thread UUID.",
+      );
+      await waitForComposerEditor();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows first-run onboarding on the empty root route and adds a project from a path", async () => {
+    fixture.snapshot = {
+      ...fixture.snapshot,
+      projects: [],
+      threads: [],
+    };
+    fixture.welcome = {
+      cwd: "/repo/empty",
+      projectName: "Empty",
+    };
+
+    const mounted = await mountApp("/");
+
+    try {
+      await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLElement>("p, h1, h2, h3")).find((node) =>
+            node.textContent?.includes("Add your first project"),
+          ) ?? null,
+        "Empty route should show the first-run onboarding title.",
+      );
+      const input = await waitForElement(
+        () => document.querySelector<HTMLInputElement>('input[placeholder="/path/to/project"]'),
+        "First-run onboarding should render a project-path input.",
+      );
+      await page.getByPlaceholder("/path/to/project").fill("/repo/new-project");
+      expect(input.value).toBe("/repo/new-project");
+
+      const addButton = await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+            (button) => button.textContent?.trim() === "Add project",
+          ) ?? null,
+        "First-run onboarding should render the add-project button.",
+      );
+      addButton.click();
+
+      await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Adding a project from the empty route should open a new draft thread.",
+      );
+      await waitForComposerEditor();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("offers a new-thread CTA on the empty root route when projects already exist", async () => {
+    fixture.snapshot = {
+      ...fixture.snapshot,
+      threads: [],
+    };
+    fixture.welcome = {
+      cwd: "/repo/project",
+      projectName: "Project",
+    };
+
+    const mounted = await mountApp("/");
+
+    try {
+      await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLElement>("p, h1, h2, h3")).find((node) =>
+            node.textContent?.includes("Start a new thread"),
+          ) ?? null,
+        "Empty route should offer a new-thread CTA when projects exist.",
+      );
+
+      const createThreadButton = await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+            (button) => button.textContent?.trim() === "Create new thread",
+          ) ?? null,
+        "Empty route should render the create-thread button.",
+      );
+      createThreadButton.click();
+
+      await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "The empty-state create-thread CTA should navigate to a draft thread.",
       );
       await waitForComposerEditor();
     } finally {

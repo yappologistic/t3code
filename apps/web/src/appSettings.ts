@@ -20,10 +20,13 @@ import {
 import { APP_LANGUAGE_OPTIONS, DEFAULT_APP_LANGUAGE, type AppLanguage } from "./appLanguage";
 import { normalizeApprovalRules } from "./approvalRules";
 import { CUSTOM_THEME_IDS } from "./lib/customThemes";
+import { normalizeModelPreferenceSlugs } from "./lib/modelPreferences";
 import { isOpenRouterGuaranteedFreeSlug } from "./lib/openRouterModels";
 
 const APP_SETTINGS_STORAGE_KEY = "cut3:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
+const MAX_FAVORITE_MODEL_COUNT = 32;
+const MAX_RECENT_MODEL_COUNT = 12;
 const MAX_HIDDEN_MODEL_COUNT = 512;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 export const MAX_CHAT_BACKGROUND_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -184,6 +187,36 @@ const AppSettingsSchema = Schema.Struct({
   customPiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
+  favoriteCodexModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  favoriteCopilotModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  favoriteOpencodeModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  favoriteKimiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  favoritePiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  recentCodexModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  recentCopilotModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  recentOpencodeModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  recentKimiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  recentPiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
   hiddenCodexModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
@@ -296,23 +329,9 @@ export function normalizeModelVisibilitySlugs(
   models: Iterable<string | null | undefined>,
   provider: ProviderKind = "codex",
 ): string[] {
-  const normalizedModels: string[] = [];
-  const seen = new Set<string>();
-
-  for (const candidate of models) {
-    const normalized = normalizeModelSlug(candidate, provider);
-    if (!normalized || normalized.length > MAX_CUSTOM_MODEL_LENGTH || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    normalizedModels.push(normalized);
-    if (normalizedModels.length >= MAX_HIDDEN_MODEL_COUNT) {
-      break;
-    }
-  }
-
-  return normalizedModels;
+  return normalizeModelPreferenceSlugs(models, provider, MAX_HIDDEN_MODEL_COUNT).filter(
+    (normalized) => normalized.length <= MAX_CUSTOM_MODEL_LENGTH,
+  );
 }
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
@@ -335,6 +354,56 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customOpencodeModels: normalizeCustomModelSlugs(settings.customOpencodeModels, "opencode"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
     customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
+    favoriteCodexModels: normalizeModelPreferenceSlugs(
+      settings.favoriteCodexModels,
+      "codex",
+      MAX_FAVORITE_MODEL_COUNT,
+    ),
+    favoriteCopilotModels: normalizeModelPreferenceSlugs(
+      settings.favoriteCopilotModels,
+      "copilot",
+      MAX_FAVORITE_MODEL_COUNT,
+    ),
+    favoriteOpencodeModels: normalizeModelPreferenceSlugs(
+      settings.favoriteOpencodeModels,
+      "opencode",
+      MAX_FAVORITE_MODEL_COUNT,
+    ),
+    favoriteKimiModels: normalizeModelPreferenceSlugs(
+      settings.favoriteKimiModels,
+      "kimi",
+      MAX_FAVORITE_MODEL_COUNT,
+    ),
+    favoritePiModels: normalizeModelPreferenceSlugs(
+      settings.favoritePiModels,
+      "pi",
+      MAX_FAVORITE_MODEL_COUNT,
+    ),
+    recentCodexModels: normalizeModelPreferenceSlugs(
+      settings.recentCodexModels,
+      "codex",
+      MAX_RECENT_MODEL_COUNT,
+    ),
+    recentCopilotModels: normalizeModelPreferenceSlugs(
+      settings.recentCopilotModels,
+      "copilot",
+      MAX_RECENT_MODEL_COUNT,
+    ),
+    recentOpencodeModels: normalizeModelPreferenceSlugs(
+      settings.recentOpencodeModels,
+      "opencode",
+      MAX_RECENT_MODEL_COUNT,
+    ),
+    recentKimiModels: normalizeModelPreferenceSlugs(
+      settings.recentKimiModels,
+      "kimi",
+      MAX_RECENT_MODEL_COUNT,
+    ),
+    recentPiModels: normalizeModelPreferenceSlugs(
+      settings.recentPiModels,
+      "pi",
+      MAX_RECENT_MODEL_COUNT,
+    ),
     hiddenCodexModels: normalizeModelVisibilitySlugs(settings.hiddenCodexModels, "codex"),
     hiddenCopilotModels: normalizeModelVisibilitySlugs(settings.hiddenCopilotModels, "copilot"),
     hiddenOpencodeModels: normalizeModelVisibilitySlugs(settings.hiddenOpencodeModels, "opencode"),

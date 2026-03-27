@@ -11,6 +11,7 @@ import {
 } from "../session-logic";
 import { formatCopilotRequestCost } from "./copilotBilling";
 import { formatCompactTokenCount } from "./contextWindow";
+import { prioritizeModelOptions } from "./modelPreferences";
 
 // ---------------------------------------------------------------------------
 // Picker model option type
@@ -364,6 +365,8 @@ export function buildPickerProviderSections(input: {
   visibleModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
   openRouterModelOptions: ReadonlyArray<PickerModelOption>;
   opencodeModelOptions: ReadonlyArray<PickerModelOption>;
+  favoriteModelsByProvider: Record<ProviderKind, ReadonlyArray<string>>;
+  recentModelsByProvider: Record<ProviderKind, ReadonlyArray<string>>;
   lockedProvider: ProviderKind | null;
   normalizedQuery: string;
 }): PickerProviderSection[] {
@@ -387,6 +390,11 @@ export function buildPickerProviderSections(input: {
         const haystack = [option.label, modelOption.slug, modelOption.name].join(" ").toLowerCase();
         return haystack.includes(input.normalizedQuery);
       });
+      const prioritizedModelOptions = prioritizeModelOptions(
+        filteredModelOptions,
+        input.favoriteModelsByProvider[backingProvider],
+        input.recentModelsByProvider[backingProvider],
+      );
 
       if (filteredModelOptions.length === 0 && input.normalizedQuery) {
         return null;
@@ -395,12 +403,12 @@ export function buildPickerProviderSections(input: {
       const isDisabledByProviderLock =
         input.lockedProvider !== null && input.lockedProvider !== backingProvider;
 
-      const families = groupModelsByFamily(filteredModelOptions, option.value);
+      const families = groupModelsByFamily(prioritizedModelOptions, option.value);
 
       return {
         option,
         backingProvider,
-        modelOptions: filteredModelOptions,
+        modelOptions: prioritizedModelOptions,
         families,
         isDisabledByProviderLock,
       };

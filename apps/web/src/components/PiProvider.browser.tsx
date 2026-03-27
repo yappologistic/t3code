@@ -75,11 +75,16 @@ describe("Pi provider GUI", () => {
           openCodeState={null}
           hasOpenRouterApiKey={false}
           hasKimiApiKey={false}
+          codexBinaryPath=""
+          copilotBinaryPath=""
+          opencodeBinaryPath=""
+          kimiBinaryPath=""
           isRefreshing={false}
           onRefresh={() => undefined}
           onOpenOpenRouterKeyDialog={() => undefined}
           onOpenKimiKeyDialog={() => undefined}
           onOpenManageModels={() => undefined}
+          onOpenSettings={() => undefined}
         />
       </QueryClientProvider>,
     );
@@ -95,7 +100,7 @@ describe("Pi provider GUI", () => {
 
       expect(piCard.textContent).toContain("Pi");
       expect(piCard.textContent).toContain("CUT3 embeds Pi through its Node SDK");
-      expect(piCard.textContent).toContain("Authenticate Pi outside CUT3");
+      expect(piCard.textContent).toContain("bunx pi");
     } finally {
       await screen.unmount();
       queryClient.clear();
@@ -140,6 +145,8 @@ describe("Pi provider GUI", () => {
           opencodeContextLengthsBySlug={new Map()}
           serviceTierSetting="auto"
           hasHiddenModels={false}
+          favoriteModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
+          recentModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
           onOpenUsageDashboard={() => undefined}
@@ -234,6 +241,8 @@ describe("Pi provider GUI", () => {
           opencodeContextLengthsBySlug={new Map()}
           serviceTierSetting="auto"
           hasHiddenModels={false}
+          favoriteModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
+          recentModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
           onOpenUsageDashboard={() => undefined}

@@ -22,6 +22,7 @@ import { isElectron } from "../env";
 import { useChatBackgroundImage } from "../hooks/useChatBackgroundImage";
 import { removeChatBackgroundBlob, saveChatBackgroundBlob } from "../lib/chatBackgroundStorage";
 import { formatCompactTokenCount } from "../lib/contextWindow";
+import { cn } from "../lib/utils";
 import {
   isCut3CompatibleOpenRouterModelOption,
   isOpenRouterGuaranteedFreeSlug,
@@ -188,6 +189,8 @@ function getSettingsCopy(language: AppLanguage) {
       openRouterChecking: "در حال بررسی OpenRouter برای فهرست فعلی مدل های رایگان...",
       openRouterAvailable: (count: number) =>
         `${count} مدل رایگان زنده OpenRouter در حال حاضر با مسیر بومی ابزار CUT3 سازگار ${count === 1 ? "است" : "هستند"}، به علاوه روتر داخلی.`,
+      openRouterCached: (count: number) =>
+        `CUT3 آخرین کاتالوگ سالم OpenRouter را نشان می دهد (${count} مدل رایگان سازگار به علاوه روتر داخلی) چون واکشی زنده فعلاً در دسترس نیست.`,
       openRouterUnavailable: "کشف زنده مدل های رایگان OpenRouter در حال حاضر در دسترس نیست.",
       openRouterFilteringNote: (routerSlug: string) =>
         `CUT3 فقط انتخاب هایی را نشان می دهد که روی :free یا ${routerSlug} قفل شده باشند و از ابزارها پشتیبانی کنند.`,
@@ -382,6 +385,8 @@ function getSettingsCopy(language: AppLanguage) {
     openRouterChecking: "Checking OpenRouter for the current free-model list...",
     openRouterAvailable: (count: number) =>
       `${count} live OpenRouter free model${count === 1 ? " is" : "s are"} currently compatible with CUT3's native tool-calling path, plus the built-in router.`,
+    openRouterCached: (count: number) =>
+      `CUT3 is showing the last known-good OpenRouter catalog (${count} compatible free model${count === 1 ? "" : "s"} plus the built-in router) because the live fetch is currently unavailable.`,
     openRouterUnavailable: "Live OpenRouter free-model discovery is currently unavailable.",
     openRouterFilteringNote: (routerSlug: string) =>
       `CUT3 only lists OpenRouter picks that are locked to :free or ${routerSlug} and advertise tool use.`,
@@ -608,7 +613,9 @@ function SettingsRouteView() {
     () => openRouterCatalogQuery.data?.models ?? [OPENROUTER_FREE_ROUTER_OPTION],
     [openRouterCatalogQuery.data?.models],
   );
-  const hasLiveOpenRouterCatalog = openRouterCatalogQuery.data?.status === "available";
+  const hasLiveOpenRouterCatalog =
+    openRouterCatalogQuery.data?.status === "available" &&
+    openRouterCatalogQuery.data.source === "live";
   const compatibleOpenRouterFreeModels = useMemo(
     () => openRouterFreeModels.filter(isCut3CompatibleOpenRouterModelOption),
     [openRouterFreeModels],
@@ -809,12 +816,16 @@ function SettingsRouteView() {
     ? copy.openRouterChecking
     : hasLiveOpenRouterCatalog
       ? copy.openRouterAvailable(openRouterCatalogModelCount)
-      : copy.openRouterUnavailable;
+      : openRouterCatalogQuery.data?.status === "available"
+        ? copy.openRouterCached(openRouterCatalogModelCount)
+        : copy.openRouterUnavailable;
 
   const openRouterCatalogError =
     openRouterCatalogQuery.data?.status === "unavailable"
       ? openRouterCatalogQuery.data.message
-      : null;
+      : openRouterCatalogQuery.data?.status === "available"
+        ? (openRouterCatalogQuery.data.staleReason ?? null)
+        : null;
 
   const renderCustomModelsCard = (providerSettings: (typeof MODEL_PROVIDER_SETTINGS)[number]) => {
     const provider = providerSettings.provider;
@@ -1570,7 +1581,16 @@ function SettingsRouteView() {
                         </p>
                       ) : null}
                       {openRouterCatalogError ? (
-                        <p className="mt-2 text-destructive">{openRouterCatalogError}</p>
+                        <p
+                          className={cn(
+                            "mt-2",
+                            openRouterCatalogQuery.data?.status === "available"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-destructive",
+                          )}
+                        >
+                          {openRouterCatalogError}
+                        </p>
                       ) : null}
                     </div>
 

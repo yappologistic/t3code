@@ -226,4 +226,74 @@ describe("openRouterModels", () => {
       }),
     );
   });
+
+  it("reuses the last known-good catalog when the live fetch fails", async () => {
+    const storage = new Map<string, string>();
+    storage.set(
+      "cut3:openrouter-free-models-cache:v1",
+      JSON.stringify({
+        fetchedAt: "2026-03-27T10:00:00.000Z",
+        models: [
+          {
+            slug: "openrouter/free",
+            name: "OpenRouter Free Router",
+            description: null,
+            contextLength: 200000,
+            supportsTools: true,
+            supportsToolChoice: true,
+            supportsImages: true,
+            supportsReasoning: true,
+            source: "router",
+          },
+          {
+            slug: "openai/gpt-oss-120b:free",
+            name: "GPT OSS 120B",
+            description: null,
+            contextLength: 131072,
+            supportsTools: true,
+            supportsToolChoice: true,
+            supportsImages: false,
+            supportsReasoning: true,
+            source: "catalog",
+          },
+        ],
+      }),
+    );
+    const previousWindow = (globalThis as { window?: unknown }).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: (key: string) => storage.get(key) ?? null,
+          setItem: (key: string, value: string) => {
+            storage.set(key, value);
+          },
+        },
+      },
+    });
+
+    try {
+      const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error("network down"));
+
+      await expect(readOpenRouterFreeModelCatalog(fetchImpl)).resolves.toEqual({
+        status: "available",
+        fetchedAt: "2026-03-27T10:00:00.000Z",
+        source: "cache",
+        staleReason: "network down",
+        models: [
+          expect.objectContaining({ slug: "openrouter/free" }),
+          expect.objectContaining({ slug: "openai/gpt-oss-120b:free" }),
+        ],
+      });
+    } finally {
+      if (previousWindow === undefined) {
+        Reflect.deleteProperty(globalThis, "window");
+      } else {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      }
+    }
+  });
 });

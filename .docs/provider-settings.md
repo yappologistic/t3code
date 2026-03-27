@@ -99,6 +99,7 @@ CUT3 now shows OpenRouter free models in their own settings card and their own t
 - The settings page fetches OpenRouter's live model catalog, but CUT3 only lists models that are explicitly free-locked (`openrouter/free` or `:free`) and advertise the full native tool-calling surface CUT3 needs (`tools` plus `tool_choice`).
 - You can pin any listed OpenRouter free model into the picker and `/model` suggestions with one click.
 - If the live catalog cannot be fetched, CUT3 surfaces that state in Settings instead of silently hiding it.
+- CUT3 now keeps a last-known-good compatible catalog locally, so the picker and the Settings card can continue showing the previous free-model list with a stale/offline warning instead of collapsing back to only the router entry.
 - If a pinned OpenRouter `:free` model cannot be served because the route is unavailable, overloaded, rate-limited, or filtered out by provider/privacy constraints, CUT3 automatically retries the turn through `openrouter/free` and shows a warning banner so the turn does not silently drift onto a billed model. CUT3 does not auto-retry Responses API validation failures or payment/credit errors, because those need explicit user action instead of a silent reroute.
 - OpenRouter free models still depend on OpenRouter account limits. New accounts only get a small free allowance, purchased credits raise the daily free-model limit, and negative balances can still produce `402 Payment Required` even for `openrouter/free`.
 
@@ -130,8 +131,9 @@ The chat composer now exposes a richer model picker instead of only nested provi
 
 - The picker is searchable across provider names, model labels, and raw model slugs.
 - Models are grouped by provider, with OpenRouter kept as its own top-level section.
-- `Connect provider` opens an in-chat setup panel that shows provider health, lets you add or update the shared OpenRouter key and Kimi API key, reminds you that OpenCode auth still lives in `opencode auth login` / `opencode auth logout`, and shows Pi guidance for the external `pi` / `bunx pi` + `/login` flow plus `~/.pi/agent` auth/config.
-- `Manage models` opens an in-chat model management surface with per-model visibility toggles.
+- `Provider readiness` opens an in-chat onboarding surface that summarizes local provider health, groups providers into ready / attention / unavailable states, offers copyable login commands where CUT3 knows the real CLI flow, lets you jump straight into OpenRouter/Kimi key entry, and links back to Settings for deeper runtime configuration.
+- `Manage models` opens an in-chat model management surface with per-model visibility toggles plus favorite pinning.
+- Favorites stay pinned near the top of the picker, and recent model selections are also surfaced ahead of the long tail so switching providers or models takes fewer searches.
 - Hidden models are removed from both the main picker and `/model` suggestions, but they stay saved locally so you can restore them later with `Show all`.
 
 ## Composer controls

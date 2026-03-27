@@ -11,7 +11,7 @@ Optional app settings for Codex:
 - Override the Codex home path if you keep Codex state in a non-default location.
 - Add an OpenRouter API key if you want to use Codex with `openrouter/free` or specific OpenRouter `:free` model ids.
 - Set the default Codex service tier in Settings.
-- Use the **OpenRouter Free Models** settings card to browse the live OpenRouter entries that are both free-locked and compatible with CUT3's native tool-calling path (`tools` plus `tool_choice`), then pin them into the picker.
+- Use the **OpenRouter Free Models** settings card to browse the live OpenRouter entries that are both free-locked and compatible with CUT3's native tool-calling path (`tools` plus `tool_choice`), then pin them into the picker. If the next live refresh fails, CUT3 falls back to the last known-good compatible catalog and marks it as stale instead of collapsing the list.
 - Save extra OpenRouter `:free` model ids such as `google/gemma-3n-e4b-it:free` or custom Codex model ids if you want them in the model picker and `/model` suggestions.
 - Use the composer controls to choose Codex reasoning effort and per-turn `Fast Mode`. OpenRouter models may advertise reasoning support, but CUT3 does not expose Codex-specific reasoning-effort levels for those free models.
 

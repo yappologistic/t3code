@@ -166,6 +166,8 @@ describe("buildPickerProviderSections", () => {
       visibleModelOptionsByProvider: modelOptionsByProvider,
       openRouterModelOptions: [],
       opencodeModelOptions: [],
+      favoriteModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
+      recentModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
       lockedProvider: null,
       normalizedQuery: "",
     });
@@ -180,6 +182,8 @@ describe("buildPickerProviderSections", () => {
       visibleModelOptionsByProvider: modelOptionsByProvider,
       openRouterModelOptions: [],
       opencodeModelOptions: [],
+      favoriteModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
+      recentModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
       lockedProvider: null,
       normalizedQuery: "5.4",
     });
@@ -194,6 +198,8 @@ describe("buildPickerProviderSections", () => {
       visibleModelOptionsByProvider: modelOptionsByProvider,
       openRouterModelOptions: [],
       opencodeModelOptions: [],
+      favoriteModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
+      recentModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
       lockedProvider: null,
       normalizedQuery: "zzz-no-match",
     });
@@ -206,10 +212,42 @@ describe("buildPickerProviderSections", () => {
       visibleModelOptionsByProvider: modelOptionsByProvider,
       openRouterModelOptions: [],
       opencodeModelOptions: [],
+      favoriteModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
+      recentModelsByProvider: { codex: [], copilot: [], kimi: [], opencode: [], pi: [] },
       lockedProvider: "copilot",
       normalizedQuery: "",
     });
     expect(sections).toHaveLength(1);
     expect(sections[0]!.isDisabledByProviderLock).toBe(true);
+  });
+
+  it("prioritizes favorite and recent models before the rest", () => {
+    const sections = buildPickerProviderSections({
+      availableOptions,
+      visibleModelOptionsByProvider: modelOptionsByProvider,
+      openRouterModelOptions: [],
+      opencodeModelOptions: [],
+      favoriteModelsByProvider: {
+        codex: ["gpt-5.3-codex"],
+        copilot: [],
+        kimi: [],
+        opencode: [],
+        pi: [],
+      },
+      recentModelsByProvider: {
+        codex: ["gpt-5.4"],
+        copilot: [],
+        kimi: [],
+        opencode: [],
+        pi: [],
+      },
+      lockedProvider: null,
+      normalizedQuery: "",
+    });
+
+    expect(sections[0]?.modelOptions.map((option) => option.slug)).toEqual([
+      "gpt-5.3-codex",
+      "gpt-5.4",
+    ]);
   });
 });
