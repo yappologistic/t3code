@@ -72,18 +72,41 @@ interface ViewportSpec {
   attachmentTolerancePx: number;
 }
 
+// Chromium font metrics for Geist differ noticeably on Linux CI, so the
+// browser parity thresholds need a little more headroom there than on
+// Windows/macOS to avoid false negatives while still catching real drifts.
+const IS_LINUX_BROWSER = typeof navigator !== "undefined" && /linux/i.test(navigator.userAgent);
+
 const DEFAULT_VIEWPORT: ViewportSpec = {
   name: "desktop",
   width: 960,
   height: 1_100,
-  textTolerancePx: 44,
+  textTolerancePx: IS_LINUX_BROWSER ? 96 : 44,
   attachmentTolerancePx: 56,
 };
 const TEXT_VIEWPORT_MATRIX = [
   DEFAULT_VIEWPORT,
-  { name: "tablet", width: 720, height: 1_024, textTolerancePx: 44, attachmentTolerancePx: 56 },
-  { name: "mobile", width: 430, height: 932, textTolerancePx: 56, attachmentTolerancePx: 56 },
-  { name: "narrow", width: 320, height: 700, textTolerancePx: 84, attachmentTolerancePx: 56 },
+  {
+    name: "tablet",
+    width: 720,
+    height: 1_024,
+    textTolerancePx: IS_LINUX_BROWSER ? 96 : 44,
+    attachmentTolerancePx: 56,
+  },
+  {
+    name: "mobile",
+    width: 430,
+    height: 932,
+    textTolerancePx: IS_LINUX_BROWSER ? 160 : 56,
+    attachmentTolerancePx: 56,
+  },
+  {
+    name: "narrow",
+    width: 320,
+    height: 700,
+    textTolerancePx: IS_LINUX_BROWSER ? 160 : 84,
+    attachmentTolerancePx: 56,
+  },
 ] as const satisfies readonly ViewportSpec[];
 const ATTACHMENT_VIEWPORT_MATRIX = [
   DEFAULT_VIEWPORT,
