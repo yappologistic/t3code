@@ -682,9 +682,10 @@ describe("TerminalManager", () => {
 
     if (process.platform === "win32") {
       expect(
-        ptyAdapter.spawnInputs.some(
-          (input) => input.shell === "cmd.exe" || input.shell === "powershell.exe",
-        ),
+        ptyAdapter.spawnInputs.some((input) => {
+          const shellName = path.basename(input.shell).toLowerCase();
+          return shellName === "cmd.exe" || shellName === "powershell.exe";
+        }),
       ).toBe(true);
     } else {
       expect(

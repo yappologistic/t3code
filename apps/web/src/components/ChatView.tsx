@@ -289,6 +289,7 @@ import {
 } from "../appSettings";
 import { type AppLanguage } from "../appLanguage";
 import { isTerminalFocused } from "../lib/terminalFocus";
+import { buildNewThreadDraftContextPatch } from "../lib/newThreadDraftContext";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -1310,10 +1311,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (!activeProject) {
         throw new Error("No active project is available for this pull request.");
       }
+      const draftContextPatch = buildNewThreadDraftContextPatch(input);
+      if (!draftContextPatch) {
+        throw new Error("Pull request draft context could not be resolved.");
+      }
       const storedDraftThread = getDraftThreadByProjectId(activeProject.id);
       if (storedDraftThread) {
-        setDraftThreadContext(storedDraftThread.threadId, input);
-        setProjectDraftThreadId(activeProject.id, storedDraftThread.threadId, input);
+        setDraftThreadContext(storedDraftThread.threadId, draftContextPatch);
+        setProjectDraftThreadId(activeProject.id, storedDraftThread.threadId, draftContextPatch);
         if (storedDraftThread.threadId !== threadId) {
           await navigate({
             to: "/$threadId",
@@ -1325,8 +1330,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
       const activeDraftThread = getDraftThread(threadId);
       if (!isServerThread && activeDraftThread?.projectId === activeProject.id) {
-        setDraftThreadContext(threadId, input);
-        setProjectDraftThreadId(activeProject.id, threadId, input);
+        setDraftThreadContext(threadId, draftContextPatch);
+        setProjectDraftThreadId(activeProject.id, threadId, draftContextPatch);
         return;
       }
 
@@ -1336,7 +1341,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         createdAt: new Date().toISOString(),
         runtimeMode: DEFAULT_RUNTIME_MODE,
         interactionMode: DEFAULT_INTERACTION_MODE,
-        ...input,
+        ...draftContextPatch,
       });
       await navigate({
         to: "/$threadId",
@@ -6210,7 +6215,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (isLocalDraftThread) {
-        setDraftThreadContext(threadId, { envMode: mode });
+        const draftContextPatch = buildNewThreadDraftContextPatch({ envMode: mode });
+        if (draftContextPatch) {
+          setDraftThreadContext(threadId, draftContextPatch);
+        }
       }
       scheduleComposerFocus();
     },

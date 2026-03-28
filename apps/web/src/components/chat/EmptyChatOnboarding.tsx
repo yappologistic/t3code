@@ -182,6 +182,7 @@ export function EmptyChatOnboarding() {
           <MessageSquarePlusIcon className="size-4" />
           {copy.createThread}
         </Button>
+        {addProjectError ? <p className="text-xs text-destructive">{addProjectError}</p> : null}
         <p className="text-xs text-muted-foreground">{copy.sidebarHint}</p>
       </div>
     </div>

@@ -711,6 +711,21 @@ async function waitForProductionStyles(): Promise<void> {
       interval: 16,
     },
   );
+
+  if ("fonts" in document) {
+    await document.fonts.ready;
+    await vi
+      .waitFor(
+        () => {
+          expect(document.fonts.check('14px "Geist Sans"')).toBe(true);
+        },
+        {
+          timeout: 4_000,
+          interval: 16,
+        },
+      )
+      .catch(() => undefined);
+  }
 }
 
 async function waitForElement<T extends Element>(

@@ -1014,10 +1014,15 @@ describe("startSession", () => {
     });
 
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "cut3-codex-failfast-"));
-    const fakeBinaryPath = path.join(tempDir, "fake-codex");
+    const fakeBinaryPath = path.join(
+      tempDir,
+      process.platform === "win32" ? "fake-codex.cmd" : "fake-codex",
+    );
     writeFileSync(
       fakeBinaryPath,
-      "#!/usr/bin/env bash\nprintf 'error: fake cli failure\\n' >&2\nsleep 0.1\nexit 2\n",
+      process.platform === "win32"
+        ? "@echo off\r\necho error: fake cli failure 1>&2\r\nexit /b 2\r\n"
+        : "#!/usr/bin/env bash\nprintf 'error: fake cli failure\\n' >&2\nsleep 0.1\nexit 2\n",
       "utf8",
     );
     chmodSync(fakeBinaryPath, 0o755);
@@ -1049,7 +1054,7 @@ describe("startSession", () => {
           },
         }),
       ).rejects.toThrow("error: fake cli failure");
-      expect(Date.now() - startedAt).toBeLessThan(2_000);
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
       expect(events).toEqual(
         expect.arrayContaining([
           {

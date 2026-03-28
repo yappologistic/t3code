@@ -9,6 +9,7 @@ import { newCommandId, newProjectId } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
 import { useStore } from "../store";
 import { useSidebarPreferencesStore } from "../sidebarPreferencesStore";
+import { workspacePathsLikelyMatch } from "../lib/projectPathMatching";
 
 function titleFromWorkspacePath(cwd: string): string {
   return cwd.split(/[/\\]/).findLast((segment) => segment.trim().length > 0) ?? cwd;
@@ -72,7 +73,7 @@ export function useProjectCreationActions() {
       setIsAddingProject(true);
       setAddProjectError(null);
       try {
-        const existing = projects.find((project) => project.cwd === cwd);
+        const existing = projects.find((project) => workspacePathsLikelyMatch(project.cwd, cwd));
         if (existing) {
           await focusBestProjectTarget(existing.id);
           setNewCwd("");
@@ -89,9 +90,18 @@ export function useProjectCreationActions() {
           defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
           createdAt: new Date().toISOString(),
         });
-        await openNewThread(projectId, {
-          envMode: settings.defaultThreadEnvMode,
-        }).catch(() => undefined);
+        try {
+          await openNewThread(projectId, {
+            envMode: settings.defaultThreadEnvMode,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error && error.message.trim().length > 0
+              ? `Project was added, but CUT3 could not open its first draft thread: ${error.message}`
+              : "Project was added, but CUT3 could not open its first draft thread.";
+          setAddProjectError(message);
+          return { ok: false, message };
+        }
         setNewCwd("");
         return { ok: true };
       } catch (error) {

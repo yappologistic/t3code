@@ -58,8 +58,10 @@ function normalizeShellCommand(value: string | undefined): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
 
-  if (process.platform === "win32") {
-    return trimmed;
+  const quotedMatch =
+    trimmed.match(/^"([^"]+)"(?:\s+.*)?$/) ?? trimmed.match(/^'([^']+)'(?:\s+.*)?$/);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1];
   }
 
   const firstToken = trimmed.split(/\s+/g)[0]?.trim();

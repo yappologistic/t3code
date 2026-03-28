@@ -514,6 +514,43 @@ describe("Keybindings update toast", () => {
     }
   });
 
+  it("clears inherited worktree context when the new-local-chat shortcut reuses an existing draft", async () => {
+    const draftThreadId = "draft-thread-local-reset" as ThreadId;
+    useComposerDraftStore.getState().setProjectDraftThreadId(PROJECT_ID, draftThreadId, {
+      createdAt: NOW_ISO,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: "feature/worktree",
+      worktreePath: "/repo/project/.worktrees/feature-worktree",
+      envMode: "worktree",
+    });
+
+    const mounted = await mountApp();
+
+    try {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "N",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+
+      await vi.waitFor(() => {
+        expect(mounted.router.state.location.pathname).toBe(`/${draftThreadId}`);
+      });
+
+      expect(useComposerDraftStore.getState().getDraftThread(draftThreadId)).toMatchObject({
+        branch: null,
+        worktreePath: null,
+        envMode: "local",
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("shows thread-scoped command palette actions as disabled without an open thread", async () => {
     const mounted = await mountApp("/settings");
 

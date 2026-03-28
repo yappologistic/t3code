@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../composerDraftStore";
 import { newThreadId } from "../lib/utils";
+import { buildNewThreadDraftContextPatch } from "../lib/newThreadDraftContext";
 import { useStore } from "../store";
 
 export interface NewThreadOptions {
@@ -39,18 +40,12 @@ export function useNewThreadActions() {
 
   const openNewThread = useCallback(
     (projectId: ProjectId, options?: NewThreadOptions): Promise<void> => {
-      const hasBranchOption = options?.branch !== undefined;
-      const hasWorktreePathOption = options?.worktreePath !== undefined;
-      const hasEnvModeOption = options?.envMode !== undefined;
+      const draftContextPatch = buildNewThreadDraftContextPatch(options);
       const storedDraftThread = getDraftThreadByProjectId(projectId);
       if (storedDraftThread) {
         return (async () => {
-          if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-            setDraftThreadContext(storedDraftThread.threadId, {
-              ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-              ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-              ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-            });
+          if (draftContextPatch) {
+            setDraftThreadContext(storedDraftThread.threadId, draftContextPatch);
           }
           setProjectDraftThreadId(projectId, storedDraftThread.threadId);
           if (routeThreadId === storedDraftThread.threadId) {
@@ -67,12 +62,8 @@ export function useNewThreadActions() {
 
       const routeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
       if (routeDraftThread && routeThreadId && routeDraftThread.projectId === projectId) {
-        if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-          setDraftThreadContext(routeThreadId, {
-            ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-            ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-            ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-          });
+        if (draftContextPatch) {
+          setDraftThreadContext(routeThreadId, draftContextPatch);
         }
         setProjectDraftThreadId(projectId, routeThreadId);
         return Promise.resolve();

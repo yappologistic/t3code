@@ -1453,7 +1453,7 @@ describe("WebSocket Server", () => {
       editor: "cursor",
     });
     expect(response.error).toBeUndefined();
-    expect(openCalls).toEqual([{ cwd: "/my/workspace", editor: "cursor" }]);
+    expect(openCalls).toEqual([{ cwd: path.resolve("/my/workspace"), editor: "cursor" }]);
   });
 
   it("allows shell.openInEditor for the keybindings config path", async () => {
@@ -2445,18 +2445,18 @@ describe("WebSocket Server", () => {
     const listResponse = await sendRequest(ws, WS_METHODS.gitListBranches, { cwd: "/repo/path" });
     expect(listResponse.error).toBeUndefined();
     expect(listResponse.result).toEqual({ branches: [], isRepo: false, hasPreferredRemote: false });
-    expect(listBranches).toHaveBeenCalledWith({ cwd: "/repo/path" });
+    expect(listBranches).toHaveBeenCalledWith({ cwd: path.resolve("/repo/path") });
 
     const initResponse = await sendRequest(ws, WS_METHODS.gitInit, { cwd: "/repo/path" });
     expect(initResponse.error).toBeUndefined();
-    expect(initRepo).toHaveBeenCalledWith({ cwd: "/repo/path" });
+    expect(initRepo).toHaveBeenCalledWith({ cwd: path.resolve("/repo/path") });
 
     const pullResponse = await sendRequest(ws, WS_METHODS.gitPull, { cwd: "/repo/path" });
     expect(pullResponse.result).toBeUndefined();
     expect(pullResponse.error?.message).toBe(
       "Git command failed in GitCore.test.pullCurrentBranch: git pull (/repo/path) - No upstream configured",
     );
-    expect(pullCurrentBranch).toHaveBeenCalledWith("/repo/path");
+    expect(pullCurrentBranch).toHaveBeenCalledWith(path.resolve("/repo/path"));
   });
 
   it("supports git.status over websocket", async () => {
@@ -2497,7 +2497,7 @@ describe("WebSocket Server", () => {
     });
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual(statusResult);
-    expect(status).toHaveBeenCalledWith({ cwd: "/test" });
+    expect(status).toHaveBeenCalledWith({ cwd: path.resolve("/test") });
   });
 
   it("returns an error when a route handler produces an invalid websocket response payload", async () => {
@@ -2570,11 +2570,11 @@ describe("WebSocket Server", () => {
     expect(prepareResponse.error).toBeUndefined();
     expect(prepareResponse.result).toEqual(preparePullRequestThreadResult);
     expect(gitManager.resolvePullRequest).toHaveBeenCalledWith({
-      cwd: "/test",
+      cwd: path.resolve("/test"),
       reference: "#42",
     });
     expect(gitManager.preparePullRequestThread).toHaveBeenCalledWith({
-      cwd: "/test",
+      cwd: path.resolve("/test"),
       reference: "42",
       mode: "worktree",
     });
@@ -2652,7 +2652,7 @@ describe("WebSocket Server", () => {
       "Git manager failed in GitManager.test.runStackedAction: Cannot push from detached HEAD.",
     );
     expect(runStackedAction).toHaveBeenCalledWith({
-      cwd: "/test",
+      cwd: path.resolve("/test"),
       action: "commit_push",
     });
   });
