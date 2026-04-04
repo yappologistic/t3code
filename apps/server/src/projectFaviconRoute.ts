@@ -13,6 +13,11 @@ const FALLBACK_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
 
 // Well-known favicon paths checked in order.
 const FAVICON_CANDIDATES = [
+  // Project-local Rowl icon (highest priority custom icon)
+  ".rowl/icon.svg",
+  ".rowl/icon.png",
+  ".rowl/icon.ico",
+  ".rowl/icon.jpg",
   "favicon.svg",
   "favicon.ico",
   "favicon.png",
