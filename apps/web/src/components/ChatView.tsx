@@ -1693,7 +1693,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return false;
     }
     if (selectedProvider === "codex" && selectedModelUsesOpenRouter) {
-      return selectedOpenRouterModel?.supportsImages ?? false;
+      if (selectedOpenRouterModel) {
+        return selectedOpenRouterModel.supportsImages;
+      }
+      const codexModelOption = allModelOptionsByProvider.codex.find(
+        (m) => m.slug === selectedModel,
+      );
+      return codexModelOption?.supportsImageInput ?? false;
     }
     if (selectedProvider === "pi") {
       return providerStatusModelOptionsByProvider.pi.some(
@@ -8806,7 +8812,7 @@ function getCustomModelOptionsByProvider(
 
   return {
     codex: mergeModelOptions(
-      providerStatusModelsByProvider.codex,
+      mergeModelOptions(providerStatusModelsByProvider.codex, configuredModelsByProvider.codex),
       getAppModelOptions("codex", settings.customCodexModels),
     ),
     copilot: mergeModelOptions(

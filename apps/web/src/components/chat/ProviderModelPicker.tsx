@@ -549,17 +549,19 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
   // Collapsed state management
   const STORAGE_KEY = "rowl:model-picker:collapsed-sections";
-  const [collapsedSections, setCollapsedSections] = useState<Set<AvailableProviderPickerKind>>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return new Set(JSON.parse(stored) as AvailableProviderPickerKind[]);
+  const [collapsedSections, setCollapsedSections] = useState<Set<AvailableProviderPickerKind>>(
+    () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          return new Set(JSON.parse(stored) as AvailableProviderPickerKind[]);
+        }
+      } catch {
+        // ignore parse errors
       }
-    } catch {
-      // ignore parse errors
-    }
-    return new Set();
-  });
+      return new Set();
+    },
+  );
 
   // Auto-expand selected provider when popover opens
   useEffect(() => {
@@ -604,8 +606,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     setCollapsedSections(new Set(providerSections.map((s) => s.option.value)));
   }, [providerSections]);
 
-  const allCollapsed = providerSections.length > 0 && providerSections.every((s) => collapsedSections.has(s.option.value));
-  const allExpanded = providerSections.length > 0 && providerSections.every((s) => !collapsedSections.has(s.option.value));
+  const allCollapsed =
+    providerSections.length > 0 &&
+    providerSections.every((s) => collapsedSections.has(s.option.value));
+  const allExpanded =
+    providerSections.length > 0 &&
+    providerSections.every((s) => !collapsedSections.has(s.option.value));
 
   const unavailableOptions = useMemo(() => {
     const placeholderOptions = [

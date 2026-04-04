@@ -111,33 +111,30 @@ export function ProjectIconDialog({
     }
   }, [open]);
 
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      if (!ACCEPTED_TYPES.includes(file.type)) {
-        setError("Please select a PNG, JPEG, SVG, or ICO file.");
-        return;
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setError("Please select a PNG, JPEG, SVG, or ICO file.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      let dataUrl: string;
+      if (file.type === "image/svg+xml" || file.type === "image/x-icon") {
+        dataUrl = await fileToDataUrl(file);
+      } else {
+        dataUrl = await resizeImageToDataUrl(file, 64);
       }
-
-      setError(null);
-
-      try {
-        let dataUrl: string;
-        if (file.type === "image/svg+xml" || file.type === "image/x-icon") {
-          dataUrl = await fileToDataUrl(file);
-        } else {
-          dataUrl = await resizeImageToDataUrl(file, 64);
-        }
-        setSelectedFile(file);
-        setPreview(dataUrl);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to process image.");
-      }
-    },
-    [],
-  );
+      setSelectedFile(file);
+      setPreview(dataUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process image.");
+    }
+  }, []);
 
   const handleSave = useCallback(async () => {
     if (!preview) return;

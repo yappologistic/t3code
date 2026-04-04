@@ -417,9 +417,7 @@ function ProjectFavicon({ cwd, refreshKey }: { cwd: string; refreshKey?: number 
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
   const key = refreshKey ?? 0;
 
-  const src = resolveServerHttpUrl(
-    `/api/project-favicon?cwd=${encodeURIComponent(cwd)}&k=${key}`,
-  );
+  const src = resolveServerHttpUrl(`/api/project-favicon?cwd=${encodeURIComponent(cwd)}&k=${key}`);
 
   if (status === "error") {
     return <FolderIcon className="size-3.5 shrink-0 text-sidebar-foreground/70" />;
@@ -1137,7 +1135,12 @@ export default function Sidebar() {
         return;
       }
       if (clicked === "icon") {
-        setIconDialogState({ open: true, projectId, projectName: project.name, projectCwd: project.cwd });
+        setIconDialogState({
+          open: true,
+          projectId,
+          projectName: project.name,
+          projectCwd: project.cwd,
+        });
         return;
       }
       if (clicked !== "delete") return;
@@ -1729,7 +1732,10 @@ export default function Sidebar() {
                                   project.expanded ? "rotate-90" : ""
                                 }`}
                               />
-                              <ProjectFavicon cwd={project.cwd} refreshKey={projectIconRefreshKeys[project.id] ?? 0} />
+                              <ProjectFavicon
+                                cwd={project.cwd}
+                                refreshKey={projectIconRefreshKeys[project.id] ?? 0}
+                              />
                               <span className="flex-1 truncate text-xs font-medium text-foreground/90">
                                 {project.name}
                               </span>
