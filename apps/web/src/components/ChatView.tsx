@@ -1688,6 +1688,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedCodexSupportsFastMode =
     selectedProvider === "codex" && !selectedModelUsesOpenRouter;
+  const selectedModelSupportsImages = useMemo(() => {
+    if (selectedProvider === "opencode") {
+      return false;
+    }
+    if (selectedProvider === "codex" && selectedModelUsesOpenRouter) {
+      return selectedOpenRouterModel?.supportsImages ?? false;
+    }
+    if (selectedProvider === "pi") {
+      return providerStatusModelOptionsByProvider.pi.some(
+        (m) => m.slug === selectedModel && m.supportsImageInput,
+      );
+    }
+    const providerModels = allModelOptionsByProvider[selectedProvider];
+    const modelOption = providerModels.find((m) => m.slug === selectedModel);
+    return modelOption?.supportsImageInput ?? false;
+  }, [
+    selectedProvider,
+    selectedModel,
+    selectedModelUsesOpenRouter,
+    selectedOpenRouterModel,
+    providerStatusModelOptionsByProvider.pi,
+    allModelOptionsByProvider,
+  ]);
   const copilotReasoningProbeQuery = useQuery(
     serverCopilotReasoningProbeQueryOptions(
       {
@@ -4230,6 +4253,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   const addComposerImages = (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
+
+    if (!selectedModelSupportsImages) {
+      return;
+    }
 
     if (pendingUserInputs.length > 0) {
       toastManager.add({
@@ -7352,14 +7379,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 variant="ghost"
                                 className="rounded-full"
                                 aria-label={chatCopy.attachImages}
-                                disabled={isConnecting}
+                                disabled={isConnecting || !selectedModelSupportsImages}
                                 onClick={() => composerFileInputRef.current?.click()}
                               />
                             }
                           >
                             <PaperclipIcon className="size-3.5" />
                           </TooltipTrigger>
-                          <TooltipPopup side="top">{chatCopy.attachImagesTooltip}</TooltipPopup>
+                          <TooltipPopup side="top">
+                            {selectedModelSupportsImages
+                              ? chatCopy.attachImagesTooltip
+                              : chatCopy.attachImagesNotSupported}
+                          </TooltipPopup>
                         </Tooltip>
                       ) : null}
                       {isPreparingWorktree ? (
@@ -8826,6 +8857,7 @@ function getChatSurfaceCopy(language: AppLanguage) {
       attachImages: "پیوست کردن تصاویر",
       attachImagesTooltip:
         "تصاویر را انتخاب، رها، یا پیست کنید؛ حداکثر ۸ تصویر و هر کدام تا ۱۰ مگابایت",
+      attachImagesNotSupported: "مدل فعلی از تصاویر پشتیبانی نمی‌کند",
       followUpQueued: "پیگیری در صف قرار گرفت",
       steeringCurrentRun: "در حال هدایت نوبت فعلی",
       steeringCurrentRunHint: "Rowl نوبت فعلی را متوقف می کند و این پیگیری را بعدی می فرستد.",
@@ -8883,6 +8915,7 @@ function getChatSurfaceCopy(language: AppLanguage) {
     queuedFollowUpsFailedHint: "Retry or remove failed items before sending more follow-ups.",
     attachImages: "Attach images",
     attachImagesTooltip: "Attach images · drag, paste, or pick up to 8 images (10 MB each)",
+    attachImagesNotSupported: "Images not supported by current model",
     followUpQueued: "Follow-up queued",
     steeringCurrentRun: "Steering current run",
     steeringCurrentRunHint: "Rowl will stop the current turn and send this follow-up next.",
