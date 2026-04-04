@@ -41,7 +41,7 @@ const wsLink = ws.link(/ws(s)?:\/\/.*/);
 function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.cut3-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.rowl-keybindings.json",
     keybindings: [],
     issues: [],
     providers: [

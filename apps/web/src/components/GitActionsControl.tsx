@@ -63,7 +63,7 @@ interface PendingDefaultBranchAction {
 }
 
 type GitActionToastId = ReturnType<typeof toastManager.add>;
-const PREFERRED_REMOTE_NAME = "CUT3";
+const PREFERRED_REMOTE_NAME = "Rowl";
 
 function getGitActionsUiCopy(language: AppLanguage) {
   if (language === "fa") {

@@ -20,7 +20,7 @@ type ThemeSnapshot = {
   customThemeId: CustomThemeId;
 };
 
-const STORAGE_KEY = "cut3:theme";
+const STORAGE_KEY = "rowl:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 let listeners: Array<() => void> = [];

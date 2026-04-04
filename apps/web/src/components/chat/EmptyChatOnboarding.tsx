@@ -13,18 +13,18 @@ function getEmptyChatOnboardingCopy(language: "en" | "fa") {
   if (language === "fa") {
     return {
       loadingTitle: "در حال آماده سازی پروژه ها...",
-      loadingDescription: "CUT3 در حال همگام سازی فضای کاری محلی شما است.",
+      loadingDescription: "Rowl در حال همگام سازی فضای کاری محلی شما است.",
       noProjectsTitle: "اولین پروژه خود را اضافه کنید",
       noProjectsDescription:
-        "CUT3 به یک پوشه پروژه نیاز دارد تا بتواند thread ها را ایجاد کند، دستورهای محلی را کشف کند، و AGENTS.md و skill های فضای کاری را بخواند.",
+        "Rowl به یک پوشه پروژه نیاز دارد تا بتواند thread ها را ایجاد کند، دستورهای محلی را کشف کند، و AGENTS.md و skill های فضای کاری را بخواند.",
       browse: "مرور پوشه",
       addProject: "افزودن پروژه",
       pathLabel: "مسیر پروژه",
       pathPlaceholder: "/path/to/project",
-      nextStepHint: "بعد از افزودن پروژه، CUT3 فوراً اولین thread پیش نویس را برای شما باز می کند.",
+      nextStepHint: "بعد از افزودن پروژه، Rowl فوراً اولین thread پیش نویس را برای شما باز می کند.",
       existingProjectsTitle: "یک thread جدید شروع کنید",
       existingProjectsDescription: (count: number) =>
-        `${count} پروژه از قبل در CUT3 موجود است. می توانید یک thread جدید بسازید یا از سایدبار یک thread قبلی را ادامه دهید.`,
+        `${count} پروژه از قبل در Rowl موجود است. می توانید یک thread جدید بسازید یا از سایدبار یک thread قبلی را ادامه دهید.`,
       createThread: "ایجاد thread جدید",
       sidebarHint: "یا یک thread موجود را از سایدبار انتخاب کنید.",
     };
@@ -32,19 +32,19 @@ function getEmptyChatOnboardingCopy(language: "en" | "fa") {
 
   return {
     loadingTitle: "Preparing your projects...",
-    loadingDescription: "CUT3 is syncing the local workspace state.",
+    loadingDescription: "Rowl is syncing the local workspace state.",
     noProjectsTitle: "Add your first project",
     noProjectsDescription:
-      "CUT3 needs a project folder before it can create threads, discover repo-local commands, and read workspace AGENTS.md and skills.",
+      "Rowl needs a project folder before it can create threads, discover repo-local commands, and read workspace AGENTS.md and skills.",
     browse: "Browse for folder",
     addProject: "Add project",
     pathLabel: "Project path",
     pathPlaceholder: "/path/to/project",
     nextStepHint:
-      "After you add a project, CUT3 immediately opens your first draft thread so you can start working right away.",
+      "After you add a project, Rowl immediately opens your first draft thread so you can start working right away.",
     existingProjectsTitle: "Start a new thread",
     existingProjectsDescription: (count: number) =>
-      `${count} project${count === 1 ? " is" : "s are"} already available in CUT3. Start a new thread or resume one from the sidebar.`,
+      `${count} project${count === 1 ? " is" : "s are"} already available in Rowl. Start a new thread or resume one from the sidebar.`,
     createThread: "Create new thread",
     sidebarHint: "Or pick an existing thread from the sidebar.",
   };

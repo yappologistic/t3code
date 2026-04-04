@@ -10,8 +10,8 @@ import { getAppModelOptions } from "../appSettings";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 
-export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "cut3:last-invoked-script-by-project";
-const WORKTREE_BRANCH_PREFIX = "cut3";
+export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "rowl:last-invoked-script-by-project";
+const WORKTREE_BRANCH_PREFIX = "rowl";
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 

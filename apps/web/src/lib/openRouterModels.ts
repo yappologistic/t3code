@@ -30,7 +30,7 @@ export type OpenRouterFreeModelCatalog =
       readonly models: ReadonlyArray<OpenRouterFreeModelOption>;
     };
 
-const OPENROUTER_FREE_MODEL_CACHE_STORAGE_KEY = "cut3:openrouter-free-models-cache:v1";
+const OPENROUTER_FREE_MODEL_CACHE_STORAGE_KEY = "rowl:openrouter-free-models-cache:v1";
 
 export const OPENROUTER_FREE_ROUTER_OPTION: OpenRouterFreeModelOption = {
   slug: OPENROUTER_FREE_ROUTER_MODEL,

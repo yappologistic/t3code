@@ -42,7 +42,7 @@ import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 
-const ENABLE_PROVIDER_EVENT_LOGS_ENV = "CUT3_ENABLE_PROVIDER_EVENT_LOGS";
+const ENABLE_PROVIDER_EVENT_LOGS_ENV = "ROWL_ENABLE_PROVIDER_EVENT_LOGS";
 
 function shouldEnableProviderEventLogs(): boolean {
   const raw = process.env[ENABLE_PROVIDER_EVENT_LOGS_ENV]?.trim().toLowerCase();

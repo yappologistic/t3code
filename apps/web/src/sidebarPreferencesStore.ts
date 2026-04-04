@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { filterArchivedIds, type SidebarProjectSortMode } from "./lib/threadOrdering";
 
-const SIDEBAR_PREFERENCES_STORAGE_KEY = "cut3:sidebar-preferences:v1";
+const SIDEBAR_PREFERENCES_STORAGE_KEY = "rowl:sidebar-preferences:v1";
 
 interface PersistedSidebarPreferencesState {
   pinnedProjectIds: ProjectId[];

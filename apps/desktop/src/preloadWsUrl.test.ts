@@ -7,7 +7,7 @@ describe("resolveInitialDesktopWsUrl", () => {
     expect(
       resolveInitialDesktopWsUrl({
         envValue: "ws://127.0.0.1:3773/?token=env-token",
-        argv: ["electron", "app.js", "--cut3-desktop-ws-url=ws://127.0.0.1:4000"],
+        argv: ["electron", "app.js", "--rowl-desktop-ws-url=ws://127.0.0.1:4000"],
       }),
     ).toBe("ws://127.0.0.1:3773/?token=env-token");
   });
@@ -16,7 +16,7 @@ describe("resolveInitialDesktopWsUrl", () => {
     expect(
       resolveInitialDesktopWsUrl({
         envValue: undefined,
-        argv: ["electron", "app.js", "--cut3-desktop-ws-url=ws://127.0.0.1:4000/?token=test"],
+        argv: ["electron", "app.js", "--rowl-desktop-ws-url=ws://127.0.0.1:4000/?token=test"],
       }),
     ).toBe("ws://127.0.0.1:4000/?token=test");
   });

@@ -42,7 +42,7 @@ export function getAutoUpdateDisabledReason(args: {
     return "Automatic updates are only available in packaged production builds.";
   }
   if (args.disabledByEnv) {
-    return "Automatic updates are disabled by the CUT3_DISABLE_AUTO_UPDATE setting.";
+    return "Automatic updates are disabled by the ROWL_DISABLE_AUTO_UPDATE setting.";
   }
   if (args.platform === "linux" && !args.appImage) {
     return "Automatic updates on Linux require running the AppImage build.";

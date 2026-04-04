@@ -30,10 +30,10 @@ const MODE_ARGS = {
     "--ui=tui",
     "--filter=@t3tools/contracts",
     "--filter=@t3tools/web",
-    "--filter=cut3",
+    "--filter=rowl",
     "--parallel",
   ],
-  "dev:server": ["run", "dev", "--filter=cut3"],
+  "dev:server": ["run", "dev", "--filter=rowl"],
   "dev:web": ["run", "dev", "--filter=@t3tools/web"],
   "dev:desktop": ["run", "dev", "--filter=@t3tools/desktop", "--filter=@t3tools/web", "--parallel"],
 } as const satisfies Record<string, ReadonlyArray<string>>;
@@ -86,8 +86,8 @@ const optionalUrlConfig = (name: string): Config.Config<URL | undefined> =>
   );
 
 const OffsetConfig = Config.all({
-  portOffset: optionalIntegerConfig("CUT3_PORT_OFFSET"),
-  devInstance: optionalStringConfig("CUT3_DEV_INSTANCE"),
+  portOffset: optionalIntegerConfig("ROWL_PORT_OFFSET"),
+  devInstance: optionalStringConfig("ROWL_DEV_INSTANCE"),
 });
 
 export function resolveOffset(config: {
@@ -96,11 +96,11 @@ export function resolveOffset(config: {
 }): { readonly offset: number; readonly source: string } {
   if (config.portOffset !== undefined) {
     if (config.portOffset < 0) {
-      throw new Error(`Invalid CUT3_PORT_OFFSET: ${config.portOffset}`);
+      throw new Error(`Invalid ROWL_PORT_OFFSET: ${config.portOffset}`);
     }
     return {
       offset: config.portOffset,
-      source: `CUT3_PORT_OFFSET=${config.portOffset}`,
+      source: `ROWL_PORT_OFFSET=${config.portOffset}`,
     };
   }
 
@@ -110,11 +110,11 @@ export function resolveOffset(config: {
   }
 
   if (/^\d+$/.test(seed)) {
-    return { offset: Number(seed), source: `numeric CUT3_DEV_INSTANCE=${seed}` };
+    return { offset: Number(seed), source: `numeric ROWL_DEV_INSTANCE=${seed}` };
   }
 
   const offset = ((Hash.string(seed) >>> 0) % MAX_HASH_OFFSET) + 1;
-  return { offset, source: `hashed CUT3_DEV_INSTANCE=${seed}` };
+  return { offset, source: `hashed ROWL_DEV_INSTANCE=${seed}` };
 }
 
 function resolveStateDir(stateDir: string | undefined): Effect.Effect<string, never, Path.Path> {
@@ -288,50 +288,50 @@ export function createDevRunnerEnv({
 
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
-      CUT3_PORT: String(serverPort),
+      ROWL_PORT: String(serverPort),
       PORT: String(webPort),
       ELECTRON_RENDERER_PORT: String(webPort),
       VITE_WS_URL: withWsAuthToken(`ws://${urlHost}:${serverPort}`, authToken),
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://${urlHost}:${webPort}`,
-      CUT3_STATE_DIR: resolvedStateDir,
+      ROWL_STATE_DIR: resolvedStateDir,
     };
 
     if (host !== undefined) {
-      output.CUT3_HOST = host;
+      output.ROWL_HOST = host;
     }
 
     if (authToken !== undefined) {
-      output.CUT3_AUTH_TOKEN = authToken;
+      output.ROWL_AUTH_TOKEN = authToken;
     } else {
-      delete output.CUT3_AUTH_TOKEN;
+      delete output.ROWL_AUTH_TOKEN;
     }
 
     if (noBrowser !== undefined) {
-      output.CUT3_NO_BROWSER = noBrowser ? "1" : "0";
+      output.ROWL_NO_BROWSER = noBrowser ? "1" : "0";
     } else {
-      delete output.CUT3_NO_BROWSER;
+      delete output.ROWL_NO_BROWSER;
     }
 
     if (autoBootstrapProjectFromCwd !== undefined) {
-      output.CUT3_AUTO_BOOTSTRAP_PROJECT_FROM_CWD = autoBootstrapProjectFromCwd ? "1" : "0";
+      output.ROWL_AUTO_BOOTSTRAP_PROJECT_FROM_CWD = autoBootstrapProjectFromCwd ? "1" : "0";
     } else {
-      delete output.CUT3_AUTO_BOOTSTRAP_PROJECT_FROM_CWD;
+      delete output.ROWL_AUTO_BOOTSTRAP_PROJECT_FROM_CWD;
     }
 
     if (logWebSocketEvents !== undefined) {
-      output.CUT3_LOG_WS_EVENTS = logWebSocketEvents ? "1" : "0";
+      output.ROWL_LOG_WS_EVENTS = logWebSocketEvents ? "1" : "0";
     } else {
-      delete output.CUT3_LOG_WS_EVENTS;
+      delete output.ROWL_LOG_WS_EVENTS;
     }
 
     if (mode === "dev") {
-      output.CUT3_MODE = "web";
-      delete output.CUT3_DESKTOP_WS_URL;
+      output.ROWL_MODE = "web";
+      delete output.ROWL_DESKTOP_WS_URL;
     }
 
     if (mode === "dev:server" || mode === "dev:web") {
-      output.CUT3_MODE = "web";
-      delete output.CUT3_DESKTOP_WS_URL;
+      output.ROWL_MODE = "web";
+      delete output.ROWL_DESKTOP_WS_URL;
     }
 
     return output;
@@ -525,7 +525,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       Effect.mapError(
         (cause) =>
           new DevRunnerError({
-            message: "Failed to read CUT3_PORT_OFFSET/CUT3_DEV_INSTANCE configuration.",
+            message: "Failed to read ROWL_PORT_OFFSET/ROWL_DEV_INSTANCE configuration.",
             cause,
           }),
       ),
@@ -541,9 +541,9 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     });
 
     const envOverrides = {
-      noBrowser: readOptionalBooleanEnv("CUT3_NO_BROWSER"),
-      autoBootstrapProjectFromCwd: readOptionalBooleanEnv("CUT3_AUTO_BOOTSTRAP_PROJECT_FROM_CWD"),
-      logWebSocketEvents: readOptionalBooleanEnv("CUT3_LOG_WS_EVENTS"),
+      noBrowser: readOptionalBooleanEnv("ROWL_NO_BROWSER"),
+      autoBootstrapProjectFromCwd: readOptionalBooleanEnv("ROWL_AUTO_BOOTSTRAP_PROJECT_FROM_CWD"),
+      logWebSocketEvents: readOptionalBooleanEnv("ROWL_LOG_WS_EVENTS"),
     };
 
     const resolvedStateDir = yield* resolveStateDir(input.stateDir);
@@ -609,7 +609,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
         : "";
 
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.CUT3_PORT)} webPort=${String(env.PORT)} stateDir=${String(env.CUT3_STATE_DIR)}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.ROWL_PORT)} webPort=${String(env.PORT)} stateDir=${String(env.ROWL_STATE_DIR)}`,
     );
 
     if (input.dryRun) {
@@ -658,37 +658,37 @@ const devRunnerCli = Command.make("dev-runner", {
     Argument.withDescription("Development mode to run."),
   ),
   stateDir: Flag.string("state-dir").pipe(
-    Flag.withDescription("State directory path (forwards to CUT3_STATE_DIR)."),
-    Flag.withFallbackConfig(optionalStringConfig("CUT3_STATE_DIR")),
+    Flag.withDescription("State directory path (forwards to ROWL_STATE_DIR)."),
+    Flag.withFallbackConfig(optionalStringConfig("ROWL_STATE_DIR")),
   ),
   authToken: Flag.string("auth-token").pipe(
-    Flag.withDescription("Auth token (forwards to CUT3_AUTH_TOKEN)."),
+    Flag.withDescription("Auth token (forwards to ROWL_AUTH_TOKEN)."),
     Flag.withAlias("token"),
-    Flag.withFallbackConfig(optionalStringConfig("CUT3_AUTH_TOKEN")),
+    Flag.withFallbackConfig(optionalStringConfig("ROWL_AUTH_TOKEN")),
   ),
   noBrowser: Flag.boolean("no-browser").pipe(
-    Flag.withDescription("Browser auto-open toggle (equivalent to CUT3_NO_BROWSER)."),
-    Flag.withFallbackConfig(optionalBooleanConfig("CUT3_NO_BROWSER")),
+    Flag.withDescription("Browser auto-open toggle (equivalent to ROWL_NO_BROWSER)."),
+    Flag.withFallbackConfig(optionalBooleanConfig("ROWL_NO_BROWSER")),
   ),
   autoBootstrapProjectFromCwd: Flag.boolean("auto-bootstrap-project-from-cwd").pipe(
     Flag.withDescription(
-      "Auto-bootstrap toggle (equivalent to CUT3_AUTO_BOOTSTRAP_PROJECT_FROM_CWD).",
+      "Auto-bootstrap toggle (equivalent to ROWL_AUTO_BOOTSTRAP_PROJECT_FROM_CWD).",
     ),
-    Flag.withFallbackConfig(optionalBooleanConfig("CUT3_AUTO_BOOTSTRAP_PROJECT_FROM_CWD")),
+    Flag.withFallbackConfig(optionalBooleanConfig("ROWL_AUTO_BOOTSTRAP_PROJECT_FROM_CWD")),
   ),
   logWebSocketEvents: Flag.boolean("log-websocket-events").pipe(
-    Flag.withDescription("WebSocket event logging toggle (equivalent to CUT3_LOG_WS_EVENTS)."),
+    Flag.withDescription("WebSocket event logging toggle (equivalent to ROWL_LOG_WS_EVENTS)."),
     Flag.withAlias("log-ws-events"),
-    Flag.withFallbackConfig(optionalBooleanConfig("CUT3_LOG_WS_EVENTS")),
+    Flag.withFallbackConfig(optionalBooleanConfig("ROWL_LOG_WS_EVENTS")),
   ),
   host: Flag.string("host").pipe(
-    Flag.withDescription("Server host/interface override (forwards to CUT3_HOST)."),
-    Flag.withFallbackConfig(optionalStringConfig("CUT3_HOST")),
+    Flag.withDescription("Server host/interface override (forwards to ROWL_HOST)."),
+    Flag.withFallbackConfig(optionalStringConfig("ROWL_HOST")),
   ),
   port: Flag.integer("port").pipe(
     Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
-    Flag.withDescription("Server port override (forwards to CUT3_PORT)."),
-    Flag.withFallbackConfig(optionalPortConfig("CUT3_PORT")),
+    Flag.withDescription("Server port override (forwards to ROWL_PORT)."),
+    Flag.withFallbackConfig(optionalPortConfig("ROWL_PORT")),
   ),
   devUrl: Flag.string("dev-url").pipe(
     Flag.withSchema(Schema.URLFromString),

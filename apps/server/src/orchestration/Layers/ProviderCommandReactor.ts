@@ -15,7 +15,19 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isCodexOpenRouterModel } from "@t3tools/shared/model";
-import { Cache, Cause, Duration, Effect, Fiber, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
+import {
+  Cache,
+  Cause,
+  Duration,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Schema,
+  Stream,
+} from "effect";
 import * as Semaphore from "effect/Semaphore";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -267,9 +279,7 @@ const make = Effect.gen(function* () {
 
       const queue = yield* Queue.unbounded<ProviderIntentEvent>();
       const fiber = yield* Effect.forkScoped(
-        Effect.forever(
-          Queue.take(queue).pipe(Effect.flatMap(processDomainEventSafely)),
-        ),
+        Effect.forever(Queue.take(queue).pipe(Effect.flatMap(processDomainEventSafely))),
       );
       const lane: Lane = { queue, fiber };
       yield* Ref.set(perThreadLanesRef, new Map(lanes).set(threadId, lane));
@@ -783,65 +793,67 @@ const make = Effect.gen(function* () {
     }
 
     const sem = getSemaphoreForThread(event.payload.threadId);
-    yield* sem.withPermits(1)(sendTurnForThread({
-      threadId: event.payload.threadId,
-      messageText: message.text,
-      ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-      ...(event.payload.provider !== undefined ? { provider: event.payload.provider } : {}),
-      ...(event.payload.model !== undefined ? { model: event.payload.model } : {}),
-      ...(event.payload.modelOptions !== undefined
-        ? { modelOptions: event.payload.modelOptions }
-        : {}),
-      ...(providerOptions !== undefined ? { providerOptions } : {}),
-      ...(event.payload.skills !== undefined ? { skills: event.payload.skills } : {}),
-      interactionMode: event.payload.interactionMode,
-      createdAt: event.payload.createdAt,
-    }).pipe(
-      Effect.tap(() =>
-        Effect.logInfo("provider command reactor completed turn-start send", {
-          threadId: event.payload.threadId,
-          provider: event.payload.provider ?? null,
-          model: event.payload.model ?? null,
-        }),
-      ),
-      Effect.catchCause((cause) =>
-        Effect.gen(function* () {
-          const error = Cause.squash(cause);
-          const detail = toErrorMessage(error);
-          const sessionProvider =
-            thread.session?.providerName === "codex" ||
-            thread.session?.providerName === "copilot" ||
-            thread.session?.providerName === "kimi" ||
-            thread.session?.providerName === "opencode" ||
-            thread.session?.providerName === "pi"
-              ? thread.session.providerName
-              : null;
-          const provider = event.payload.provider ?? sessionProvider;
+    yield* sem.withPermits(1)(
+      sendTurnForThread({
+        threadId: event.payload.threadId,
+        messageText: message.text,
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.provider !== undefined ? { provider: event.payload.provider } : {}),
+        ...(event.payload.model !== undefined ? { model: event.payload.model } : {}),
+        ...(event.payload.modelOptions !== undefined
+          ? { modelOptions: event.payload.modelOptions }
+          : {}),
+        ...(providerOptions !== undefined ? { providerOptions } : {}),
+        ...(event.payload.skills !== undefined ? { skills: event.payload.skills } : {}),
+        interactionMode: event.payload.interactionMode,
+        createdAt: event.payload.createdAt,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.logInfo("provider command reactor completed turn-start send", {
+            threadId: event.payload.threadId,
+            provider: event.payload.provider ?? null,
+            model: event.payload.model ?? null,
+          }),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const error = Cause.squash(cause);
+            const detail = toErrorMessage(error);
+            const sessionProvider =
+              thread.session?.providerName === "codex" ||
+              thread.session?.providerName === "copilot" ||
+              thread.session?.providerName === "kimi" ||
+              thread.session?.providerName === "opencode" ||
+              thread.session?.providerName === "pi"
+                ? thread.session.providerName
+                : null;
+            const provider = event.payload.provider ?? sessionProvider;
 
-          yield* appendProviderFailureActivity({
-            threadId: event.payload.threadId,
-            kind: "provider.turn.start.failed",
-            summary: "Provider turn start failed",
-            detail,
-            turnId: thread.latestTurn?.turnId ?? null,
-            createdAt: event.payload.createdAt,
-          });
-          yield* setProviderFailureSession({
-            threadId: event.payload.threadId,
-            provider,
-            runtimeMode: thread.runtimeMode,
-            lastError: detail,
-            createdAt: event.payload.createdAt,
-            ...(thread.session?.startedAt !== undefined
-              ? { startedAt: thread.session.startedAt }
-              : {}),
-            ...(thread.session?.tokenUsage !== undefined
-              ? { tokenUsage: thread.session.tokenUsage }
-              : {}),
-          });
-        }),
+            yield* appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.turn.start.failed",
+              summary: "Provider turn start failed",
+              detail,
+              turnId: thread.latestTurn?.turnId ?? null,
+              createdAt: event.payload.createdAt,
+            });
+            yield* setProviderFailureSession({
+              threadId: event.payload.threadId,
+              provider,
+              runtimeMode: thread.runtimeMode,
+              lastError: detail,
+              createdAt: event.payload.createdAt,
+              ...(thread.session?.startedAt !== undefined
+                ? { startedAt: thread.session.startedAt }
+                : {}),
+              ...(thread.session?.tokenUsage !== undefined
+                ? { tokenUsage: thread.session.tokenUsage }
+                : {}),
+            });
+          }),
+        ),
       ),
-    ));
+    );
   });
 
   const processTurnInterruptRequested = Effect.fnUntraced(function* (

@@ -61,7 +61,7 @@ describe("Pi provider GUI", () => {
         authStatus: "unauthenticated",
         checkedAt: "2026-03-24T00:00:00.000Z",
         message:
-          "Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available.",
+          "Pi is embedded in Rowl, but no authenticated Pi-backed models are currently available.",
       },
     ];
 
@@ -93,13 +93,13 @@ describe("Pi provider GUI", () => {
       const piCard = await waitForElement(
         () =>
           Array.from(document.querySelectorAll<HTMLElement>("div, section")).find((element) =>
-            (element.textContent ?? "").includes("CUT3 embeds Pi through its Node SDK"),
+            (element.textContent ?? "").includes("Rowl embeds Pi through its Node SDK"),
           ) ?? null,
         "Unable to find the Pi guidance card in the provider setup dialog.",
       );
 
       expect(piCard.textContent).toContain("Pi");
-      expect(piCard.textContent).toContain("CUT3 embeds Pi through its Node SDK");
+      expect(piCard.textContent).toContain("Rowl embeds Pi through its Node SDK");
       expect(piCard.textContent).toContain("bunx pi");
     } finally {
       await screen.unmount();

@@ -86,7 +86,7 @@ describe("getAutoUpdateDisabledReason", () => {
         appImage: undefined,
         disabledByEnv: true,
       }),
-    ).toContain("CUT3_DISABLE_AUTO_UPDATE");
+    ).toContain("ROWL_DISABLE_AUTO_UPDATE");
   });
 
   it("reports linux non-AppImage builds as disabled", () => {

@@ -1,4 +1,4 @@
-const DB_NAME = "cut3-assets";
+const DB_NAME = "rowl-assets";
 const DB_VERSION = 1;
 const STORE_NAME = "chat-background-images";
 

@@ -15,7 +15,7 @@ const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
-let wsUrl = process.env.CUT3_DESKTOP_WS_URL ?? null;
+let wsUrl = process.env.ROWL_DESKTOP_WS_URL ?? null;
 wsUrl = resolveInitialDesktopWsUrl({ envValue: wsUrl, argv: process.argv });
 
 ipcRenderer.on(BACKEND_WS_URL_UPDATED_CHANNEL, (_event, nextUrl: unknown) => {

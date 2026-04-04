@@ -1,7 +1,7 @@
 import type { GitBranch } from "@t3tools/contracts";
 
 export type EnvMode = "local" | "worktree";
-const PREFERRED_REMOTE_NAME = "CUT3";
+const PREFERRED_REMOTE_NAME = "Rowl";
 
 export function resolveEffectiveEnvMode(input: {
   activeWorktreePath: string | null;

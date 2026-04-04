@@ -48,10 +48,10 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
       const telemetryLayer = AnalyticsServiceLayerLive.pipe(Layer.provideMerge(serverConfigLayer));
       const configLayer = ConfigProvider.layer(
         ConfigProvider.fromUnknown({
-          CUT3_TELEMETRY_ENABLED: true,
-          CUT3_POSTHOG_KEY: "phc_test_key",
-          CUT3_POSTHOG_HOST: "",
-          CUT3_TELEMETRY_FLUSH_BATCH_SIZE: 20,
+          ROWL_TELEMETRY_ENABLED: true,
+          ROWL_POSTHOG_KEY: "phc_test_key",
+          ROWL_POSTHOG_HOST: "",
+          ROWL_TELEMETRY_FLUSH_BATCH_SIZE: 20,
         }),
       );
       const batchServerLayer = HttpServer.serve(

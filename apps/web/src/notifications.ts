@@ -12,11 +12,11 @@ const NOTIFICATION_AUTO_CLOSE_MS = 8_000;
 function getNotificationCopy(language: string) {
   if (language === "fa") {
     return {
-      title: "CUT3 — کار تمام شد",
+      title: "Rowl — کار تمام شد",
     };
   }
   return {
-    title: "CUT3 — Task Complete",
+    title: "Rowl — Task Complete",
   };
 }
 

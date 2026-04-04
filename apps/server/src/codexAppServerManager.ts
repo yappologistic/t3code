@@ -454,8 +454,8 @@ export function normalizeCodexModelSlug(
 export function buildCodexInitializeParams() {
   return {
     clientInfo: {
-      name: "cut3_desktop",
-      title: "CUT3 Desktop",
+      name: "rowl_desktop",
+      title: "Rowl Desktop",
       version: "0.1.0",
     },
     capabilities: {
@@ -1084,7 +1084,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           toModel: OPENROUTER_FREE_ROUTER_MODEL,
           reason:
             openRouterFallbackReason ??
-            "OpenRouter could not serve the pinned free model and CUT3 retried through the free router.",
+            "OpenRouter could not serve the pinned free model and Rowl retried through the free router.",
           turnId,
         });
       }
@@ -1825,7 +1825,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         toModel: OPENROUTER_FREE_ROUTER_MODEL,
         reason:
           pendingRetry.retryReason ??
-          "OpenRouter could not serve the pinned free model and CUT3 retried through the free router.",
+          "OpenRouter could not serve the pinned free model and Rowl retried through the free router.",
         turnId,
       });
       this.updateSession(context, {

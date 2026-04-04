@@ -23,7 +23,7 @@ import { CUSTOM_THEME_IDS } from "./lib/customThemes";
 import { normalizeModelPreferenceSlugs } from "./lib/modelPreferences";
 import { isOpenRouterGuaranteedFreeSlug } from "./lib/openRouterModels";
 
-const APP_SETTINGS_STORAGE_KEY = "cut3:app-settings:v1";
+const APP_SETTINGS_STORAGE_KEY = "rowl:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 const MAX_FAVORITE_MODEL_COUNT = 32;
 const MAX_RECENT_MODEL_COUNT = 12;

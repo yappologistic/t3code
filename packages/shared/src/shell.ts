@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 
-const PATH_CAPTURE_START = "__CUT3_PATH_START__";
-const PATH_CAPTURE_END = "__CUT3_PATH_END__";
+const PATH_CAPTURE_START = "__ROWL_PATH_START__";
+const PATH_CAPTURE_END = "__ROWL_PATH_END__";
 const PATH_CAPTURE_COMMAND = [
   `printf '%s\n' '${PATH_CAPTURE_START}'`,
   "printenv PATH",

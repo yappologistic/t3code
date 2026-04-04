@@ -136,7 +136,7 @@ export function PermissionPoliciesSection({
       <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
         Current runtime approvals expose command, file-read, file-change, raw request type, and
         truncated detail text. If a provider starts emitting a new request type later, you can
-        target it with Request type terms even before CUT3 adds a dedicated label for it.
+        target it with Request type terms even before Rowl adds a dedicated label for it.
       </div>
 
       <div className="mt-4 grid gap-3">

@@ -1,4 +1,4 @@
-const DESKTOP_WS_URL_ARG_PREFIX = "--cut3-desktop-ws-url=";
+const DESKTOP_WS_URL_ARG_PREFIX = "--rowl-desktop-ws-url=";
 
 export function resolveInitialDesktopWsUrl(args: {
   envValue: string | null | undefined;

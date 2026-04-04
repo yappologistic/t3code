@@ -70,7 +70,7 @@ const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
-const DESKTOP_SCHEME = "cut3";
+const DESKTOP_SCHEME = "rowl";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const appReleaseBranding = resolveAppReleaseBranding({
@@ -78,7 +78,7 @@ const appReleaseBranding = resolveAppReleaseBranding({
   isDevelopment,
 });
 const STATE_DIR =
-  process.env.CUT3_STATE_DIR?.trim() ||
+  process.env.ROWL_STATE_DIR?.trim() ||
   Path.join(OS.homedir(), ".t3", appReleaseBranding.stateDirName);
 const APP_DISPLAY_NAME = appReleaseBranding.displayName;
 const APP_USER_MODEL_ID = appReleaseBranding.appId;
@@ -530,8 +530,8 @@ function resolveEmbeddedCommitHash(): string | null {
 
   try {
     const raw = FS.readFileSync(packageJsonPath, "utf8");
-    const parsed = JSON.parse(raw) as { cut3CommitHash?: unknown };
-    return normalizeCommitHash(parsed.cut3CommitHash);
+    const parsed = JSON.parse(raw) as { rowlCommitHash?: unknown };
+    return normalizeCommitHash(parsed.rowlCommitHash);
   } catch {
     return null;
   }
@@ -542,7 +542,7 @@ function resolveAboutCommitHash(): string | null {
     return aboutCommitHashCache;
   }
 
-  const envCommitHash = normalizeCommitHash(process.env.CUT3_COMMIT_HASH);
+  const envCommitHash = normalizeCommitHash(process.env.ROWL_COMMIT_HASH);
   if (envCommitHash) {
     aboutCommitHashCache = envCommitHash;
     return aboutCommitHashCache;
@@ -564,7 +564,7 @@ function resolveBackendEntry(): string {
 }
 
 function resolveBackendCwd(): string {
-  const override = process.env.CUT3_BACKEND_CWD?.trim();
+  const override = process.env.ROWL_BACKEND_CWD?.trim();
   if (override) {
     return override;
   }
@@ -630,7 +630,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("CUT3 failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("Rowl failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   stopBackend();
   restoreStdIoCapture?.();
@@ -651,7 +651,7 @@ function updateBackendWsUrl(port: number): void {
     port,
     authToken: backendAuthToken,
   });
-  process.env.CUT3_DESKTOP_WS_URL = backendWsUrl;
+  process.env.ROWL_DESKTOP_WS_URL = backendWsUrl;
   writeDesktopLogHeader(`backend websocket url updated port=${port}`);
   broadcastBackendWsUrl();
 }
@@ -747,7 +747,7 @@ function handleCheckForUpdatesMenuClick(): void {
     isPackaged: app.isPackaged,
     platform: process.platform,
     appImage: process.env.APPIMAGE,
-    disabledByEnv: process.env.CUT3_DISABLE_AUTO_UPDATE === "1",
+    disabledByEnv: process.env.ROWL_DISABLE_AUTO_UPDATE === "1",
   });
   if (disabledReason) {
     console.info("[desktop-updater] Manual update check requested, but updates are disabled.");
@@ -774,7 +774,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `CUT3 ${updateState.currentVersion} is currently the newest version available.`,
+      message: `Rowl ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "error") {
@@ -999,7 +999,7 @@ function shouldEnableAutoUpdates(): boolean {
       isPackaged: app.isPackaged,
       platform: process.platform,
       appImage: process.env.APPIMAGE,
-      disabledByEnv: process.env.CUT3_DISABLE_AUTO_UPDATE === "1",
+      disabledByEnv: process.env.ROWL_DISABLE_AUTO_UPDATE === "1",
     }) === null
   );
 }
@@ -1084,7 +1084,7 @@ function configureAutoUpdater(): void {
   updaterConfigured = true;
 
   const githubToken =
-    process.env.CUT3_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
+    process.env.ROWL_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
   if (githubToken) {
     // When a token is provided, re-configure the feed with `private: true` so
     // electron-updater uses the GitHub API (api.github.com) instead of the
@@ -1187,11 +1187,11 @@ function configureAutoUpdater(): void {
 function backendEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    CUT3_MODE: "desktop",
-    CUT3_NO_BROWSER: "1",
-    CUT3_PORT: "0",
-    CUT3_STATE_DIR: STATE_DIR,
-    CUT3_AUTH_TOKEN: backendAuthToken,
+    ROWL_MODE: "desktop",
+    ROWL_NO_BROWSER: "1",
+    ROWL_PORT: "0",
+    ROWL_STATE_DIR: STATE_DIR,
+    ROWL_AUTH_TOKEN: backendAuthToken,
   };
 }
 
@@ -1598,7 +1598,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      additionalArguments: backendWsUrl ? [`--cut3-desktop-ws-url=${backendWsUrl}`] : [],
+      additionalArguments: backendWsUrl ? [`--rowl-desktop-ws-url=${backendWsUrl}`] : [],
     },
   });
 

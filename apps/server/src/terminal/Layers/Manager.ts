@@ -274,7 +274,7 @@ function toSessionKey(threadId: string, terminalId: string): string {
 
 function shouldExcludeTerminalEnvKey(key: string): boolean {
   const normalizedKey = key.toUpperCase();
-  if (normalizedKey.startsWith("CUT3_")) {
+  if (normalizedKey.startsWith("ROWL_")) {
     return true;
   }
   if (normalizedKey.startsWith("VITE_")) {

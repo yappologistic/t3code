@@ -414,9 +414,9 @@
   --sidebar-accent: var(--accent);
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-ring: var(--ring);
-  --cut3-sidebar-backdrop-filter: none;
-  --cut3-sidebar-surface: var(--sidebar);
-  --cut3-sidebar-surface-solid: var(--sidebar);
+  --rowl-sidebar-backdrop-filter: none;
+  --rowl-sidebar-surface: var(--sidebar);
+  --rowl-sidebar-surface-solid: var(--sidebar);
 
   @variant dark {
     color-scheme: dark;
@@ -451,9 +451,9 @@
     --sidebar-accent: var(--accent);
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-ring: var(--ring);
-    --cut3-sidebar-backdrop-filter: none;
-    --cut3-sidebar-surface: var(--sidebar);
-    --cut3-sidebar-surface-solid: var(--sidebar);
+    --rowl-sidebar-backdrop-filter: none;
+    --rowl-sidebar-surface: var(--sidebar);
+    --rowl-sidebar-surface-solid: var(--sidebar);
   }
 }
 
@@ -856,12 +856,12 @@ button {
 
 [data-slot="sidebar-inner"],
 [data-slot="sidebar"][data-mobile="true"] {
-  backdrop-filter: var(--cut3-sidebar-backdrop-filter);
+  backdrop-filter: var(--rowl-sidebar-backdrop-filter);
 }
 
 html[data-sidebar-translucent="on"] [data-slot="sidebar-inner"],
 html[data-sidebar-translucent="on"] [data-slot="sidebar"][data-mobile="true"] {
-  background: var(--cut3-sidebar-surface) !important;
+  background: var(--rowl-sidebar-surface) !important;
 }
 
 @media (min-width: 48rem) {

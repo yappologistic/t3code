@@ -38,7 +38,7 @@ const PROJECT_ID = "project-1" as ProjectId;
 const NOW_ISO = "2026-03-04T12:00:00.000Z";
 const BASE_TIME_MS = Date.parse(NOW_ISO);
 const ATTACHMENT_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='300'></svg>";
-const APP_SETTINGS_STORAGE_KEY = "cut3:app-settings:v1";
+const APP_SETTINGS_STORAGE_KEY = "rowl:app-settings:v1";
 const CHAT_BACKGROUND_TEST_DATA_URL =
   "data:image/svg+xml," +
   encodeURIComponent(
@@ -134,7 +134,7 @@ function isoAt(offsetSeconds: number): string {
 function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.cut3-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.rowl-keybindings.json",
     keybindings: [],
     issues: [],
     providers: [

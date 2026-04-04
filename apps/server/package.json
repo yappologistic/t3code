@@ -1,5 +1,5 @@
 {
-  "name": "cut3",
+  "name": "rowl",
   "version": "1.0.1",
   "repository": {
     "type": "git",
@@ -7,7 +7,7 @@
     "directory": "apps/server"
   },
   "bin": {
-    "cut3": "./dist/index.mjs"
+    "rowl": "./dist/index.mjs"
   },
   "files": [
     "dist"

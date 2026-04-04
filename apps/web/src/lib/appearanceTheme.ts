@@ -328,13 +328,13 @@ export function deriveAppearanceCssVariables(
     "--border": border,
     "--card": card,
     "--card-foreground": foreground,
-    "--cut3-sidebar-backdrop-filter": normalized.translucentSidebar
+    "--rowl-sidebar-backdrop-filter": normalized.translucentSidebar
       ? "blur(24px) saturate(1.12)"
       : "none",
-    "--cut3-sidebar-surface": normalized.translucentSidebar
+    "--rowl-sidebar-surface": normalized.translucentSidebar
       ? withAlpha(sidebarBase, appearance === "light" ? 0.78 : 0.72)
       : sidebarBase,
-    "--cut3-sidebar-surface-solid": sidebarBase,
+    "--rowl-sidebar-surface-solid": sidebarBase,
     "--foreground": foreground,
     "--font-code-snippet": normalized.codeFont,
     "--font-ui": normalized.uiFont,
@@ -373,9 +373,9 @@ export function clearAppliedAppearanceCssVariables(): void {
     "--border",
     "--card",
     "--card-foreground",
-    "--cut3-sidebar-backdrop-filter",
-    "--cut3-sidebar-surface",
-    "--cut3-sidebar-surface-solid",
+    "--rowl-sidebar-backdrop-filter",
+    "--rowl-sidebar-surface",
+    "--rowl-sidebar-surface-solid",
     "--foreground",
     "--font-code-snippet",
     "--font-ui",
@@ -426,16 +426,16 @@ export function applyGlobalAppearanceSettings(args: {
     normalizeFontStack(args.themeConfig.codeFont, DEFAULT_CODE_FONT),
   );
   root.style.setProperty(
-    "--cut3-sidebar-backdrop-filter",
+    "--rowl-sidebar-backdrop-filter",
     args.themeConfig.translucentSidebar ? "blur(24px) saturate(1.12)" : "none",
   );
   root.style.setProperty(
-    "--cut3-sidebar-surface",
+    "--rowl-sidebar-surface",
     args.themeConfig.translucentSidebar
       ? "color-mix(in srgb, var(--sidebar) 76%, transparent)"
       : "var(--sidebar)",
   );
-  root.style.setProperty("--cut3-sidebar-surface-solid", "var(--sidebar)");
+  root.style.setProperty("--rowl-sidebar-surface-solid", "var(--sidebar)");
 
   if (args.customThemeEnabled) {
     return;

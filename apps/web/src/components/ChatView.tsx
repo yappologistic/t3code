@@ -338,8 +338,8 @@ import { findMatchingApprovalRule, type ApprovalRule } from "../approvalRules";
 import { formatTimestamp } from "../timestampFormat";
 import { showTurnCompleteNotification } from "../notifications";
 
-const LAST_EDITOR_KEY = "cut3:last-editor";
-const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "cut3:last-invoked-script-by-project";
+const LAST_EDITOR_KEY = "rowl:last-editor";
+const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "rowl:last-invoked-script-by-project";
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
@@ -366,7 +366,7 @@ const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnsw
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
-const WORKTREE_BRANCH_PREFIX = "cut3";
+const WORKTREE_BRANCH_PREFIX = "rowl";
 
 function buildProviderOptionsForDispatch(input: {
   readonly provider: ProviderKind;
@@ -2013,7 +2013,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (openRouterModel === null) {
         message = `\`${input.model}\` is not in OpenRouter's current live free catalog. Refresh the list, pick another listed free model, or use \`openrouter/free\`.`;
       } else if (!supportsOpenRouterNativeToolCalling(openRouterModel)) {
-        message = `${openRouterModel.name} does not advertise the full OpenRouter native tool-calling surface (\`tools\` + \`tool_choice\`), and CUT3 requires both for agent turns. Switch to another OpenRouter free model or use \`openrouter/free\`.`;
+        message = `${openRouterModel.name} does not advertise the full OpenRouter native tool-calling surface (\`tools\` + \`tool_choice\`), and Rowl requires both for agent turns. Switch to another OpenRouter free model or use \`openrouter/free\`.`;
       }
       if (message === null) {
         return true;
@@ -4574,7 +4574,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const confirmed = await api.dialogs.confirm(
         [
           "Compact this thread?",
-          "CUT3 will replace the live provider session with a continuation summary so the conversation can keep going from a smaller context.",
+          "Rowl will replace the live provider session with a continuation summary so the conversation can keep going from a smaller context.",
         ].join("\n"),
       );
       if (!confirmed) {
@@ -7855,7 +7855,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           <DialogHeader>
             <DialogTitle>Enter your OpenRouter API key</DialogTitle>
             <DialogDescription>
-              CUT3 needs an OpenRouter API key before it can start Codex sessions that use
+              Rowl needs an OpenRouter API key before it can start Codex sessions that use
               OpenRouter-routed models such as <code>openrouter/free</code> or specific{" "}
               <code>:free</code> model ids.
             </DialogDescription>
@@ -7923,7 +7923,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           <DialogHeader>
             <DialogTitle>Enter your Kimi API key</DialogTitle>
             <DialogDescription>
-              CUT3 can start Kimi CLI chat with a Kimi Code API key. You can generate one from the
+              Rowl can start Kimi CLI chat with a Kimi Code API key. You can generate one from the
               Kimi Code Console, or authenticate in the local CLI with <code>kimi login</code> or
               <code>/login</code> instead.
             </DialogDescription>
@@ -8392,8 +8392,8 @@ const ThreadModelRerouteBanner = memo(function ThreadModelRerouteBanner({
       : getModelDisplayName(notice.toModel, "codex");
   const message =
     notice.toModel === "openrouter/free"
-      ? `CUT3 retried this turn through ${toModelLabel} after ${fromModelLabel} could not be served. OpenRouter may answer with a different free model for this turn.`
-      : `CUT3 retried this turn from ${fromModelLabel} to ${toModelLabel}.`;
+      ? `Rowl retried this turn through ${toModelLabel} after ${fromModelLabel} could not be served. OpenRouter may answer with a different free model for this turn.`
+      : `Rowl retried this turn from ${fromModelLabel} to ${toModelLabel}.`;
 
   return (
     <div className="mx-auto max-w-3xl pt-3">
@@ -8828,8 +8828,8 @@ function getChatSurfaceCopy(language: AppLanguage) {
         "تصاویر را انتخاب، رها، یا پیست کنید؛ حداکثر ۸ تصویر و هر کدام تا ۱۰ مگابایت",
       followUpQueued: "پیگیری در صف قرار گرفت",
       steeringCurrentRun: "در حال هدایت نوبت فعلی",
-      steeringCurrentRunHint: "CUT3 نوبت فعلی را متوقف می کند و این پیگیری را بعدی می فرستد.",
-      queueCurrentRunHint: "CUT3 این پیگیری را بعد از تمام شدن نوبت فعلی می فرستد.",
+      steeringCurrentRunHint: "Rowl نوبت فعلی را متوقف می کند و این پیگیری را بعدی می فرستد.",
+      queueCurrentRunHint: "Rowl این پیگیری را بعد از تمام شدن نوبت فعلی می فرستد.",
       queuedTurnFailed: "ارسال مورد در صف انجام نشد",
       retryQueuedFollowUp: "تلاش دوباره",
       removeQueuedFollowUp: "حذف",
@@ -8885,8 +8885,8 @@ function getChatSurfaceCopy(language: AppLanguage) {
     attachImagesTooltip: "Attach images · drag, paste, or pick up to 8 images (10 MB each)",
     followUpQueued: "Follow-up queued",
     steeringCurrentRun: "Steering current run",
-    steeringCurrentRunHint: "CUT3 will stop the current turn and send this follow-up next.",
-    queueCurrentRunHint: "CUT3 will send this follow-up after the current turn settles.",
+    steeringCurrentRunHint: "Rowl will stop the current turn and send this follow-up next.",
+    queueCurrentRunHint: "Rowl will send this follow-up after the current turn settles.",
     queuedTurnFailed: "Queued follow-up failed",
     retryQueuedFollowUp: "Retry",
     removeQueuedFollowUp: "Remove",
@@ -9134,7 +9134,7 @@ export function ProviderSetupDialog(props: {
             "وضعیت runtime های محلی را بررسی کنید، کلیدها را اضافه کنید، و قدم بعدی هر ارائه دهنده را بدون خروج از چت ببینید.",
           snapshotTitle: "نمای آماده سازی ارائه دهنده",
           snapshotDescription:
-            "CUT3 وضعیت runtime های محلی را می خواند. احراز هویت OpenCode، Codex، Copilot، Kimi، و Pi همچنان در ابزارهای خود آنها مدیریت می شود.",
+            "Rowl وضعیت runtime های محلی را می خواند. احراز هویت OpenCode، Codex، Copilot، Kimi، و Pi همچنان در ابزارهای خود آنها مدیریت می شود.",
           ready: "آماده",
           attention: "نیاز به توجه",
           unavailable: "ناموجود",
@@ -9158,7 +9158,7 @@ export function ProviderSetupDialog(props: {
             "Check local runtime health, add keys, and see the next step for each provider without leaving chat.",
           snapshotTitle: "Provider readiness snapshot",
           snapshotDescription:
-            "CUT3 inspects your local runtimes here. Authentication for OpenCode, Codex, Copilot, Kimi, and Pi still lives in their own CLIs and config files.",
+            "Rowl inspects your local runtimes here. Authentication for OpenCode, Codex, Copilot, Kimi, and Pi still lives in their own CLIs and config files.",
           ready: "Ready",
           attention: "Needs attention",
           unavailable: "Unavailable",
@@ -9306,7 +9306,7 @@ export function ProviderSetupDialog(props: {
                   ? "Shared OpenRouter key is ready for OpenRouter-routed sessions."
                   : "Add the shared OpenRouter API key to unlock OpenRouter-routed models.";
                 message =
-                  "Used for openrouter/free and any saved OpenRouter :free slugs. CUT3 also forwards the same key to new OpenCode sessions when their config expects OPENROUTER_API_KEY.";
+                  "Used for openrouter/free and any saved OpenRouter :free slugs. Rowl also forwards the same key to new OpenCode sessions when their config expects OPENROUTER_API_KEY.";
                 actions.push(
                   <Button
                     key="openrouter-key"
@@ -9324,7 +9324,7 @@ export function ProviderSetupDialog(props: {
                 description =
                   providerStatus?.authStatus === "authenticated"
                     ? "Native Codex models are ready through your local Codex runtime."
-                    : "Authenticate or repair the local Codex runtime, then refresh CUT3.";
+                    : "Authenticate or repair the local Codex runtime, then refresh Rowl.";
                 if (providerStatus?.authStatus !== "authenticated") {
                   actions.push(
                     renderCopyCommandButton({
@@ -9339,8 +9339,8 @@ export function ProviderSetupDialog(props: {
               if (option.value === "copilot") {
                 description =
                   providerStatus?.authStatus === "authenticated"
-                    ? "GitHub Copilot is available from the local runtime CUT3 is connected to."
-                    : "Sign into the local Copilot CLI/runtime, then refresh CUT3.";
+                    ? "GitHub Copilot is available from the local runtime Rowl is connected to."
+                    : "Sign into the local Copilot CLI/runtime, then refresh Rowl.";
                 if (providerStatus?.authStatus !== "authenticated") {
                   actions.push(
                     renderCopyCommandButton({
@@ -9362,9 +9362,9 @@ export function ProviderSetupDialog(props: {
                   ? "A Kimi API key is configured for new Kimi Code sessions."
                   : "Use kimi login / /login, or add a Kimi API key here.";
                 message = props.hasKimiApiKey
-                  ? "CUT3 will inject the saved Kimi API key into new Kimi Code sessions."
+                  ? "Rowl will inject the saved Kimi API key into new Kimi Code sessions."
                   : providerStatus?.message?.trim() ||
-                    "If you do not want to store a key in CUT3, authenticate in the CLI with kimi login or the in-shell /login flow.";
+                    "If you do not want to store a key in Rowl, authenticate in the CLI with kimi login or the in-shell /login flow.";
                 actions.push(
                   <Button
                     key="kimi-key"
@@ -9397,7 +9397,7 @@ export function ProviderSetupDialog(props: {
                 description =
                   props.openCodeState?.status === "available"
                     ? `${copy.credentials(openCodeCredentialCount)} · ${copy.models(openCodeModelCount)}`
-                    : "Manage OpenCode credentials in OpenCode itself, then refresh CUT3.";
+                    : "Manage OpenCode credentials in OpenCode itself, then refresh Rowl.";
                 message = props.openCodeState?.message?.trim() || null;
                 footer = (
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -9437,12 +9437,12 @@ export function ProviderSetupDialog(props: {
                     ? providerStatus.status === "warning"
                       ? "Pi is authenticated, but the local Pi config still needs attention."
                       : "Pi is ready from the local ~/.pi/agent auth/models state."
-                    : "Run pi or bunx pi, complete /login, then refresh CUT3.";
+                    : "Run pi or bunx pi, complete /login, then refresh Rowl.";
                 message = providerStatus?.message?.trim() || null;
                 footer = (
                   <p className="text-xs text-muted-foreground">
-                    CUT3 embeds Pi through its Node SDK, but keeps Pi packages, AGENTS, prompts,
-                    extensions, skills, and themes disabled so CUT3 remains the only source of
+                    Rowl embeds Pi through its Node SDK, but keeps Pi packages, AGENTS, prompts,
+                    extensions, skills, and themes disabled so Rowl remains the only source of
                     workspace instructions.
                   </p>
                 );

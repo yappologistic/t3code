@@ -42,7 +42,8 @@ import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { getAppLanguageDetails, type AppLanguage } from "../appLanguage";
 import { isElectron } from "../env";
-import { APP_BASE_NAME, APP_VERSION } from "../branding";
+import { APP_VERSION } from "../branding";
+import { useTheme } from "../hooks/useTheme";
 import { resolveServerHttpUrl } from "../lib/serverUrl";
 import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import { useStore } from "../store";
@@ -116,7 +117,7 @@ function getSidebarCopy(language: AppLanguage) {
       failedToRenameThread: "تغییر نام رشته انجام نشد",
       keepingOrphanedWorktree: "worktree یتیم حفظ شد",
       orphanedWorktreeKeptForSafety: (path: string) =>
-        `CUT3 نتوانست بررسی کند که ${path} تغییرات ثبت نشده دارد یا نه، بنابراین worktree برای ایمنی حفظ می شود.`,
+        `Rowl نتوانست بررسی کند که ${path} تغییرات ثبت نشده دارد یا نه، بنابراین worktree برای ایمنی حفظ می شود.`,
       orphanedWorktreeWithChangesPrompt: (path: string) =>
         [
           "این رشته تنها رشته متصل به این worktree است:",
@@ -216,7 +217,7 @@ function getSidebarCopy(language: AppLanguage) {
     failedToRenameThread: "Failed to rename thread",
     keepingOrphanedWorktree: "Keeping orphaned worktree",
     orphanedWorktreeKeptForSafety: (path: string) =>
-      `CUT3 could not verify whether ${path} has uncommitted changes, so the worktree will be kept for safety.`,
+      `Rowl could not verify whether ${path} has uncommitted changes, so the worktree will be kept for safety.`,
     orphanedWorktreeWithChangesPrompt: (path: string) =>
       [
         "This thread is the only one linked to this worktree:",
@@ -406,7 +407,9 @@ function localizeThreadStatusLabel(label: string, language: AppLanguage): string
 }
 
 function BrandMark() {
-  return <img src="/icon.png" alt="" className="size-5 shrink-0 rounded-md" />;
+  const { resolvedTheme } = useTheme();
+  const src = resolvedTheme === "dark" ? "/rowl-logo-dark.png" : "/rowl-logo-light.png";
+  return <img src={src} alt="" className="h-4 w-auto shrink-0 object-contain" />;
 }
 
 function ProjectFavicon({ cwd }: { cwd: string }) {
@@ -1426,9 +1429,6 @@ export default function Sidebar() {
           render={
             <div className="flex min-w-0 flex-1 items-center gap-1 ml-1 cursor-pointer">
               <BrandMark />
-              <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
-                {APP_BASE_NAME}
-              </span>
             </div>
           }
         />

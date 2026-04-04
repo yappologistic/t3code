@@ -21,11 +21,11 @@ import {
 import { Schema } from "effect";
 
 const AGENTS_FILE_NAME = "AGENTS.md";
-const COMMANDS_DIRECTORY_RELATIVE_PATH = ".cut3/commands";
-const SKILLS_DIRECTORY_RELATIVE_PATH = ".cut3/skills";
+const COMMANDS_DIRECTORY_RELATIVE_PATH = ".rowl/commands";
+const SKILLS_DIRECTORY_RELATIVE_PATH = ".rowl/skills";
 const SKILL_FILE_NAME = "SKILL.md";
-const INIT_SECTION_START = "<!-- CUT3_INIT:START -->";
-const INIT_SECTION_END = "<!-- CUT3_INIT:END -->";
+const INIT_SECTION_START = "<!-- ROWL_INIT:START -->";
+const INIT_SECTION_END = "<!-- ROWL_INIT:END -->";
 
 function safeReadTextFile(filePath: string): string | null {
   try {
@@ -119,7 +119,7 @@ function buildInitManagedSection(cwd: string): string {
 
   const lines: string[] = [
     INIT_SECTION_START,
-    "## CUT3 Init Snapshot",
+    "## Rowl Init Snapshot",
     "",
     `- Workspace root: ${path.basename(cwd)}`,
   ];

@@ -12,13 +12,13 @@ function makeMergedMacManifestYaml(): string {
   const arm64 = parseMacUpdateManifest(
     `version: 0.0.12-fork.2
 files:
-  - url: CUT3-macOS-0.0.12-fork.2-arm64.zip
+  - url: Rowl-macOS-0.0.12-fork.2-arm64.zip
     sha512: arm64zip
     size: 10
-  - url: CUT3-macOS-0.0.12-fork.2-arm64.dmg
+  - url: Rowl-macOS-0.0.12-fork.2-arm64.dmg
     sha512: arm64dmg
     size: 11
-path: CUT3-macOS-0.0.12-fork.2-arm64.zip
+path: Rowl-macOS-0.0.12-fork.2-arm64.zip
 sha512: arm64zip
 releaseDate: '2026-03-12T23:30:00.000Z'
 `,
@@ -28,13 +28,13 @@ releaseDate: '2026-03-12T23:30:00.000Z'
   const x64 = parseMacUpdateManifest(
     `version: 0.0.12-fork.2
 files:
-  - url: CUT3-macOS-0.0.12-fork.2-x64.zip
+  - url: Rowl-macOS-0.0.12-fork.2-x64.zip
     sha512: x64zip
     size: 12
-  - url: CUT3-macOS-0.0.12-fork.2-x64.dmg
+  - url: Rowl-macOS-0.0.12-fork.2-x64.dmg
     sha512: x64dmg
     size: 13
-path: CUT3-macOS-0.0.12-fork.2-x64.zip
+path: Rowl-macOS-0.0.12-fork.2-x64.zip
 sha512: x64zip
 releaseDate: '2026-03-12T23:31:00.000Z'
 `,
@@ -151,18 +151,18 @@ describe("merge-mac-update-manifests electron-updater compatibility", () => {
   it("selects the x64 zip for x64 macOS hosts", async () => {
     await expect(
       selectMacUpdateFile({ uname: "Darwin x86_64 Apple Kernel Version", rosetta: false }),
-    ).resolves.toContain("CUT3-macOS-0.0.12-fork.2-x64.zip");
+    ).resolves.toContain("Rowl-macOS-0.0.12-fork.2-x64.zip");
   });
 
   it("selects the arm64 zip for native arm64 macOS hosts", async () => {
     await expect(
       selectMacUpdateFile({ uname: "Darwin ARM64 Apple Kernel Version", rosetta: false }),
-    ).resolves.toContain("CUT3-macOS-0.0.12-fork.2-arm64.zip");
+    ).resolves.toContain("Rowl-macOS-0.0.12-fork.2-arm64.zip");
   });
 
   it("selects the arm64 zip for Rosetta-translated macOS hosts", async () => {
     await expect(
       selectMacUpdateFile({ uname: "Darwin x86_64 Apple Kernel Version", rosetta: true }),
-    ).resolves.toContain("CUT3-macOS-0.0.12-fork.2-arm64.zip");
+    ).resolves.toContain("Rowl-macOS-0.0.12-fork.2-arm64.zip");
   });
 });

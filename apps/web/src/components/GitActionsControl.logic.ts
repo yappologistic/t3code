@@ -36,7 +36,7 @@ export type DefaultBranchConfirmableAction = "commit_push" | "commit_push_pr";
 
 const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
-const PREFERRED_REMOTE_NAME = "CUT3";
+const PREFERRED_REMOTE_NAME = "Rowl";
 
 function getGitActionLogicCopy(language: AppLanguage) {
   if (language === "fa") {

@@ -1480,8 +1480,7 @@ describe("ProviderCommandReactor", () => {
 
       await waitFor(() => harness.sendTurn.mock.calls.length >= 1);
 
-      const interruptCallCountBefore =
-        harness.interruptTurn.mock.calls.length;
+      const interruptCallCountBefore = harness.interruptTurn.mock.calls.length;
 
       await Effect.runPromise(
         harness.engine.dispatch({
@@ -1493,10 +1492,7 @@ describe("ProviderCommandReactor", () => {
         }),
       );
 
-      await waitFor(
-        () => harness.interruptTurn.mock.calls.length > interruptCallCountBefore,
-        3000,
-      );
+      await waitFor(() => harness.interruptTurn.mock.calls.length > interruptCallCountBefore, 3000);
 
       expect(harness.interruptTurn.mock.calls.length).toBeGreaterThan(0);
     });
@@ -1555,10 +1551,7 @@ describe("ProviderCommandReactor", () => {
         }),
       );
 
-      await waitFor(
-        () => harness.sendTurn.mock.calls.length >= 2,
-        5000,
-      );
+      await waitFor(() => harness.sendTurn.mock.calls.length >= 2, 5000);
 
       expect(harness.sendTurn.mock.calls.length).toBe(2);
     });

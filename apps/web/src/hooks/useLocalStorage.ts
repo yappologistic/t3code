@@ -39,7 +39,7 @@ export const removeLocalStorageItem = (key: string) => {
   isomorphicLocalStorage.removeItem(key);
 };
 
-const LOCAL_STORAGE_CHANGE_EVENT = "cut3:local_storage_change";
+const LOCAL_STORAGE_CHANGE_EVENT = "rowl:local_storage_change";
 
 interface LocalStorageChangeDetail {
   key: string;

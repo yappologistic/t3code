@@ -71,7 +71,7 @@ function getAppearanceCopy(language: AppLanguage) {
     return {
       sectionTitle: "ظاهر",
       sectionDescription:
-        "پالت پایه روشن و تیره، تایپوگرافی و کنترل های ظاهری CUT3 را برای وب و Electron تنظیم کنید.",
+        "پالت پایه روشن و تیره، تایپوگرافی و کنترل های ظاهری Rowl را برای وب و Electron تنظیم کنید.",
       themeMode: {
         light: { label: "روشن", description: "از ظاهر روشن استفاده شود." },
         dark: { label: "تیره", description: "از ظاهر تیره استفاده شود." },
@@ -107,7 +107,7 @@ function getAppearanceCopy(language: AppLanguage) {
       pointerCursorsDescription:
         "به جای فلش پیش فرض، روی دکمه ها و پیوندها از نشانگر دستی استفاده شود.",
       uiFontSize: "اندازه فونت رابط",
-      uiFontSizeDescription: "اندازه پایه مورد استفاده در رابط CUT3 را تنظیم می کند.",
+      uiFontSizeDescription: "اندازه پایه مورد استفاده در رابط Rowl را تنظیم می کند.",
       uiFontSizeAria: "اندازه فونت رابط بر حسب پیکسل",
       timestampFormat: "قالب زمان",
       timestampFormatDescription:
@@ -136,7 +136,7 @@ function getAppearanceCopy(language: AppLanguage) {
       importDialogDescription:
         "یک شیء JSON با فیلدهای accent، background، foreground، uiFont، codeFont، translucentSidebar و contrast وارد کنید.",
       importDialogFootnote: (themeName: string) =>
-        `CUT3 فقط مقادیر ${themeName} فعلی را درون ریزی می کند.`,
+        `Rowl فقط مقادیر ${themeName} فعلی را درون ریزی می کند.`,
       cancel: "لغو",
       applyImport: "اعمال درون ریزی",
     };
@@ -145,7 +145,7 @@ function getAppearanceCopy(language: AppLanguage) {
   return {
     sectionTitle: "Appearance",
     sectionDescription:
-      "Customize CUT3's base light and dark palettes, typography, and interactive chrome across web and Electron.",
+      "Customize Rowl's base light and dark palettes, typography, and interactive chrome across web and Electron.",
     themeMode: {
       light: { label: "Light", description: "Use the light appearance." },
       dark: { label: "Dark", description: "Use the dark appearance." },
@@ -181,7 +181,7 @@ function getAppearanceCopy(language: AppLanguage) {
     pointerCursorsDescription:
       "Use hand cursors on buttons and links instead of the default arrow.",
     uiFontSize: "UI font size",
-    uiFontSizeDescription: "Adjust the base size used across the shared CUT3 interface.",
+    uiFontSizeDescription: "Adjust the base size used across the shared Rowl interface.",
     uiFontSizeAria: "UI font size in pixels",
     timestampFormat: "Timestamp format",
     timestampFormatDescription: "System default follows your browser or OS time format.",
@@ -207,7 +207,7 @@ function getAppearanceCopy(language: AppLanguage) {
     importDialogDescription:
       "Paste a JSON object with accent, background, foreground, uiFont, codeFont, translucentSidebar, and contrast.",
     importDialogFootnote: (themeName: string) =>
-      `CUT3 only imports the current ${themeName} values.`,
+      `Rowl only imports the current ${themeName} values.`,
     cancel: "Cancel",
     applyImport: "Apply import",
   };
