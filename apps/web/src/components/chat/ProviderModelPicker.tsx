@@ -34,6 +34,7 @@ import {
   BarChart3Icon,
   BotIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CheckIcon,
   PlusIcon,
   SearchIcon,
@@ -42,11 +43,13 @@ import {
   BrainCircuitIcon,
   EyeIcon,
   SparklesIcon,
+  ChevronsUpDownIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import {
   ClaudeAI,
   CursorIcon,
@@ -544,6 +547,66 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     ],
   );
 
+  // Collapsed state management
+  const STORAGE_KEY = "rowl:model-picker:collapsed-sections";
+  const [collapsedSections, setCollapsedSections] = useState<Set<AvailableProviderPickerKind>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        return new Set(JSON.parse(stored) as AvailableProviderPickerKind[]);
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return new Set();
+  });
+
+  // Auto-expand selected provider when popover opens
+  useEffect(() => {
+    if (isOpen && !normalizedQuery) {
+      setCollapsedSections((prev) => {
+        if (prev.has(props.providerPickerKind)) {
+          const next = new Set(prev);
+          next.delete(props.providerPickerKind);
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [isOpen, props.providerPickerKind, normalizedQuery]);
+
+  // Persist collapsed state
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsedSections]));
+    } catch {
+      // ignore storage errors
+    }
+  }, [collapsedSections]);
+
+  const toggleSection = useCallback((value: AvailableProviderPickerKind) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) {
+        next.delete(value);
+      } else {
+        next.add(value);
+      }
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => {
+    setCollapsedSections(new Set());
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    setCollapsedSections(new Set(providerSections.map((s) => s.option.value)));
+  }, [providerSections]);
+
+  const allCollapsed = providerSections.length > 0 && providerSections.every((s) => collapsedSections.has(s.option.value));
+  const allExpanded = providerSections.length > 0 && providerSections.every((s) => !collapsedSections.has(s.option.value));
+
   const unavailableOptions = useMemo(() => {
     const placeholderOptions = [
       ...UNAVAILABLE_PROVIDER_OPTIONS.map((option) => ({
@@ -634,12 +697,38 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </div>
             {/* Quick stat */}
             {!normalizedQuery ? (
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground/65">
-                <SparklesIcon className="size-3" />
-                <span>
-                  {providerSections.length} provider{providerSections.length === 1 ? "" : "s"} ·{" "}
-                  {totalVisibleModels} model{totalVisibleModels === 1 ? "" : "s"} available
-                </span>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground/65">
+                  <SparklesIcon className="size-3" />
+                  <span>
+                    {providerSections.length} provider{providerSections.length === 1 ? "" : "s"} ·{" "}
+                    {totalVisibleModels} model{totalVisibleModels === 1 ? "" : "s"} available
+                  </span>
+                </div>
+                {providerSections.length > 1 ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[11px] text-muted-foreground/60 hover:text-foreground/80"
+                      onClick={allExpanded ? collapseAll : expandAll}
+                      disabled={normalizedQuery.length > 0}
+                    >
+                      <ChevronsUpDownIcon className="size-3.5" />
+                      {allExpanded
+                        ? props.language === "fa"
+                          ? "جمع کردن همه"
+                          : "Collapse all"
+                        : allCollapsed
+                          ? props.language === "fa"
+                            ? "باز کردن همه"
+                            : "Expand all"
+                          : props.language === "fa"
+                            ? "جمع کردن همه"
+                            : "Collapse all"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -692,8 +781,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     })
                   : null;
 
+                const isCollapsed = collapsedSections.has(section.option.value);
                 return (
-                  <section
+                  <Collapsible
                     key={section.option.value}
                     className={cn(
                       "overflow-hidden rounded-xl border transition-colors",
@@ -702,11 +792,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                         : "border-border/50 bg-background/95",
                       section.isDisabledByProviderLock && "opacity-60",
                     )}
+                    open={!isCollapsed}
+                    onOpenChange={() => toggleSection(section.option.value)}
                   >
                     {/* Provider section header */}
-                    <div
+                    <CollapsibleTrigger
                       className={cn(
-                        "flex flex-wrap items-start justify-between gap-2 border-b px-4 py-2.5",
+                        "flex w-full flex-wrap items-start justify-between gap-2 border-b px-4 py-2.5 text-left",
                         isCurrentProvider
                           ? "border-primary/20 bg-primary/[0.04]"
                           : "border-border/50 bg-muted/15",
@@ -714,6 +806,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     >
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2">
+                          <ChevronRightIcon
+                            className={cn(
+                              "size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-150",
+                              !isCollapsed && "rotate-90",
+                            )}
+                          />
                           <OptionIcon className="size-4 shrink-0 text-muted-foreground/80" />
                           <span className="font-semibold text-sm text-foreground">
                             {section.option.label}
@@ -736,85 +834,87 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                       <Badge variant="outline" size="sm" className="shrink-0 tabular-nums">
                         {copy.models(section.modelOptions.length)}
                       </Badge>
-                    </div>
+                    </CollapsibleTrigger>
 
-                    {/* Context window & copilot usage */}
-                    {providerContextSummary ? (
-                      <div className="border-b border-border/40">{providerContextSummary}</div>
-                    ) : null}
+                    <CollapsiblePanel>
+                      {/* Context window & copilot usage */}
+                      {providerContextSummary ? (
+                        <div className="border-b border-border/40">{providerContextSummary}</div>
+                      ) : null}
 
-                    {section.option.value === "copilot" && isCurrentProvider ? (
-                      <div className="border-b border-border/40">
-                        {renderCopilotUsageSummary(
-                          copilotUsageQuery.data ?? null,
-                          copilotUsageQuery.isLoading,
-                          props.language,
-                        )}
-                      </div>
-                    ) : null}
-
-                    {/* Model rows grouped by family */}
-                    <div>
-                      {section.families.map((family, familyIdx) => (
-                        <div key={family.key}>
-                          {/* Family label (only when multiple families) */}
-                          {section.families.length > 1 && family.label ? (
-                            <div
-                              className={cn(
-                                "flex items-center gap-2 px-4 pt-2 pb-1",
-                                familyIdx > 0 && "border-t border-border/30",
-                              )}
-                            >
-                              <span className="font-semibold text-[11px] uppercase tracking-[0.12em] text-muted-foreground/60">
-                                {family.label}
-                              </span>
-                              <span className="h-px flex-1 bg-border/30" />
-                              <span className="text-[10px] tabular-nums text-muted-foreground/45">
-                                {family.models.length}
-                              </span>
-                            </div>
-                          ) : null}
-                          {family.models.map((modelOption) => {
-                            const isSelected =
-                              section.option.value === props.providerPickerKind &&
-                              modelOption.slug === props.model;
-                            const providerFavorites =
-                              props.favoriteModelsByProvider[section.backingProvider];
-                            const providerRecents =
-                              props.recentModelsByProvider[section.backingProvider];
-                            return (
-                              <PickerModelRow
-                                key={`${section.option.value}:${modelOption.slug}`}
-                                modelOption={modelOption}
-                                backingProvider={section.backingProvider}
-                                providerPickerKind={section.option.value}
-                                isSelected={isSelected}
-                                isFavorite={providerFavorites.includes(modelOption.slug)}
-                                isRecent={providerRecents.includes(modelOption.slug)}
-                                favoriteLabel={copy.favorite}
-                                recentLabel={copy.recent}
-                                isDisabledByProviderLock={section.isDisabledByProviderLock}
-                                disabled={props.disabled ?? false}
-                                serviceTierSetting={props.serviceTierSetting}
-                                openRouterContextLengthsBySlug={
-                                  props.openRouterContextLengthsBySlug
-                                }
-                                opencodeContextLengthsBySlug={props.opencodeContextLengthsBySlug}
-                                onSelect={() => {
-                                  handleModelChange(
-                                    section.option.value,
-                                    modelOption.slug,
-                                    section.modelOptions,
-                                    section.isDisabledByProviderLock,
-                                  );
-                                }}
-                              />
-                            );
-                          })}
+                      {section.option.value === "copilot" && isCurrentProvider ? (
+                        <div className="border-b border-border/40">
+                          {renderCopilotUsageSummary(
+                            copilotUsageQuery.data ?? null,
+                            copilotUsageQuery.isLoading,
+                            props.language,
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </section>
+                      ) : null}
+
+                      {/* Model rows grouped by family */}
+                      <div>
+                        {section.families.map((family, familyIdx) => (
+                          <div key={family.key}>
+                            {/* Family label (only when multiple families) */}
+                            {section.families.length > 1 && family.label ? (
+                              <div
+                                className={cn(
+                                  "flex items-center gap-2 px-4 pt-2 pb-1",
+                                  familyIdx > 0 && "border-t border-border/30",
+                                )}
+                              >
+                                <span className="font-semibold text-[11px] uppercase tracking-[0.12em] text-muted-foreground/60">
+                                  {family.label}
+                                </span>
+                                <span className="h-px flex-1 bg-border/30" />
+                                <span className="text-[10px] tabular-nums text-muted-foreground/45">
+                                  {family.models.length}
+                                </span>
+                              </div>
+                            ) : null}
+                            {family.models.map((modelOption) => {
+                              const isSelected =
+                                section.option.value === props.providerPickerKind &&
+                                modelOption.slug === props.model;
+                              const providerFavorites =
+                                props.favoriteModelsByProvider[section.backingProvider];
+                              const providerRecents =
+                                props.recentModelsByProvider[section.backingProvider];
+                              return (
+                                <PickerModelRow
+                                  key={`${section.option.value}:${modelOption.slug}`}
+                                  modelOption={modelOption}
+                                  backingProvider={section.backingProvider}
+                                  providerPickerKind={section.option.value}
+                                  isSelected={isSelected}
+                                  isFavorite={providerFavorites.includes(modelOption.slug)}
+                                  isRecent={providerRecents.includes(modelOption.slug)}
+                                  favoriteLabel={copy.favorite}
+                                  recentLabel={copy.recent}
+                                  isDisabledByProviderLock={section.isDisabledByProviderLock}
+                                  disabled={props.disabled ?? false}
+                                  serviceTierSetting={props.serviceTierSetting}
+                                  openRouterContextLengthsBySlug={
+                                    props.openRouterContextLengthsBySlug
+                                  }
+                                  opencodeContextLengthsBySlug={props.opencodeContextLengthsBySlug}
+                                  onSelect={() => {
+                                    handleModelChange(
+                                      section.option.value,
+                                      modelOption.slug,
+                                      section.modelOptions,
+                                      section.isDisabledByProviderLock,
+                                    );
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsiblePanel>
+                  </Collapsible>
                 );
               })
             )}
