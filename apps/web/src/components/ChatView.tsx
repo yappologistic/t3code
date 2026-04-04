@@ -7203,10 +7203,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           kimi: providerRecentModelSettings.recentKimiModels,
                           pi: providerRecentModelSettings.recentPiModels,
                         }}
+                        projectDefaultModel={activeProject?.model ?? null}
                         onOpenProviderSetup={openProviderSetupDialog}
                         onOpenManageModels={openManageModelsDialog}
                         onOpenUsageDashboard={() => setIsUsageDashboardOpen(true)}
                         onProviderModelChange={onProviderModelSelectFromPicker}
+                        onSetAsDefault={(provider, model) => {
+                          if (!activeProject) return;
+                          const api = readNativeApi();
+                          if (!api) return;
+                          void api.orchestration.dispatchCommand({
+                            type: "project.meta.update",
+                            commandId: newCommandId(),
+                            projectId: activeProject.id,
+                            defaultModel: model,
+                          });
+                        }}
                       />
 
                       <ComposerSkillPicker
@@ -7403,7 +7415,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             {selectedModelSupportsImages
                               ? chatCopy.attachImagesTooltip
                               : selectedProvider === "opencode"
-                                ? "Image attachments not supported with OpenCode provider"
+                                ? "Current OpenCode model does not support image attachments"
                                 : chatCopy.attachImagesNotSupported}
                           </TooltipPopup>
                         </Tooltip>

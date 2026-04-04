@@ -300,6 +300,14 @@ export function parseOpenCodeAuthListOutput(output: string): ServerOpenCodeCrede
   return credentials;
 }
 
+const OPENROUTER_PROVIDER_ID_NORMALIZATIONS: Record<string, string> = {
+  zai: "z-ai",
+};
+
+function normalizeOpenRouterProviderId(providerId: string): string {
+  return OPENROUTER_PROVIDER_ID_NORMALIZATIONS[providerId] ?? providerId;
+}
+
 export function parseOpenCodeModelsOutput(output: string): ServerOpenCodeModel[] {
   const models: ServerOpenCodeModel[] = [];
   const seen = new Set<string>();
@@ -315,12 +323,13 @@ export function parseOpenCodeModelsOutput(output: string): ServerOpenCodeModel[]
       continue;
     }
 
-    const providerId = match[1]?.trim();
+    const rawProviderId = match[1]?.trim();
     const modelId = match[2]?.trim();
-    if (!providerId || !modelId) {
+    if (!rawProviderId || !modelId) {
       continue;
     }
 
+    const providerId = normalizeOpenRouterProviderId(rawProviderId);
     const slug = `${providerId}/${modelId}`;
     if (seen.has(slug)) {
       continue;
