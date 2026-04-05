@@ -30,6 +30,7 @@ import {
   mapToolKindToItemType,
   mapToolKindToRequestType,
   permissionDecisionFromOutcome,
+  providerLog,
   readResumeSessionId,
   summarizeToolContent,
   toMessage,
@@ -858,6 +859,11 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       payload: context.session.model ? { model: context.session.model } : {},
     });
 
+    providerLog(
+      "Turn",
+      `Starting turn ${turnId} for thread ${input.threadId}, model: ${context.session.model ?? "default"}`,
+    );
+
     try {
       const result = await context.connection.prompt({
         sessionId: context.acpSessionId,
@@ -868,6 +874,8 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
           },
         ],
       });
+
+      providerLog("Turn", `Turn ${turnId} completed with stopReason: ${result.stopReason}`);
 
       this.emitRuntimeEvent({
         ...this.createEventBase(context),
@@ -971,6 +979,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
   }
 
   private async disposeContext(context: KimiSessionContext): Promise<void> {
+    providerLog("Session", `Disposing session for thread ${context.session.threadId}`);
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -979,13 +988,19 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       // Best-effort cancellation only.
     }
 
-    killChildTree(context.child);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    if (!context.child.killed) {
+      providerLog("Session", `Sending SIGKILL to child process ${context.child.pid}`);
+      killChildTree(context.child, "SIGKILL");
+    }
     this.updateSession(context, {
       status: "closed",
       activeTurnId: undefined,
     });
     this.deleteTrackedSession(context.session.threadId, context);
     cleanupKimiTempConfig(context.tempConfigDir);
+    providerLog("Session", `Session disposed for thread ${context.session.threadId}`);
   }
 
   async listSessions(): Promise<ReadonlyArray<ProviderSession>> {

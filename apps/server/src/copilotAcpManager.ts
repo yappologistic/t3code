@@ -29,6 +29,7 @@ import {
   mapToolKindToItemType,
   mapToolKindToRequestType,
   permissionDecisionFromOutcome,
+  providerLog,
   readResumeSessionId,
   summarizeToolContent,
   toMessage,
@@ -774,6 +775,11 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
         payload: context.session.model ? { model: context.session.model } : {},
       });
 
+      providerLog(
+        "Turn",
+        `Starting turn ${turnId} for thread ${input.threadId}, model: ${context.session.model ?? "default"}`,
+      );
+
       try {
         const result = await context.connection.prompt({
           sessionId: context.acpSessionId,
@@ -784,6 +790,8 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
             },
           ],
         });
+
+        providerLog("Turn", `Turn ${turnId} completed with stopReason: ${result.stopReason}`);
 
         this.emitRuntimeEvent({
           ...this.createEventBase(context),
@@ -889,6 +897,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   }
 
   private async disposeContext(context: CopilotSessionContext): Promise<void> {
+    providerLog("Session", `Disposing session for thread ${context.session.threadId}`);
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -897,12 +906,18 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       // Best-effort cancellation only.
     }
 
-    killChildTree(context.child);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    if (!context.child.killed) {
+      providerLog("Session", `Sending SIGKILL to child process ${context.child.pid}`);
+      killChildTree(context.child, "SIGKILL");
+    }
     this.updateSession(context, {
       status: "closed",
       activeTurnId: undefined,
     });
     this.deleteTrackedSession(context.session.threadId, context);
+    providerLog("Session", `Session disposed for thread ${context.session.threadId}`);
   }
 
   async listSessions(): Promise<ReadonlyArray<ProviderSession>> {
