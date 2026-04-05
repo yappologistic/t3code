@@ -201,14 +201,31 @@ export function permissionDecisionFromOutcome(
   }
 }
 
-export function killChildTree(child: ChildProcessWithoutNullStreams): void {
+const ENABLE_PROVIDER_EVENT_LOGS = process.env.CUT3_ENABLE_PROVIDER_EVENT_LOGS === "1";
+
+function providerLog(label: string, ...args: unknown[]): void {
+  if (ENABLE_PROVIDER_EVENT_LOGS) {
+    console.log(`[Rowl:${label}]`, ...args);
+  }
+}
+
+export { providerLog };
+
+export function killChildTree(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals = "SIGTERM",
+): void {
   if (process.platform === "win32" && child.pid !== undefined) {
     try {
       spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      providerLog("Process", `Terminated child ${child.pid} via taskkill`);
       return;
     } catch {
       // Fallback to direct kill below.
     }
   }
-  child.kill();
+  if (!child.killed) {
+    child.kill(signal);
+    providerLog("Process", `Sent ${signal} to child ${child.pid}`);
+  }
 }

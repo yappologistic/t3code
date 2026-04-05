@@ -28,6 +28,7 @@ import {
   mapToolKindToItemType,
   mapToolKindToRequestType,
   permissionDecisionFromOutcome,
+  providerLog,
   readResumeSessionId,
   summarizeToolContent,
   toMessage,
@@ -98,10 +99,29 @@ export function isOpenCodeDefaultModel(model: string | null | undefined): boolea
   return model?.trim() === OPENCODE_DEFAULT_MODEL;
 }
 
+const OPENROUTER_PROVIDER_ID_NORMALIZATIONS: Record<string, string> = {
+  zai: "z-ai",
+};
+
+function normalizeOpenRouterProviderId(providerId: string): string {
+  return OPENROUTER_PROVIDER_ID_NORMALIZATIONS[providerId] ?? providerId;
+}
+
 function normalizeRequestedOpenCodeModel(model: string | null | undefined): string | undefined {
   const trimmed = model?.trim();
   if (!trimmed || isOpenCodeDefaultModel(trimmed)) {
     return undefined;
+  }
+  const slashIndex = trimmed.indexOf("/");
+  if (slashIndex > 0) {
+    const providerId = trimmed.slice(0, slashIndex);
+    const modelId = trimmed.slice(slashIndex + 1);
+    const normalizedProviderId = normalizeOpenRouterProviderId(providerId);
+    if (normalizedProviderId !== providerId) {
+      const normalized = `${normalizedProviderId}/${modelId}`;
+      providerLog("Model", `Normalized provider ID: '${trimmed}' -> '${normalized}'`);
+      return normalized;
+    }
   }
   return trimmed;
 }
@@ -200,7 +220,7 @@ export function buildOpenCodeCliEnv(input: {
 
 export function normalizeOpenCodeStartErrorMessage(rawMessage: string): string {
   if (/missing environment variable:\s*['"]?OPENROUTER_API_KEY['"]?/i.test(rawMessage)) {
-    return "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in CUT3 Settings or export OPENROUTER_API_KEY before starting CUT3.";
+    return "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in Rowl Settings or export OPENROUTER_API_KEY before starting Rowl.";
   }
 
   if (
@@ -811,6 +831,11 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
         activeTurnId: turnId,
       });
 
+      providerLog(
+        "Turn",
+        `Starting turn ${turnId} for thread ${input.threadId}, model: ${context.session.model ?? "default"}`,
+      );
+
       this.emitRuntimeEvent({
         ...this.createEventBase(context),
         turnId,
@@ -828,6 +853,8 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
             },
           ],
         });
+
+        providerLog("Turn", `Turn ${turnId} completed with stopReason: ${result.stopReason}`);
 
         this.emitRuntimeEvent({
           ...this.createEventBase(context),
@@ -899,7 +926,7 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
   }
 
   async respondToUserInput(): Promise<void> {
-    throw new Error("OpenCode ACP does not expose structured user input requests in CUT3 yet.");
+    throw new Error("OpenCode ACP does not expose structured user input requests in Rowl yet.");
   }
 
   async stopSession(threadId: ThreadId): Promise<void> {
@@ -933,6 +960,7 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
   }
 
   private async disposeContext(context: OpenCodeSessionContext): Promise<void> {
+    providerLog("Session", `Disposing session for thread ${context.session.threadId}`);
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -941,12 +969,18 @@ export class OpenCodeAcpManager extends EventEmitter<OpenCodeAcpManagerEvents> {
       // Best-effort cancellation only.
     }
 
-    killChildTree(context.child);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    if (!context.child.killed) {
+      providerLog("Session", `Sending SIGKILL to child process ${context.child.pid}`);
+      killChildTree(context.child, "SIGKILL");
+    }
     this.updateSession(context, {
       status: "closed",
       activeTurnId: undefined,
     });
     this.deleteTrackedSession(context.session.threadId, context);
+    providerLog("Session", `Session disposed for thread ${context.session.threadId}`);
   }
 
   async listSessions(): Promise<ReadonlyArray<ProviderSession>> {

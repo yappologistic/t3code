@@ -278,7 +278,7 @@ export function normalizeKimiStartErrorMessage(input: {
     ) ||
     (input.loginProbeOutput && isKimiLoginProbeUnauthenticated(input.loginProbeOutput))
   ) {
-    return "Kimi Code CLI requires authentication. Run `kimi login`, or start `kimi` and run `/login`, or add a Kimi API key in CUT3 Settings and try again.";
+    return "Kimi Code CLI requires authentication. Run `kimi login`, or start `kimi` and run `/login`, or add a Kimi API key in Rowl Settings and try again.";
   }
 
   return input.rawMessage;
@@ -937,7 +937,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
   }
 
   async respondToUserInput(): Promise<void> {
-    throw new Error("Kimi Code CLI does not expose structured user input requests in CUT3.");
+    throw new Error("Kimi Code CLI does not expose structured user input requests in Rowl.");
   }
 
   async stopSession(threadId: ThreadId): Promise<void> {

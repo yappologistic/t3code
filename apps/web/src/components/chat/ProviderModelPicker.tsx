@@ -288,6 +288,8 @@ function getChatPickerCopy(language: AppLanguage) {
       recent: "اخیر",
       locked: "قفل شده",
       current: "فعلی",
+      default: "پیش‌فرض",
+      setAsDefault: "تنظیم به عنوان پیش‌فرض",
     };
   }
   return {
@@ -307,6 +309,8 @@ function getChatPickerCopy(language: AppLanguage) {
     recent: "Recent",
     locked: "Locked",
     current: "Current",
+    default: "Default",
+    setAsDefault: "Set as default",
   };
 }
 
@@ -321,8 +325,10 @@ const PickerModelRow = memo(function PickerModelRow(props: {
   isSelected: boolean;
   isFavorite: boolean;
   isRecent: boolean;
+  isDefault: boolean;
   favoriteLabel: string;
   recentLabel: string;
+  defaultLabel: string;
   isDisabledByProviderLock: boolean;
   disabled: boolean;
   serviceTierSetting: AppServiceTier;
@@ -396,6 +402,15 @@ const PickerModelRow = memo(function PickerModelRow(props: {
             {props.recentLabel}
           </Badge>
         ) : null}
+        {props.isDefault ? (
+          <Badge
+            variant="outline"
+            size="sm"
+            className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+          >
+            {props.defaultLabel}
+          </Badge>
+        ) : null}
         {props.modelOption.supportsReasoning ? (
           <span
             title="Supports reasoning"
@@ -442,15 +457,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   opencodeContextLengthsBySlug: ReadonlyMap<string, number | null>;
   serviceTierSetting: AppServiceTier;
   hasHiddenModels: boolean;
+  hiddenProviders: ReadonlyArray<string>;
   favoriteModelsByProvider: Record<ProviderKind, ReadonlyArray<string>>;
   recentModelsByProvider: Record<ProviderKind, ReadonlyArray<string>>;
   modelLabelOverride?: string;
   compact?: boolean;
   disabled?: boolean;
+  projectDefaultModel: string | null;
   onOpenProviderSetup: () => void;
   onOpenManageModels: () => void;
   onOpenUsageDashboard: () => void;
   onProviderModelChange: (provider: AvailableProviderPickerKind, model: ModelSlug) => void;
+  onSetAsDefault: (provider: AvailableProviderPickerKind, model: ModelSlug) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -479,7 +497,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ??
     getModelDisplayName(props.model, props.provider);
   const selectedProviderLabel =
-    AVAILABLE_PROVIDER_OPTIONS.find((option) => option.value === props.providerPickerKind)?.label ??
+    PROVIDER_OPTIONS.find((option) => option.value === props.providerPickerKind)?.label ??
     props.providerPickerKind;
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.providerPickerKind];
 
@@ -524,10 +542,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   );
 
   const normalizedQuery = query.trim().toLowerCase();
+  const visibleAvailableOptions = useMemo(
+    () =>
+      AVAILABLE_PROVIDER_OPTIONS.filter((option) => !props.hiddenProviders.includes(option.value)),
+    [props.hiddenProviders],
+  );
   const providerSections = useMemo(
     () =>
       buildPickerProviderSections({
-        availableOptions: AVAILABLE_PROVIDER_OPTIONS,
+        availableOptions: visibleAvailableOptions,
         visibleModelOptionsByProvider: props.visibleModelOptionsByProvider,
         openRouterModelOptions: props.openRouterModelOptions,
         opencodeModelOptions: props.opencodeModelOptions,
@@ -538,6 +561,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       }),
     [
       normalizedQuery,
+      visibleAvailableOptions,
       props.openRouterModelOptions,
       props.opencodeModelOptions,
       props.visibleModelOptionsByProvider,
@@ -896,8 +920,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                                   isSelected={isSelected}
                                   isFavorite={providerFavorites.includes(modelOption.slug)}
                                   isRecent={providerRecents.includes(modelOption.slug)}
+                                  isDefault={modelOption.slug === props.projectDefaultModel}
                                   favoriteLabel={copy.favorite}
                                   recentLabel={copy.recent}
+                                  defaultLabel={copy.default}
                                   isDisabledByProviderLock={section.isDisabledByProviderLock}
                                   disabled={props.disabled ?? false}
                                   serviceTierSetting={props.serviceTierSetting}
@@ -948,9 +974,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
           {/* Footer toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-muted/15 px-3 py-2">
-            <p className="text-[11px] text-muted-foreground/65 leading-relaxed">
-              {props.hasHiddenModels ? copy.hiddenModelsHint : copy.pickModelHint}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] text-muted-foreground/65 leading-relaxed">
+                {props.hasHiddenModels ? copy.hiddenModelsHint : copy.pickModelHint}
+              </p>
+              {props.model !== props.projectDefaultModel && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="h-6 gap-1 text-[11px] text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                  onClick={() => {
+                    props.onSetAsDefault(props.providerPickerKind, props.model);
+                  }}
+                >
+                  <SparklesIcon className="size-3" />
+                  {copy.setAsDefault}
+                </Button>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <Button
                 size="xs"

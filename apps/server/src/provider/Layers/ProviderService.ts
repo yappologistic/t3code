@@ -246,7 +246,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         if (recoveredProviderOptions.missingSecrets.length > 0) {
           return yield* toValidationError(
             input.operation,
-            `Cannot recover thread '${input.binding.threadId}' because it depends on transient provider secrets (${recoveredProviderOptions.missingSecrets.join(", ")}) that were not persisted. Re-send a turn from CUT3 or export the required environment variables before restarting CUT3.`,
+            `Cannot recover thread '${input.binding.threadId}' because it depends on transient provider secrets (${recoveredProviderOptions.missingSecrets.join(", ")}) that were not persisted. Re-send a turn from Rowl or export the required environment variables before restarting Rowl.`,
           );
         }
 

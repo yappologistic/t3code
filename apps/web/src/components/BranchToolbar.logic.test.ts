@@ -102,17 +102,17 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
         worktreePath: null,
       },
       {
-        name: "CUT3/feature/demo",
+        name: "Rowl/feature/demo",
         isRemote: true,
-        remoteName: "CUT3",
+        remoteName: "Rowl",
         current: false,
         isDefault: false,
         worktreePath: null,
       },
       {
-        name: "CUT3/feature/remote-only",
+        name: "Rowl/feature/remote-only",
         isRemote: true,
-        remoteName: "CUT3",
+        remoteName: "Rowl",
         current: false,
         isDefault: false,
         worktreePath: null,
@@ -121,7 +121,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
 
     expect(dedupeRemoteBranchesWithLocalMatches(input).map((branch) => branch.name)).toEqual([
       "feature/demo",
-      "CUT3/feature/remote-only",
+      "Rowl/feature/remote-only",
     ]);
   });
 
@@ -134,9 +134,9 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
         worktreePath: null,
       },
       {
-        name: "CUT3/feature/remote-only",
+        name: "Rowl/feature/remote-only",
         isRemote: true,
-        remoteName: "CUT3",
+        remoteName: "Rowl",
         current: false,
         isDefault: false,
         worktreePath: null,
@@ -145,11 +145,11 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
 
     expect(dedupeRemoteBranchesWithLocalMatches(input).map((branch) => branch.name)).toEqual([
       "feature/local",
-      "CUT3/feature/remote-only",
+      "Rowl/feature/remote-only",
     ]);
   });
 
-  it("keeps non-CUT3 remote refs visible even when a matching local branch exists", () => {
+  it("keeps non-Rowl remote refs visible even when a matching local branch exists", () => {
     const input: GitBranch[] = [
       {
         name: "feature/demo",
@@ -173,7 +173,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
     ]);
   });
 
-  it("keeps non-CUT3 remote refs visible when git tracks with first-slash local naming", () => {
+  it("keeps non-Rowl remote refs visible when git tracks with first-slash local naming", () => {
     const input: GitBranch[] = [
       {
         name: "upstream/feature",

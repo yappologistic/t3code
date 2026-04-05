@@ -145,12 +145,15 @@ describe("Pi provider GUI", () => {
           opencodeContextLengthsBySlug={new Map()}
           serviceTierSetting="auto"
           hasHiddenModels={false}
+          hiddenProviders={[]}
           favoriteModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
           recentModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
+          projectDefaultModel={null}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
           onOpenUsageDashboard={() => undefined}
           onProviderModelChange={onProviderModelChange}
+          onSetAsDefault={vi.fn()}
         />
       </QueryClientProvider>,
     );
@@ -241,12 +244,15 @@ describe("Pi provider GUI", () => {
           opencodeContextLengthsBySlug={new Map()}
           serviceTierSetting="auto"
           hasHiddenModels={false}
+          hiddenProviders={[]}
           favoriteModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
           recentModelsByProvider={{ codex: [], copilot: [], kimi: [], opencode: [], pi: [] }}
+          projectDefaultModel={null}
           onOpenProviderSetup={() => undefined}
           onOpenManageModels={() => undefined}
           onOpenUsageDashboard={() => undefined}
           onProviderModelChange={onProviderModelChange}
+          onSetAsDefault={vi.fn()}
         />
       </QueryClientProvider>,
     );

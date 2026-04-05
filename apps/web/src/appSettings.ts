@@ -69,6 +69,15 @@ const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>([
   "opencode",
   "pi",
 ]);
+const VALID_HIDDEN_PROVIDER_PICKER_KINDS = new Set([
+  "codex",
+  "openrouter",
+  "copilot",
+  "kimi",
+  "opencode",
+  "pi",
+]);
+const MAX_HIDDEN_PROVIDER_COUNT = 8;
 const AppearanceThemeConfigSchema = Schema.Struct({
   accent: Schema.String.check(Schema.isMaxLength(32)),
   background: Schema.String.check(Schema.isMaxLength(32)),
@@ -235,6 +244,9 @@ const AppSettingsSchema = Schema.Struct({
   hiddenPiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
+  hiddenProviders: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
   approvalRules: Schema.Array(ApprovalRuleSchema).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
@@ -337,6 +349,29 @@ export function normalizeModelVisibilitySlugs(
   );
 }
 
+function normalizeHiddenProviders(providers: Iterable<string | null | undefined>): string[] {
+  const normalizedProviders: string[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of providers) {
+    if (typeof candidate !== "string") {
+      continue;
+    }
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed) || !VALID_HIDDEN_PROVIDER_PICKER_KINDS.has(trimmed)) {
+      continue;
+    }
+
+    seen.add(trimmed);
+    normalizedProviders.push(trimmed);
+    if (normalizedProviders.length >= MAX_HIDDEN_PROVIDER_COUNT) {
+      break;
+    }
+  }
+
+  return normalizedProviders;
+}
+
 function normalizeAppSettings(settings: AppSettings): AppSettings {
   const customThemeId =
     settings.customThemeId === "none" && settings.enableCatppuccinTheme
@@ -412,6 +447,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     hiddenOpencodeModels: normalizeModelVisibilitySlugs(settings.hiddenOpencodeModels, "opencode"),
     hiddenKimiModels: normalizeModelVisibilitySlugs(settings.hiddenKimiModels, "kimi"),
     hiddenPiModels: normalizeModelVisibilitySlugs(settings.hiddenPiModels, "pi"),
+    hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
     approvalRules: normalizeApprovalRules(settings.approvalRules),
   };
 }

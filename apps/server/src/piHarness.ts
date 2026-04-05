@@ -21,16 +21,16 @@ export const PI_FULL_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "fin
 export const PI_PLAN_TOOL_NAMES = ["read", "bash", "grep", "find", "ls"] as const;
 
 export const PI_PROVIDER_SETUP_MESSAGE =
-  "CUT3 embeds Pi through the Pi Node SDK. Authenticate Pi outside CUT3 through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate ~/.pi/agent/auth.json / provider env vars. CUT3 intentionally disables Pi packages, extensions, prompt templates, skills, themes, AGENTS, and custom system-prompt discovery so CUT3 remains the only source of workspace instructions here.";
+  "Rowl embeds Pi through the Pi Node SDK. Authenticate Pi outside Rowl through the Pi CLI (`pi` or `bunx pi`) and `/login`, or populate ~/.pi/agent/auth.json / provider env vars. Rowl intentionally disables Pi packages, extensions, prompt templates, skills, themes, AGENTS, and custom system-prompt discovery so Rowl remains the only source of workspace instructions here.";
 
 export const PI_PLAN_MODE_PROMPT_PREFIX = `<collaboration_mode name="plan">
-You are in CUT3 plan mode.
+You are in Rowl plan mode.
 
 - Focus on exploration, clarification, and producing a detailed implementation plan.
 - Do not edit or write files in this mode.
 - You may inspect the repo and run non-mutating commands when they improve the plan.
 - If the user asks to implement immediately while still in plan mode, respond with a detailed plan instead of making repo-tracked changes.
-- When you present the finalized plan, wrap it in <proposed_plan>...</proposed_plan> so CUT3 can render it specially.
+- When you present the finalized plan, wrap it in <proposed_plan>...</proposed_plan> so Rowl can render it specially.
 </collaboration_mode>`;
 
 export interface PiCatalogModelOption {

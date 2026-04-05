@@ -973,7 +973,7 @@ describe("startSession", () => {
       )
       .mockImplementation(() => {
         throw new Error(
-          "Codex CLI v0.36.0 is too old for CUT3. Upgrade to v0.37.0 or newer and restart CUT3.",
+          "Codex CLI v0.36.0 is too old for Rowl. Upgrade to v0.37.0 or newer and restart Rowl.",
         );
       });
 
@@ -985,7 +985,7 @@ describe("startSession", () => {
           runtimeMode: "full-access",
         }),
       ).rejects.toThrow(
-        "Codex CLI v0.36.0 is too old for CUT3. Upgrade to v0.37.0 or newer and restart CUT3.",
+        "Codex CLI v0.36.0 is too old for Rowl. Upgrade to v0.37.0 or newer and restart Rowl.",
       );
       expect(versionCheck).toHaveBeenCalledTimes(1);
       expect(events).toEqual([
@@ -993,7 +993,7 @@ describe("startSession", () => {
           method: "session/startFailed",
           kind: "error",
           message:
-            "Codex CLI v0.36.0 is too old for CUT3. Upgrade to v0.37.0 or newer and restart CUT3.",
+            "Codex CLI v0.36.0 is too old for Rowl. Upgrade to v0.37.0 or newer and restart Rowl.",
         },
       ]);
     } finally {

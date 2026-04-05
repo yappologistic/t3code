@@ -136,6 +136,7 @@ import {
   getProviderPickerBackingProvider,
   getProviderPickerKindForSelection,
   findLatestProposedPlan,
+  PROVIDER_OPTIONS,
   type AvailableProviderPickerKind,
   type LatestModelRerouteNotice,
   type PendingApproval,
@@ -274,6 +275,7 @@ import {
   setupProjectScript,
 } from "~/projectScripts";
 import { Toggle } from "./ui/toggle";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/collapsible";
 import ThreadNewButton from "./ThreadNewButton";
 import ThreadSidebarToggle from "./ThreadSidebarToggle";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
@@ -605,6 +607,17 @@ function patchHiddenModels(
     default:
       return { hiddenCodexModels: [...hiddenModels] };
   }
+}
+
+function patchHiddenProviders(
+  hiddenProviders: readonly string[],
+  provider: AvailableProviderPickerKind,
+  hidden: boolean,
+): Partial<AppSettings> {
+  if (hidden) {
+    return { hiddenProviders: [...new Set([...hiddenProviders, provider])] };
+  }
+  return { hiddenProviders: hiddenProviders.filter((p) => p !== provider) };
 }
 
 function filterHiddenModelOptions(
@@ -2104,8 +2117,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () =>
       AVAILABLE_PROVIDER_OPTIONS.filter(
         (option) =>
-          lockedProvider === null ||
-          getProviderPickerBackingProvider(option.value) === lockedProvider,
+          !settings.hiddenProviders.includes(option.value) &&
+          (lockedProvider === null ||
+            getProviderPickerBackingProvider(option.value) === lockedProvider),
       ).flatMap((option) => {
         const backingProvider = getProviderPickerBackingProvider(option.value) ?? "codex";
         return prioritizeModelOptions(
@@ -2129,6 +2143,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }),
     [
       lockedProvider,
+      settings.hiddenProviders,
       visibleModelOptionsByProvider,
       visibleOpenRouterModelOptions,
       visibleOpencodeModelOptions,
@@ -2142,8 +2157,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerHiddenModelSettings.hiddenCopilotModels.length > 0 ||
       providerHiddenModelSettings.hiddenOpencodeModels.length > 0 ||
       providerHiddenModelSettings.hiddenKimiModels.length > 0 ||
-      providerHiddenModelSettings.hiddenPiModels.length > 0,
-    [providerHiddenModelSettings],
+      providerHiddenModelSettings.hiddenPiModels.length > 0 ||
+      settings.hiddenProviders.length > 0,
+    [providerHiddenModelSettings, settings.hiddenProviders],
   );
   const phase = derivePhase(activeThread?.session ?? null);
   const isConnecting = phase === "connecting";
@@ -6108,6 +6124,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [providerHiddenModelSettings, updateSettings],
   );
+  const onProviderVisibilityChange = useCallback(
+    (provider: AvailableProviderPickerKind, visible: boolean) => {
+      updateSettings(patchHiddenProviders(settings.hiddenProviders, provider, !visible));
+    },
+    [settings.hiddenProviders, updateSettings],
+  );
   const showAllManagedModels = useCallback(() => {
     updateSettings({
       hiddenCodexModels: [],
@@ -6115,6 +6137,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       hiddenOpencodeModels: [],
       hiddenKimiModels: [],
       hiddenPiModels: [],
+      hiddenProviders: [],
     });
   }, [updateSettings]);
   useEffect(() => {
@@ -7189,6 +7212,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         opencodeContextLengthsBySlug={openCodeContextLengthsBySlug}
                         serviceTierSetting={selectedServiceTierSetting}
                         hasHiddenModels={hasHiddenPickerModels}
+                        hiddenProviders={settings.hiddenProviders}
                         favoriteModelsByProvider={{
                           codex: providerFavoriteModelSettings.favoriteCodexModels,
                           copilot: providerFavoriteModelSettings.favoriteCopilotModels,
@@ -7887,6 +7911,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         openRouterModelOptions={openRouterModelOptions}
         opencodeModelOptions={opencodeModelOptions}
         hiddenModelsByProvider={providerHiddenModelSettings}
+        hiddenProviders={settings.hiddenProviders}
         favoriteModelsByProvider={providerFavoriteModelSettings}
         recentModelsByProvider={providerRecentModelSettings}
         openRouterContextLengthsBySlug={openRouterContextLengthsBySlug}
@@ -7894,6 +7919,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         serviceTierSetting={selectedServiceTierSetting}
         onFavoriteModelChange={onFavoriteModelChange}
         onModelVisibilityChange={onModelVisibilityChange}
+        onProviderVisibilityChange={onProviderVisibilityChange}
         onShowAll={showAllManagedModels}
         onOpenProviderSetup={openProviderSetupFromManageModels}
       />
@@ -9607,6 +9633,7 @@ function ManageModelsDialog(props: {
   openRouterModelOptions: ReadonlyArray<PickerModelOption>;
   opencodeModelOptions: ReadonlyArray<PickerModelOption>;
   hiddenModelsByProvider: ProviderHiddenModelSettings;
+  hiddenProviders: ReadonlyArray<string>;
   favoriteModelsByProvider: ProviderFavoriteModelSettings;
   recentModelsByProvider: ProviderRecentModelSettings;
   openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
@@ -9614,6 +9641,7 @@ function ManageModelsDialog(props: {
   serviceTierSetting: AppServiceTier;
   onFavoriteModelChange: (provider: ProviderKind, model: string, favorite: boolean) => void;
   onModelVisibilityChange: (provider: ProviderKind, model: string, visible: boolean) => void;
+  onProviderVisibilityChange: (provider: AvailableProviderPickerKind, visible: boolean) => void;
   onShowAll: () => void;
   onOpenProviderSetup: () => void;
 }) {
@@ -9661,13 +9689,16 @@ function ManageModelsDialog(props: {
           recent: "Recent",
           providerSetup: "Provider readiness",
           done: "Done",
+          showProvider: "Show provider",
+          hideProvider: "Hide provider",
         };
   const totalHiddenCount =
     props.hiddenModelsByProvider.hiddenCodexModels.length +
     props.hiddenModelsByProvider.hiddenCopilotModels.length +
     props.hiddenModelsByProvider.hiddenOpencodeModels.length +
     props.hiddenModelsByProvider.hiddenKimiModels.length +
-    props.hiddenModelsByProvider.hiddenPiModels.length;
+    props.hiddenModelsByProvider.hiddenPiModels.length +
+    props.hiddenProviders.length;
 
   useEffect(() => {
     if (!props.open) {
@@ -9676,15 +9707,18 @@ function ManageModelsDialog(props: {
   }, [props.open]);
 
   const orderedProviders = useMemo(() => {
-    const activeProvider = AVAILABLE_PROVIDER_OPTIONS.find(
+    const allManageableProviders = PROVIDER_OPTIONS.filter(
+      (option) => option.available && option.value !== "claudeCode" && option.value !== "cursor",
+    ) as Array<{ value: AvailableProviderPickerKind; label: string; available: true }>;
+    const activeProvider = allManageableProviders.find(
       (option) => option.value === props.selectedProviderPickerKind,
     );
     if (!activeProvider) {
-      return AVAILABLE_PROVIDER_OPTIONS;
+      return allManageableProviders;
     }
     return [
       activeProvider,
-      ...AVAILABLE_PROVIDER_OPTIONS.filter((option) => option.value !== activeProvider.value),
+      ...allManageableProviders.filter((option) => option.value !== activeProvider.value),
     ];
   }, [props.selectedProviderPickerKind]);
 
@@ -9698,6 +9732,7 @@ function ManageModelsDialog(props: {
             return null;
           }
 
+          const providerHidden = props.hiddenProviders.includes(option.value);
           const hiddenModels = new Set(
             getHiddenModelsForProvider(backingProvider, props.hiddenModelsByProvider),
           );
@@ -9738,7 +9773,7 @@ function ManageModelsDialog(props: {
             recentModels,
           );
 
-          if (filteredOptions.length === 0) {
+          if (filteredOptions.length === 0 && !providerHidden) {
             return null;
           }
 
@@ -9748,8 +9783,10 @@ function ManageModelsDialog(props: {
             favoriteModels,
             recentModels,
             filteredOptions,
-            hiddenCount: filteredOptions.filter((modelOption) => hiddenModels.has(modelOption.slug))
-              .length,
+            providerHidden,
+            hiddenCount: filteredOptions.filter(
+              (modelOption) => providerHidden || hiddenModels.has(modelOption.slug),
+            ).length,
           };
         })
         .filter((section): section is NonNullable<typeof section> => section !== null),
@@ -9758,6 +9795,7 @@ function ManageModelsDialog(props: {
       orderedProviders,
       props.allModelOptionsByProvider,
       props.hiddenModelsByProvider,
+      props.hiddenProviders,
       props.favoriteModelsByProvider,
       props.recentModelsByProvider,
       props.openRouterModelOptions,
@@ -9823,13 +9861,22 @@ function ManageModelsDialog(props: {
                 const isActiveSection = section.option.value === props.selectedProviderPickerKind;
 
                 return (
-                  <section
+                  <Collapsible
                     key={section.option.value}
                     className="overflow-hidden rounded-2xl border border-border/60 bg-background/95"
+                    open={!section.providerHidden}
+                    onOpenChange={(open) => {
+                      if (section.providerHidden && open) {
+                        props.onProviderVisibilityChange(section.option.value, true);
+                      }
+                    }}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-muted/20 px-4 py-3">
+                    <CollapsibleTrigger className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-muted/20 px-4 py-3 cursor-pointer select-none w-full text-left">
                       <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-2">
+                          <ChevronRightIcon
+                            className={`size-3.5 shrink-0 text-muted-foreground/80 transition-transform duration-150 ${!section.providerHidden ? "rotate-90" : ""}`}
+                          />
                           <OptionIcon className="size-4 shrink-0 text-muted-foreground/80" />
                           <span className="font-medium text-sm text-foreground">
                             {section.option.label}
@@ -9844,13 +9891,43 @@ function ManageModelsDialog(props: {
                           {getProviderPickerSectionDescription(section.option.value)}
                         </p>
                       </div>
-                      <Badge variant={section.hiddenCount > 0 ? "warning" : "outline"} size="sm">
-                        {section.hiddenCount > 0
-                          ? `${section.filteredOptions.length - section.hiddenCount} ${copy.shown.toLowerCase()} · ${section.hiddenCount} ${copy.hidden.toLowerCase()}`
-                          : `${section.filteredOptions.length} ${copy.shown.toLowerCase()}`}
-                      </Badge>
-                    </div>
-                    <div className="divide-y divide-border/50">
+                      <div className="flex items-center gap-2">
+                        {section.providerHidden ? (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onProviderVisibilityChange(section.option.value, true);
+                            }}
+                          >
+                            {copy.showProvider}
+                          </Button>
+                        ) : (
+                          <Badge
+                            variant={section.hiddenCount > 0 ? "warning" : "outline"}
+                            size="sm"
+                          >
+                            {section.hiddenCount > 0
+                              ? `${section.filteredOptions.length - section.hiddenCount} ${copy.shown.toLowerCase()} · ${section.hiddenCount} ${copy.hidden.toLowerCase()}`
+                              : `${section.filteredOptions.length} ${copy.shown.toLowerCase()}`}
+                          </Badge>
+                        )}
+                        {!section.providerHidden && section.filteredOptions.length > 0 ? (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onProviderVisibilityChange(section.option.value, false);
+                            }}
+                          >
+                            {copy.hideProvider}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsiblePanel className="divide-y divide-border/50">
                       {section.filteredOptions.map((modelOption) => {
                         const displayParts = getModelPickerOptionDisplayParts(modelOption);
                         const contextLabel = getModelOptionContextLabel(
@@ -9859,10 +9936,11 @@ function ManageModelsDialog(props: {
                           props.openRouterContextLengthsBySlug,
                           props.opencodeContextLengthsBySlug,
                         );
-                        const visible = !getHiddenModelsForProvider(
+                        const individualHidden = getHiddenModelsForProvider(
                           section.backingProvider,
                           props.hiddenModelsByProvider,
                         ).includes(modelOption.slug);
+                        const visible = !section.providerHidden && !individualHidden;
 
                         return (
                           <div
@@ -9936,10 +10014,15 @@ function ManageModelsDialog(props: {
                                   : copy.pin}
                               </Button>
                               <span className="min-w-10 text-right text-xs text-muted-foreground">
-                                {visible ? copy.shown : copy.hidden}
+                                {section.providerHidden
+                                  ? copy.hidden
+                                  : visible
+                                    ? copy.shown
+                                    : copy.hidden}
                               </span>
                               <Switch
                                 checked={visible}
+                                disabled={section.providerHidden}
                                 onCheckedChange={(checked) => {
                                   props.onModelVisibilityChange(
                                     section.backingProvider,
@@ -9952,8 +10035,8 @@ function ManageModelsDialog(props: {
                           </div>
                         );
                       })}
-                    </div>
-                  </section>
+                    </CollapsiblePanel>
+                  </Collapsible>
                 );
               })}
             </div>

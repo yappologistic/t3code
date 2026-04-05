@@ -700,7 +700,7 @@ export const checkPiProviderStatus: Effect.Effect<ServerProviderStatus, never> =
         message:
           issueMessages.length > 0
             ? `Pi is ready with ${snapshot.availableModels.length} authenticated model${snapshot.availableModels.length === 1 ? "" : "s"}, but local Pi config reported an issue: ${issueMessages[0]}.`
-            : `Pi is ready with ${snapshot.availableModels.length} authenticated model${snapshot.availableModels.length === 1 ? "" : "s"}. CUT3 reuses ~/.pi/agent auth/models config while keeping Pi resource discovery disabled by default.`,
+            : `Pi is ready with ${snapshot.availableModels.length} authenticated model${snapshot.availableModels.length === 1 ? "" : "s"}. Rowl reuses ~/.pi/agent auth/models config while keeping Pi resource discovery disabled by default.`,
         availableModels: snapshot.availableModels.map((model) => {
           const availableModel = {
             slug: model.slug,
@@ -730,8 +730,8 @@ export const checkPiProviderStatus: Effect.Effect<ServerProviderStatus, never> =
       checkedAt,
       message:
         issueMessages.length > 0
-          ? `Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available. Local Pi config also reported: ${issueMessages[0]}. Run \`pi\` (or \`bunx pi\`) and use \`/login\`, or populate ~/.pi/agent/auth.json / provider env vars.`
-          : "Pi is embedded in CUT3, but no authenticated Pi-backed models are currently available. Run `pi` (or `bunx pi`) and use `/login`, or populate ~/.pi/agent/auth.json / provider env vars.",
+          ? `Pi is embedded in Rowl, but no authenticated Pi-backed models are currently available. Local Pi config also reported: ${issueMessages[0]}. Run \`pi\` (or \`bunx pi\`) and use \`/login\`, or populate ~/.pi/agent/auth.json / provider env vars.`
+          : "Pi is embedded in Rowl, but no authenticated Pi-backed models are currently available. Run `pi` (or `bunx pi`) and use `/login`, or populate ~/.pi/agent/auth.json / provider env vars.",
     };
   } catch (error) {
     return {

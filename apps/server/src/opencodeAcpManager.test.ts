@@ -110,7 +110,7 @@ describe("opencodeAcpManager errors", () => {
     expect(
       normalizeOpenCodeStartErrorMessage("Missing environment variable: 'OPENROUTER_API_KEY'."),
     ).toBe(
-      "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in CUT3 Settings or export OPENROUTER_API_KEY before starting CUT3.",
+      "OpenCode provider config requires OPENROUTER_API_KEY. Add an OpenRouter API key in Rowl Settings or export OPENROUTER_API_KEY before starting Rowl.",
     );
   });
 

@@ -38,47 +38,47 @@ describe("isForkPrereleaseVersion", () => {
 });
 
 describe("resolveAppReleaseBranding", () => {
-  it("keeps local dev-server sessions on unified CUT3 branding", () => {
+  it("keeps local dev-server sessions on unified Rowl branding", () => {
     expect(resolveAppReleaseBranding({ version: "1.2.3", isDevelopment: true })).toEqual({
-      stageLabel: "CUT3",
-      displayName: "CUT3",
-      productName: "CUT3",
-      appId: "com.t3tools.cut3",
-      stateDirName: "cut3",
-      userDataDirName: "cut3",
+      stageLabel: "Rowl",
+      displayName: "Rowl",
+      productName: "Rowl",
+      appId: "com.t3tools.rowl",
+      stateDirName: "rowl",
+      userDataDirName: "rowl",
     });
   });
 
-  it("keeps prerelease packages on unified CUT3 branding", () => {
+  it("keeps prerelease packages on unified Rowl branding", () => {
     expect(resolveAppReleaseBranding({ version: "0.0.11-alpha.3", isDevelopment: false })).toEqual({
-      stageLabel: "CUT3",
-      displayName: "CUT3",
-      productName: "CUT3",
-      appId: "com.t3tools.cut3",
-      stateDirName: "cut3",
-      userDataDirName: "cut3",
+      stageLabel: "Rowl",
+      displayName: "Rowl",
+      productName: "Rowl",
+      appId: "com.t3tools.rowl",
+      stateDirName: "rowl",
+      userDataDirName: "rowl",
     });
   });
 
-  it("keeps fork prerelease packages on unified CUT3 branding", () => {
+  it("keeps fork prerelease packages on unified Rowl branding", () => {
     expect(resolveAppReleaseBranding({ version: "0.0.11-fork.3", isDevelopment: false })).toEqual({
-      stageLabel: "CUT3",
-      displayName: "CUT3",
-      productName: "CUT3",
-      appId: "com.t3tools.cut3",
-      stateDirName: "cut3",
-      userDataDirName: "cut3",
+      stageLabel: "Rowl",
+      displayName: "Rowl",
+      productName: "Rowl",
+      appId: "com.t3tools.rowl",
+      stateDirName: "rowl",
+      userDataDirName: "rowl",
     });
   });
 
-  it("keeps stable packaged builds on unified CUT3 branding", () => {
+  it("keeps stable packaged builds on unified Rowl branding", () => {
     expect(resolveAppReleaseBranding({ version: "1.2.3", isDevelopment: false })).toEqual({
-      stageLabel: "CUT3",
-      displayName: "CUT3",
-      productName: "CUT3",
-      appId: "com.t3tools.cut3",
-      stateDirName: "cut3",
-      userDataDirName: "cut3",
+      stageLabel: "Rowl",
+      displayName: "Rowl",
+      productName: "Rowl",
+      appId: "com.t3tools.rowl",
+      stateDirName: "rowl",
+      userDataDirName: "rowl",
     });
   });
 });

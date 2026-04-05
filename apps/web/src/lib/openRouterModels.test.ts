@@ -230,7 +230,7 @@ describe("openRouterModels", () => {
   it("reuses the last known-good catalog when the live fetch fails", async () => {
     const storage = new Map<string, string>();
     storage.set(
-      "cut3:openrouter-free-models-cache:v1",
+      "rowl:openrouter-free-models-cache:v1",
       JSON.stringify({
         fetchedAt: "2026-03-27T10:00:00.000Z",
         models: [

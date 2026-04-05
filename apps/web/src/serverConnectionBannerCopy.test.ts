@@ -9,7 +9,7 @@ describe("getServerConnectionBannerTitle", () => {
   it("uses a desktop-specific connecting title in Electron", () => {
     expect(
       getServerConnectionBannerTitle({ retrying: false, isElectron: true, language: "en" }),
-    ).toContain("Connecting to CUT3");
+    ).toContain("Connecting to Rowl");
   });
 
   it("keeps the local server title in the browser", () => {
@@ -38,7 +38,7 @@ describe("getServerConnectionBannerDescription", () => {
   it("uses desktop-specific retry guidance in Electron", () => {
     expect(
       getServerConnectionBannerDescription({ retrying: true, isElectron: true, language: "en" }),
-    ).toContain("restart CUT3");
+    ).toContain("restart Rowl");
   });
 
   it("keeps dev-server retry guidance in the browser", () => {

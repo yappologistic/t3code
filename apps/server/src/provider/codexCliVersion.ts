@@ -137,5 +137,5 @@ export function isCodexCliVersionSupported(version: string): boolean {
 
 export function formatCodexCliUpgradeMessage(version: string | null): string {
   const versionLabel = version ? `v${version}` : "the installed version";
-  return `Codex CLI ${versionLabel} is too old for CUT3. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart CUT3.`;
+  return `Codex CLI ${versionLabel} is too old for Rowl. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart Rowl.`;
 }

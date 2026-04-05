@@ -867,6 +867,12 @@ html[data-sidebar-translucent="on"] [data-slot="sidebar"][data-mobile="true"] {
 @media (min-width: 48rem) {
   html[data-sidebar-translucent="on"]
     [data-slot="sidebar"][data-state="expanded"]
+    [data-slot="sidebar-gap"] {
+    width: 0 !important;
+  }
+
+  html[data-sidebar-translucent="on"]
+    [data-slot="sidebar"][data-state="expanded"]
     [data-slot="sidebar-inner"] {
     box-shadow:
       0 20px 48px rgb(0 0 0 / 16%),

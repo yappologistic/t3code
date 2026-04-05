@@ -652,7 +652,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepEqual(quick, {
       kind: "show_hint",
       label: "Push",
-      hint: 'Add a "CUT3" remote before pushing or creating a PR.',
+      hint: 'Add a "Rowl" remote before pushing or creating a PR.',
       disabled: true,
     });
   });
