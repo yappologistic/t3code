@@ -15,6 +15,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { Sidebar, SidebarProvider, useSidebar } from "~/components/ui/sidebar";
 import { resolveSidebarNewThreadEnvMode } from "~/components/Sidebar.logic";
 import { useAppSettings } from "~/appSettings";
+import { readNativeApi } from "~/nativeApi";
 import {
   CommandPalette,
   PALETTE_ICONS,
@@ -245,6 +246,36 @@ function ChatRouteLayoutContent() {
         icon: PALETTE_ICONS.settings,
         keywords: "settings preferences configuration options",
         action: () => void navigate({ to: "/settings" }),
+      },
+      {
+        id: "compact",
+        label: appSettings.language === "fa" ? "کاهش رشته" : "Compact Thread",
+        description:
+          routeThreadId === null
+            ? threadScopedActionDescription
+            : appSettings.language === "fa"
+              ? "زمینه‌ی رشته را برای ادامه‌ی مکالمه کاهش می‌دهد"
+              : "Reduce thread context to continue the conversation",
+        icon: PALETTE_ICONS.compact,
+        keywords: "compact reduce context summarize",
+        disabled: routeThreadId === null,
+        action: () => {
+          if (routeThreadId === null) return;
+          const api = readNativeApi();
+          if (!api) return;
+          void api.threads.compact({ threadId: routeThreadId });
+        },
+      },
+      {
+        id: "search",
+        label: appSettings.language === "fa" ? "جستجو" : "Search",
+        description:
+          appSettings.language === "fa" ? "جستجوی پروژه‌ها و رشته‌ها" : "Search projects and threads",
+        icon: PALETTE_ICONS.search,
+        keywords: "search find filter",
+        action: () => {
+          toggleSidebar();
+        },
       },
     );
 

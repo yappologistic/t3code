@@ -75,7 +75,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "escape", command: "chat.interrupt", when: "!terminalFocus" },
-  { key: "mod+shift+p", command: "commandPalette.toggle" },
+  { key: "mod+k", command: "commandPalette.toggle" },
   { key: "mod+o", command: "editor.openFavorite" },
 ];
 
