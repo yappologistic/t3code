@@ -97,6 +97,54 @@ import {
   ServerOpenCodeStateInput,
   ServerUpsertKeybindingResult,
 } from "./server";
+import {
+  CompressContextNodeInput,
+  CompressContextNodeResult,
+  CreateContextNodeInput,
+  CreateContextNodeResult,
+  DeleteContextNodeInput,
+  DeleteContextNodeResult,
+  GetContextNodeInput,
+  GetContextNodeResult,
+  ListContextNodesByProjectInput,
+  ListContextNodesByProjectResult,
+  ListContextNodesByThreadInput,
+  ListContextNodesByThreadResult,
+  RestoreContextNodeInput,
+  RestoreContextNodeResult,
+} from "./context";
+import {
+  CreateFeatureInput,
+  CreateFeatureResult,
+  DeleteFeatureInput,
+  DeleteFeatureResult,
+  GetFeatureInput,
+  GetFeatureResult,
+  ListFeaturesByProjectInput,
+  ListFeaturesByProjectResult,
+  UpdateFeatureInput,
+  UpdateFeatureResult,
+  UpdateFeatureStageInput,
+  UpdateFeatureStageResult,
+} from "./features";
+import {
+  CreateGoalInput,
+  CreateGoalResult,
+  DeleteGoalInput,
+  DeleteGoalResult,
+  GetGoalInput,
+  GetGoalResult,
+  LinkThreadToGoalInput,
+  LinkThreadToGoalResult,
+  ListGoalsByProjectInput,
+  ListGoalsByProjectResult,
+  SetMainGoalInput,
+  SetMainGoalResult,
+  UnlinkThreadFromGoalInput,
+  UnlinkThreadFromGoalResult,
+  UpdateGoalTextInput,
+  UpdateGoalTextResult,
+} from "./goals";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -156,6 +204,33 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverAddOpenCodeCredential: "server.addOpenCodeCredential",
   serverRemoveOpenCodeCredential: "server.removeOpenCodeCredential",
+
+  // Features methods
+  featuresCreate: "features.create",
+  featuresGet: "features.get",
+  featuresListByProject: "features.listByProject",
+  featuresUpdate: "features.update",
+  featuresUpdateStage: "features.updateStage",
+  featuresDelete: "features.delete",
+
+  // Goals methods
+  goalsCreate: "goals.create",
+  goalsGet: "goals.get",
+  goalsListByProject: "goals.listByProject",
+  goalsSetMain: "goals.setMain",
+  goalsLinkThread: "goals.linkThread",
+  goalsUnlinkThread: "goals.unlinkThread",
+  goalsUpdateText: "goals.updateText",
+  goalsDelete: "goals.delete",
+
+  // Context methods
+  contextCreateNode: "context.createNode",
+  contextGetNode: "context.getNode",
+  contextListByProject: "context.listByProject",
+  contextListByThread: "context.listByThread",
+  contextCompressNode: "context.compressNode",
+  contextRestoreNode: "context.restoreNode",
+  contextDeleteNode: "context.deleteNode",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -241,6 +316,33 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
   tagRequestBody(WS_METHODS.serverAddOpenCodeCredential, ServerOpenCodeAddCredentialInput),
   tagRequestBody(WS_METHODS.serverRemoveOpenCodeCredential, ServerOpenCodeRemoveCredentialInput),
+
+  // Features methods
+  tagRequestBody(WS_METHODS.featuresCreate, CreateFeatureInput),
+  tagRequestBody(WS_METHODS.featuresGet, GetFeatureInput),
+  tagRequestBody(WS_METHODS.featuresListByProject, ListFeaturesByProjectInput),
+  tagRequestBody(WS_METHODS.featuresUpdate, UpdateFeatureInput),
+  tagRequestBody(WS_METHODS.featuresUpdateStage, UpdateFeatureStageInput),
+  tagRequestBody(WS_METHODS.featuresDelete, DeleteFeatureInput),
+
+  // Goals methods
+  tagRequestBody(WS_METHODS.goalsCreate, CreateGoalInput),
+  tagRequestBody(WS_METHODS.goalsGet, GetGoalInput),
+  tagRequestBody(WS_METHODS.goalsListByProject, ListGoalsByProjectInput),
+  tagRequestBody(WS_METHODS.goalsSetMain, SetMainGoalInput),
+  tagRequestBody(WS_METHODS.goalsLinkThread, LinkThreadToGoalInput),
+  tagRequestBody(WS_METHODS.goalsUnlinkThread, UnlinkThreadFromGoalInput),
+  tagRequestBody(WS_METHODS.goalsUpdateText, UpdateGoalTextInput),
+  tagRequestBody(WS_METHODS.goalsDelete, DeleteGoalInput),
+
+  // Context methods
+  tagRequestBody(WS_METHODS.contextCreateNode, CreateContextNodeInput),
+  tagRequestBody(WS_METHODS.contextGetNode, GetContextNodeInput),
+  tagRequestBody(WS_METHODS.contextListByProject, ListContextNodesByProjectInput),
+  tagRequestBody(WS_METHODS.contextListByThread, ListContextNodesByThreadInput),
+  tagRequestBody(WS_METHODS.contextCompressNode, CompressContextNodeInput),
+  tagRequestBody(WS_METHODS.contextRestoreNode, RestoreContextNodeInput),
+  tagRequestBody(WS_METHODS.contextDeleteNode, DeleteContextNodeInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({
@@ -381,6 +483,33 @@ export const WsRpcResultSchemaByMethod = {
   [WS_METHODS.serverUpsertKeybinding]: ServerUpsertKeybindingResult,
   [WS_METHODS.serverAddOpenCodeCredential]: ServerOpenCodeCredentialResult,
   [WS_METHODS.serverRemoveOpenCodeCredential]: ServerOpenCodeCredentialResult,
+
+  // Features methods
+  [WS_METHODS.featuresCreate]: CreateFeatureResult,
+  [WS_METHODS.featuresGet]: GetFeatureResult,
+  [WS_METHODS.featuresListByProject]: ListFeaturesByProjectResult,
+  [WS_METHODS.featuresUpdate]: UpdateFeatureResult,
+  [WS_METHODS.featuresUpdateStage]: UpdateFeatureStageResult,
+  [WS_METHODS.featuresDelete]: DeleteFeatureResult,
+
+  // Goals methods
+  [WS_METHODS.goalsCreate]: CreateGoalResult,
+  [WS_METHODS.goalsGet]: GetGoalResult,
+  [WS_METHODS.goalsListByProject]: ListGoalsByProjectResult,
+  [WS_METHODS.goalsSetMain]: SetMainGoalResult,
+  [WS_METHODS.goalsLinkThread]: LinkThreadToGoalResult,
+  [WS_METHODS.goalsUnlinkThread]: UnlinkThreadFromGoalResult,
+  [WS_METHODS.goalsUpdateText]: UpdateGoalTextResult,
+  [WS_METHODS.goalsDelete]: DeleteGoalResult,
+
+  // Context methods
+  [WS_METHODS.contextCreateNode]: CreateContextNodeResult,
+  [WS_METHODS.contextGetNode]: GetContextNodeResult,
+  [WS_METHODS.contextListByProject]: ListContextNodesByProjectResult,
+  [WS_METHODS.contextListByThread]: ListContextNodesByThreadResult,
+  [WS_METHODS.contextCompressNode]: CompressContextNodeResult,
+  [WS_METHODS.contextRestoreNode]: RestoreContextNodeResult,
+  [WS_METHODS.contextDeleteNode]: DeleteContextNodeResult,
 } as const;
 
 export type WsRpcMethod = keyof typeof WsRpcResultSchemaByMethod;

@@ -121,3 +121,55 @@ export function toListenerCallbackError(listener: "read-model" | "domain-event")
       cause,
     });
 }
+
+export class FeatureServiceError extends Schema.TaggedErrorClass<FeatureServiceError>()(
+  "FeatureServiceError",
+  {
+    operation: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Feature service error in ${this.operation}: ${this.detail}`;
+  }
+}
+
+export class GoalServiceError extends Schema.TaggedErrorClass<GoalServiceError>()(
+  "GoalServiceError",
+  {
+    operation: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Goal service error in ${this.operation}: ${this.detail}`;
+  }
+}
+
+export class ContextServiceError extends Schema.TaggedErrorClass<ContextServiceError>()(
+  "ContextServiceError",
+  {
+    operation: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Context service error in ${this.operation}: ${this.detail}`;
+  }
+}
+
+export class PMChatContextServiceError extends Schema.TaggedErrorClass<PMChatContextServiceError>()(
+  "PMChatContextServiceError",
+  {
+    operation: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `PM chat context service error in ${this.operation}: ${this.detail}`;
+  }
+}

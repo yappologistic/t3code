@@ -1871,6 +1871,32 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return { keybindings: keybindingsConfig, issues: [] };
       }
 
+      case WS_METHODS.featuresCreate:
+      case WS_METHODS.featuresGet:
+      case WS_METHODS.featuresListByProject:
+      case WS_METHODS.featuresUpdate:
+      case WS_METHODS.featuresUpdateStage:
+      case WS_METHODS.featuresDelete:
+      case WS_METHODS.goalsCreate:
+      case WS_METHODS.goalsGet:
+      case WS_METHODS.goalsListByProject:
+      case WS_METHODS.goalsSetMain:
+      case WS_METHODS.goalsLinkThread:
+      case WS_METHODS.goalsUnlinkThread:
+      case WS_METHODS.goalsUpdateText:
+      case WS_METHODS.goalsDelete:
+      case WS_METHODS.contextCreateNode:
+      case WS_METHODS.contextGetNode:
+      case WS_METHODS.contextListByProject:
+      case WS_METHODS.contextListByThread:
+      case WS_METHODS.contextCompressNode:
+      case WS_METHODS.contextRestoreNode:
+      case WS_METHODS.contextDeleteNode: {
+        return yield* new RouteRequestError({
+          message: `Method ${request.body._tag} not yet implemented`,
+        });
+      }
+
       default: {
         const _exhaustiveCheck: never = request.body;
         return yield* new RouteRequestError({
