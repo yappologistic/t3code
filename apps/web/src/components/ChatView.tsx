@@ -279,6 +279,7 @@ import { Toggle } from "./ui/toggle";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/collapsible";
 import ThreadNewButton from "./ThreadNewButton";
 import ThreadSidebarToggle from "./ThreadSidebarToggle";
+import RightSidebarToggle from "./RightSidebarToggle";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import {
@@ -8280,6 +8281,7 @@ const ChatHeader = memo(function ChatHeader({
                 : "Toggle diff panel"}
           </TooltipPopup>
         </Tooltip>
+        <RightSidebarToggle />
       </div>
     </div>
   );

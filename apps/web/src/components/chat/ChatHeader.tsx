@@ -121,7 +121,7 @@ export const ChatHeader = memo(function ChatHeader({
                 : "Toggle diff panel"}
           </TooltipPopup>
         </Tooltip>
-        {onToggleRightSidebar && <RightSidebarToggle />}
+        <RightSidebarToggle />
       </div>
     </div>
   );
