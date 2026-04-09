@@ -28,6 +28,7 @@ const thread = (overrides: Partial<Thread> = {}): Thread => ({
   codexThreadId: null,
   projectId: projectId("project-1"),
   title: "First thread",
+  goal: null,
   model: "gpt-5.4",
   runtimeMode: "full-access",
   interactionMode: "default",

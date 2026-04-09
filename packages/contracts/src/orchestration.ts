@@ -276,6 +276,7 @@ export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  goal: Schema.NullOr(TrimmedNonEmptyString),
   model: TrimmedNonEmptyString,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
@@ -388,6 +389,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString),
+  goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   model: Schema.optional(TrimmedNonEmptyString),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),

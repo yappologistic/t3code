@@ -77,6 +77,7 @@ function createSnapshot(): OrchestrationReadModel {
         id: THREAD_ID,
         projectId: PROJECT_ID,
         title: "Thread new button test",
+        goal: null,
         model: "gpt-5",
         interactionMode: "default",
         runtimeMode: "full-access",
