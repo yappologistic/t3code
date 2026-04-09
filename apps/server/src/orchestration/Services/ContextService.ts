@@ -6,12 +6,10 @@
  *
  * @module ContextService
  */
-import {
+import type {
   CompressContextNodeInput,
   CompressContextNodeResult,
   ContextBudget,
-  ContextNode,
-  ContextNodeId,
   CreateContextNodeInput,
   CreateContextNodeResult,
   DeleteContextNodeInput,

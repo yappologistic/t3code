@@ -6,14 +6,11 @@
  *
  * @module FeatureService
  */
-import {
+import type {
   CreateFeatureInput,
   CreateFeatureResult,
   DeleteFeatureInput,
   DeleteFeatureResult,
-  Feature,
-  FeatureId,
-  FeatureStage,
   GetFeatureInput,
   GetFeatureResult,
   ListFeaturesByProjectInput,

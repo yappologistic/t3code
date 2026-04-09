@@ -6,15 +6,13 @@
  *
  * @module GoalsService
  */
-import {
+import type {
   CreateGoalInput,
   CreateGoalResult,
   DeleteGoalInput,
   DeleteGoalResult,
   GetGoalInput,
   GetGoalResult,
-  Goal,
-  GoalId,
   LinkThreadToGoalInput,
   LinkThreadToGoalResult,
   ListGoalsByProjectInput,
