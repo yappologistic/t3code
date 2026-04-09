@@ -389,6 +389,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         codexThreadId: null,
         projectId: thread.projectId,
         title: thread.title,
+        goal: thread.goal ?? null,
         provider,
         model: resolveThreadModelForSync({
           provider,

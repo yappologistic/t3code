@@ -9,6 +9,7 @@ function makeThread(overrides?: Partial<Thread>): Thread {
     codexThreadId: null,
     projectId: "project-1" as never,
     title: "Thread",
+    goal: null,
     provider: "opencode",
     model: "anthropic/claude-sonnet-4",
     runtimeMode: "approval-required",

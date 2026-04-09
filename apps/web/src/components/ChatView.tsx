@@ -254,6 +254,7 @@ import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { ThreadGoalStatement } from "./chat/ThreadGoalStatement";
 import {
   ProviderModelPicker,
   PROVIDER_ICON_BY_PROVIDER,
@@ -673,6 +674,7 @@ function buildLocalDraftThread(
     codexThreadId: null,
     projectId: draftThread.projectId,
     title: "New thread",
+    goal: null,
     model: fallbackModel,
     runtimeMode: draftThread.runtimeMode,
     interactionMode: draftThread.interactionMode,
@@ -6756,6 +6758,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
               tasks={threadTasks}
               timestampFormat={timestampFormat}
               checkpointTurnCountByTurnId={inferredCheckpointTurnCountByTurnId}
+            />
+            <ThreadGoalStatement
+              threadId={activeThread.id}
+              goal={activeThread.goal ?? null}
+              className="px-3 sm:px-5 py-2 border-b border-border/50"
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages */}

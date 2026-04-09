@@ -19,6 +19,7 @@ const thread: Thread = {
   codexThreadId: null,
   projectId: project.id,
   title: "Export Thread!",
+  goal: null,
   provider: "codex",
   model: "gpt-5-codex",
   runtimeMode: "approval-required",
