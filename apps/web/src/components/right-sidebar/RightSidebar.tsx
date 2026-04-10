@@ -71,7 +71,7 @@ const RightSidebar = memo(function RightSidebar({ className }: { className?: str
   );
 
   const renderExpanded = () => (
-    <div className="flex h-full w-80 flex-col border-l border-border/60 bg-card/40 backdrop-blur-xs">
+    <div className="flex h-full w-[300px] flex-col border-l border-border/60 bg-card/40 backdrop-blur-xs">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
         <div className="flex items-center gap-2">
           {TABS.map(
@@ -108,7 +108,7 @@ const RightSidebar = memo(function RightSidebar({ className }: { className?: str
             )}
           >
             {tab.icon}
-            <span className="hidden group-hover:inline">{tab.label}</span>
+            <span className="hidden">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -120,8 +120,10 @@ const RightSidebar = memo(function RightSidebar({ className }: { className?: str
   return (
     <div
       className={cn(
-        "relative flex shrink-0 transition-[width] motion-reduce:transition-none",
-        rightSidebarExpanded ? "w-80" : "w-12",
+        "relative flex shrink-0 transition-[width,margin] motion-reduce:transition-none overflow-hidden",
+        rightSidebarExpanded
+          ? "fixed right-0 top-0 h-svh z-50 w-[300px] shadow-lg"
+          : "w-12",
         className,
       )}
       data-state={rightSidebarExpanded ? "expanded" : "collapsed"}
